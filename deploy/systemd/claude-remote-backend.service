@@ -1,0 +1,28 @@
+[Unit]
+Description=Claude Remote Backend Service
+After=network.target redis.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=bill
+Group=staff
+WorkingDirectory=/Users/bill/claude-remote
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/Users/bill/claude-remote/.env
+ExecStart=/Users/bill/claude-remote/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

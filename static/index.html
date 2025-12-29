@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Claude Remote</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <!-- xterm.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+</head>
+<body>
+  <!-- 会话列表视图 -->
+  <div id="sessions-view" class="view active">
+    <header class="header">
+      <div class="header-title">
+        <div class="logo">C</div>
+        <h1>Claude Remote</h1>
+      </div>
+      <button id="create-session" class="btn-add">+</button>
+    </header>
+    <main class="main">
+      <div id="sessions-list" class="sessions-list">
+        <div class="loading">加载中...</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 创建会话模态框 -->
+  <div id="create-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-title">新建会话</h2>
+        <button id="modal-close" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 步骤1: 选择工作目录 -->
+        <div id="step-workdir" class="step active">
+          <div class="step-title">选择工作目录</div>
+          <!-- 历史目录 -->
+          <div id="history-dirs" class="history-dirs">
+            <div class="section-label">历史目录</div>
+            <div id="workdir-list" class="workdir-list">
+              <div class="loading">加载中...</div>
+            </div>
+          </div>
+          <!-- 目录浏览器 -->
+          <div class="dir-browser">
+            <div class="section-label">浏览目录</div>
+            <div class="current-path">
+              <button id="go-parent" class="btn btn-icon">↑</button>
+              <span id="current-path-text">/Users/bill</span>
+              <button id="select-current" class="btn btn-primary">选择</button>
+            </div>
+            <div id="dir-list" class="dir-list">
+              <div class="loading">加载中...</div>
+            </div>
+          </div>
+        </div>
+        <!-- 步骤2: 选择 Claude 会话 -->
+        <div id="step-session" class="step">
+          <div class="step-title">选择 Claude 会话</div>
+          <div class="selected-workdir">
+            <span id="selected-workdir-text"></span>
+            <button id="change-workdir" class="btn btn-text">更改</button>
+          </div>
+          <div id="claude-sessions" class="claude-sessions">
+            <div class="loading">加载中...</div>
+          </div>
+          <button id="create-new-session" class="btn btn-primary btn-block">新建会话</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 终端视图 -->
+  <div id="terminal-view" class="view">
+    <!-- 工具栏 -->
+    <header class="toolbar">
+      <button id="back-btn" class="btn btn-secondary">← 返回</button>
+      <div class="session-info">
+        <span class="session-name">Terminal</span>
+        <span id="connection-status" class="connection-status">连接中...</span>
+      </div>
+      <div class="font-controls">
+        <button id="font-decrease" class="btn btn-icon">A-</button>
+        <button id="font-increase" class="btn btn-icon">A+</button>
+      </div>
+    </header>
+
+    <!-- 终端输出区域 -->
+    <div id="terminal-output" class="terminal-container"></div>
+
+    <!-- 底部输入栏（常驻） -->
+    <div class="bottom-input-bar">
+      <div class="special-keys">
+        <button class="key-btn" data-key="up">↑</button>
+        <button class="key-btn" data-key="down">↓</button>
+        <button class="key-btn" data-key="escape">ESC</button>
+        <button class="key-btn" data-key="tab">TAB</button>
+        <button class="key-btn" data-key="ctrl-c">^C</button>
+        <button class="key-btn" data-key="ctrl-d">^D</button>
+        <button class="key-btn" data-key="enter">↵</button>
+      </div>
+      <div class="input-row" id="input-row">
+        <!-- input 动态创建 -->
+        <button id="send-btn" class="btn btn-primary">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 引入应用脚本 -->
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script src="/static/terminal.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
