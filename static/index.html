@@ -83,11 +83,35 @@
         <span id="terminal-title" class="terminal-title">终端</span>
         <span id="connection-status" class="connection-status" onclick="window.app && window.app.toggleDebugPanel()">连接中...</span>
       </div>
-      <div class="font-controls">
+      <div class="toolbar-right">
+        <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel()">?</button>
         <button id="font-decrease" class="btn btn-icon">A-</button>
         <button id="font-increase" class="btn btn-icon">A+</button>
       </div>
     </header>
+
+    <!-- 帮助面板 -->
+    <div id="help-panel" class="help-panel">
+      <div class="help-content">
+        <div class="help-header">
+          <span>按键说明</span>
+          <button onclick="window.app && window.app.toggleHelpPanel()">✕</button>
+        </div>
+        <div class="help-list">
+          <div class="help-item"><span class="help-key">↑</span><span>上一条历史命令</span></div>
+          <div class="help-item"><span class="help-key">↓</span><span>下一条历史命令</span></div>
+          <div class="help-item"><span class="help-key">ESC</span><span>取消当前输入</span></div>
+          <div class="help-item"><span class="help-key">TAB</span><span>自动补全</span></div>
+          <div class="help-item"><span class="help-key">^C</span><span>中断当前操作</span></div>
+          <div class="help-item"><span class="help-key">⤒</span><span>点击到顶部 / 长按向上滚动</span></div>
+          <div class="help-item"><span class="help-key">⤓</span><span>点击到底部 / 长按向下滚动</span></div>
+          <div class="help-item"><span class="help-key">↵</span><span>回车确认</span></div>
+        </div>
+        <div class="help-tips">
+          <div class="help-tip">💡 点击状态栏查看调试日志</div>
+        </div>
+      </div>
+    </div>
 
     <!-- 终端输出区域 -->
     <div id="terminal-output" class="terminal-container"></div>
@@ -100,7 +124,8 @@
         <button class="key-btn" data-key="escape">ESC</button>
         <button class="key-btn" data-key="tab">TAB</button>
         <button class="key-btn" data-key="ctrl-c">^C</button>
-        <button class="key-btn" data-key="ctrl-d">^D</button>
+        <button class="key-btn" data-key="top">⤒</button>
+        <button class="key-btn" data-key="bottom">⤓</button>
         <button class="key-btn" data-key="enter">↵</button>
       </div>
       <div class="input-row" id="input-row">
@@ -123,6 +148,7 @@
   <!-- 引入应用脚本 -->
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
   <script src="/static/terminal.js"></script>
   <script src="/static/app.js"></script>
 </body>

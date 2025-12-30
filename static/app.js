@@ -115,11 +115,17 @@ class App {
 
     // 虚拟按键
     document.querySelectorAll('.key-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const key = btn.dataset.key;
-        console.log('Key pressed:', key);
-        this.sendKey(key);
-      });
+      const key = btn.dataset.key;
+
+      // ⤒ ⤓ 按钮：支持单击跳转和长按持续滚动
+      if (key === 'top' || key === 'bottom') {
+        this.setupScrollButton(btn, key);
+      } else {
+        btn.addEventListener('click', () => {
+          console.log('Key pressed:', key);
+          this.sendKey(key);
+        });
+      }
     });
 
     // 字体大小调整
@@ -653,6 +659,16 @@ class App {
   }
 
   /**
+   * 切换帮助面板显示
+   */
+  toggleHelpPanel() {
+    const panel = document.getElementById('help-panel');
+    if (panel) {
+      panel.classList.toggle('active');
+    }
+  }
+
+  /**
    * 更新连接状态显示
    */
   updateConnectStatus(text, detail) {
@@ -970,14 +986,83 @@ class App {
   sendInput() {
     const inputRow = document.getElementById('input-row');
     const inputEl = inputRow?.querySelector('.input-field');
-    if (!inputEl || !inputEl.value) return;
+    if (!inputEl) return;
 
-    // 发送输入内容 + 回车
-    this.sendMessage({ type: 'input', data: inputEl.value });
+    // 发送输入内容（可以为空）+ 回车
+    if (inputEl.value) {
+      this.sendMessage({ type: 'input', data: inputEl.value });
+    }
     this.sendMessage({ type: 'input', data: '\r' });
 
     // 清空输入框
     inputEl.value = '';
+  }
+
+  /**
+   * 设置滚动按钮（⤒ ⤓）的单击/长按行为
+   */
+  setupScrollButton(btn, key) {
+    const LONG_PRESS_DELAY = 200;  // 长按触发延迟
+    const SCROLL_INTERVAL = 60;    // 持续滚动间隔
+    const SCROLL_LINES = 3;        // 每次滚动行数
+
+    let pressTimer = null;
+    let scrollTimer = null;
+    let isLongPress = false;
+
+    const startScroll = () => {
+      isLongPress = true;
+      // 开始持续滚动
+      scrollTimer = setInterval(() => {
+        if (this.terminal && this.terminal.xterm) {
+          const lines = key === 'top' ? -SCROLL_LINES : SCROLL_LINES;
+          this.terminal.xterm.scrollLines(lines);
+        }
+      }, SCROLL_INTERVAL);
+    };
+
+    const stopScroll = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+      if (scrollTimer) {
+        clearInterval(scrollTimer);
+        scrollTimer = null;
+      }
+
+      // 如果不是长按，执行单击跳转
+      if (!isLongPress) {
+        if (this.terminal && this.terminal.xterm) {
+          if (key === 'top') {
+            this.terminal.xterm.scrollToTop();
+          } else {
+            this.terminal.xterm.scrollToBottom();
+          }
+        }
+      }
+      isLongPress = false;
+    };
+
+    // 触摸事件
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isLongPress = false;
+      pressTimer = setTimeout(startScroll, LONG_PRESS_DELAY);
+    }, { passive: false });
+
+    btn.addEventListener('touchend', stopScroll);
+    btn.addEventListener('touchcancel', stopScroll);
+
+    // 鼠标事件（桌面端）
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isLongPress = false;
+      pressTimer = setTimeout(startScroll, LONG_PRESS_DELAY);
+    });
+
+    btn.addEventListener('mouseup', stopScroll);
+    btn.addEventListener('mouseleave', stopScroll);
   }
 
   /**
@@ -990,7 +1075,6 @@ class App {
       'escape': '\x1b',
       'tab': '\t',
       'ctrl-c': '\x03',
-      'ctrl-d': '\x04',
       'enter': '\r',
     };
 
@@ -1071,11 +1155,13 @@ class App {
     // 等待适配完成后获取大小
     setTimeout(() => {
       const size = this.terminal.getSize();
-      console.log('Terminal resized to:', size);
+      // 减少列数，让内容显示更宽松
+      const adjustedCols = Math.max(size.cols - 3, 20);
+      console.log('Terminal resized to:', size.rows, 'x', adjustedCols, '(原始:', size.cols, ')');
       this.sendMessage({
         type: 'resize',
         rows: size.rows,
-        cols: size.cols
+        cols: adjustedCols
       });
     }, 50);
   }

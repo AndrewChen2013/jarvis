@@ -45,6 +45,8 @@ class Terminal {
       // 滚动优化
       smoothScrollDuration: 0,  // 禁用平滑滚动
       scrollOnUserInput: true,
+      scrollSensitivity: 20,    // 增大滚动灵敏度（默认1）
+      fastScrollSensitivity: 40, // 快速滚动灵敏度
     });
     this.log('Step 1 完成');
 
@@ -57,6 +59,24 @@ class Terminal {
     this.xterm.open(this.container);
     this.log('Step 3 完成');
 
+    // 尝试加载 WebGL 渲染器（GPU 加速）
+    this.log('Step 3.5: 尝试 WebGL 加速');
+    if (window.WebglAddon) {
+      try {
+        const webglAddon = new window.WebglAddon.WebglAddon();
+        webglAddon.onContextLoss(() => {
+          webglAddon.dispose();
+          this.log('WebGL context lost, falling back to canvas');
+        });
+        this.xterm.loadAddon(webglAddon);
+        this.log('WebGL 加速已启用');
+      } catch (e) {
+        this.log('WebGL 不可用: ' + e.message);
+      }
+    } else {
+      this.log('WebglAddon 未加载');
+    }
+
     this.log('Step 4: 等待 fit()');
     requestAnimationFrame(() => {
       this.log('Step 4a: RAF 回调');
@@ -66,10 +86,15 @@ class Terminal {
       this.log('Step 4c: 刷新队列 ' + this.pendingWrites.length);
       this.flushPendingWrites();
       this.log('Step 4d: 队列完成');
+
+      // 设置触摸滚动（DOM 已渲染）
+      this.log('Step 4e: 设置触摸滚动');
+      this.setupTouchScroll();
+
       if (this.onReady) {
-        this.log('Step 4e: onReady');
+        this.log('Step 4f: onReady');
         this.onReady();
-        this.log('Step 4f: onReady 完成');
+        this.log('Step 4g: onReady 完成');
       }
     });
 
@@ -84,6 +109,95 @@ class Terminal {
     }, 100);
 
     this.log('init 同步完成');
+  }
+
+  /**
+   * 自定义触摸滚动 - 完全接管触摸处理
+   */
+  setupTouchScroll() {
+    let touchStartY = 0;
+    let lastTouchY = 0;
+    let velocity = 0;
+    let lastTime = 0;
+    let momentumId = null;
+    let accumulatedDelta = 0;
+
+    // 在整个容器上捕获触摸事件
+    const target = this.container;
+
+    // 触摸开始
+    target.addEventListener('touchstart', (e) => {
+      // 停止惯性滚动
+      if (momentumId) {
+        cancelAnimationFrame(momentumId);
+        momentumId = null;
+      }
+      touchStartY = e.touches[0].clientY;
+      lastTouchY = touchStartY;
+      lastTime = Date.now();
+      velocity = 0;
+      accumulatedDelta = 0;
+    }, { passive: false, capture: true });
+
+    // 触摸移动 - 阻止默认行为，完全接管
+    target.addEventListener('touchmove', (e) => {
+      e.preventDefault();  // 阻止 xterm 和浏览器的默认处理
+      e.stopPropagation();
+
+      const currentY = e.touches[0].clientY;
+      const deltaY = lastTouchY - currentY;
+      const now = Date.now();
+      const dt = now - lastTime;
+
+      // 计算速度用于惯性
+      if (dt > 0) {
+        velocity = deltaY / dt;
+      }
+
+      // 累积滑动距离，达到一行高度才滚动
+      accumulatedDelta += deltaY;
+      const lineHeight = this.fontSize * 1.2;
+      const lines = Math.trunc(accumulatedDelta / lineHeight);
+
+      if (lines !== 0 && this.xterm) {
+        this.xterm.scrollLines(lines);
+        accumulatedDelta -= lines * lineHeight;
+      }
+
+      lastTouchY = currentY;
+      lastTime = now;
+    }, { passive: false, capture: true });
+
+    // 触摸结束 - 惯性滚动
+    target.addEventListener('touchend', () => {
+      const lineHeight = this.fontSize * 1.2;
+
+      const momentum = () => {
+        if (Math.abs(velocity) < 0.02) {
+          momentumId = null;
+          return;
+        }
+
+        // 根据速度滚动
+        accumulatedDelta += velocity * 16;
+        const lines = Math.trunc(accumulatedDelta / lineHeight);
+
+        if (lines !== 0 && this.xterm) {
+          this.xterm.scrollLines(lines);
+          accumulatedDelta -= lines * lineHeight;
+        }
+
+        // 减速（模拟摩擦力）
+        velocity *= 0.95;
+        momentumId = requestAnimationFrame(momentum);
+      };
+
+      if (Math.abs(velocity) > 0.3) {
+        momentumId = requestAnimationFrame(momentum);
+      }
+    }, { passive: true, capture: true });
+
+    this.log('触摸滚动已设置(capture模式)');
   }
 
   /**
