@@ -49,11 +49,13 @@ class ConnectionManager:
 
         # 立即发送连接中消息，防止 Safari 超时断开
         try:
+            logger.info(f"Sending connecting message to {session_id}")
             await self._send_message(websocket, {
                 "type": "connecting",
                 "session_id": session_id,
                 "message": "Starting session..."
             })
+            logger.info(f"Connecting message sent to {session_id}")
         except Exception as e:
             logger.warning(f"Failed to send connecting message: {e}")
             return
@@ -76,23 +78,31 @@ class ConnectionManager:
                 logger.info(f"Output callback already exists for {session_id}")
 
             # 发送连接成功消息
+            logger.info(f"Sending connected message to {session_id}")
             await self._send_message(websocket, {
                 "type": "connected",
                 "session_id": session_id,
                 "pid": process.pid,
                 "clients": client_count
             })
+            logger.info(f"Connected message sent to {session_id}")
 
-            # 发送历史输出（如果有）
+            # 发送历史输出（如果有），分块发送避免消息太大
             history = process.get_output_history()
             logger.info(f"History buffer size: {len(history)} bytes")
             if history:
                 text = history.decode('utf-8', errors='replace')
-                await self._send_message(websocket, {
-                    "type": "output",
-                    "data": text
-                })
-                logger.info(f"Sent {len(history)} bytes of history to new client")
+                # 分块发送，每块最大 4KB
+                chunk_size = 4096
+                for i in range(0, len(text), chunk_size):
+                    chunk = text[i:i + chunk_size]
+                    await self._send_message(websocket, {
+                        "type": "output",
+                        "data": chunk
+                    })
+                    # 给 Safari 一点时间处理
+                    await asyncio.sleep(0.01)
+                logger.info(f"Sent {len(history)} bytes of history in {(len(text) + chunk_size - 1) // chunk_size} chunks")
             else:
                 logger.info("No history to send")
 

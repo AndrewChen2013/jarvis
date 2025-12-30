@@ -15,7 +15,7 @@
   <div id="sessions-view" class="view active">
     <header class="header">
       <div class="header-title">
-        <div class="logo">C</div>
+        <div class="logo" onclick="window.app && window.app.toggleDebugPanel()">C</div>
         <h1>Claude Remote</h1>
       </div>
       <button id="create-session" class="btn-add">+</button>
@@ -78,10 +78,10 @@
   <div id="terminal-view" class="view">
     <!-- 工具栏 -->
     <header class="toolbar">
-      <button id="back-btn" class="btn btn-secondary">← 返回</button>
-      <div class="session-info">
-        <span class="session-name">Terminal</span>
-        <span id="connection-status" class="connection-status">连接中...</span>
+      <button id="back-btn" class="btn-back">←</button>
+      <div class="toolbar-center">
+        <span id="terminal-title" class="terminal-title">终端</span>
+        <span id="connection-status" class="connection-status" onclick="window.app && window.app.toggleDebugPanel()">连接中...</span>
       </div>
       <div class="font-controls">
         <button id="font-decrease" class="btn btn-icon">A-</button>
@@ -110,6 +110,16 @@
     </div>
   </div>
 
+  <!-- 全局错误捕获 -->
+  <script>
+    window.onerror = function(msg, url, line, col, error) {
+      alert('JS Error: ' + msg + ' at ' + url + ':' + line);
+      return false;
+    };
+    window.addEventListener('unhandledrejection', function(event) {
+      alert('Promise Error: ' + event.reason);
+    });
+  </script>
   <!-- 引入应用脚本 -->
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>

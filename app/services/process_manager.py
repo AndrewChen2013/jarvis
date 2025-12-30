@@ -24,7 +24,7 @@ class ManagedProcess:
     """管理的 Claude Code 进程"""
 
     # 历史输出缓冲区最大大小（字节）
-    MAX_HISTORY_SIZE = 64 * 1024  # 64KB
+    MAX_HISTORY_SIZE = 16 * 1024  # 16KB - 减小以兼容移动端
 
     def __init__(self, config: ProcessConfig):
         self.config = config

@@ -111,6 +111,12 @@ body {
   font-size: 18px;
   font-weight: 700;
   color: #fff;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.logo:active {
+  transform: scale(0.9);
 }
 
 .header h1 {
@@ -765,4 +771,113 @@ body {
     height: 36px;
     padding: 0 12px;
   }
+}
+
+/* 连接状态显示 */
+.connect-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: #888;
+}
+
+.connect-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #333;
+  border-top-color: #4a9eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.connect-text {
+  font-size: 18px;
+  color: #fff;
+}
+
+.connect-detail {
+  font-size: 14px;
+  color: #666;
+}
+
+/* ========== 新增 UI 样式 ========== */
+
+/* 返回按钮 */
+.btn-back {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  color: #4a9eff;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-back:active {
+  transform: scale(0.9);
+}
+
+/* 工具栏中央区域 */
+.toolbar-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* 终端标题 */
+.terminal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* 连接状态 - 可点击样式 */
+.connection-status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.connection-status:active {
+  opacity: 0.7;
+}
+
+/* 会话卡片 - 添加点击指示器 */
+.session-item::after {
+  content: '›';
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px;
+  color: #4a4a4a;
+  transition: color 0.2s;
+}
+
+.session-item:active::after {
+  color: #4a9eff;
 }

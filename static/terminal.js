@@ -18,6 +18,8 @@ class Terminal {
   }
 
   init() {
+    this.log('Step 1: 创建 xterm 实例');
+
     // 创建 xterm.js 实例，移动端性能优化配置
     this.xterm = new window.Terminal({
       // 移动端适配
@@ -44,38 +46,55 @@ class Terminal {
       smoothScrollDuration: 0,  // 禁用平滑滚动
       scrollOnUserInput: true,
     });
+    this.log('Step 1 完成');
 
-    // 创建 FitAddon 用于自适应大小
+    this.log('Step 2: 创建 FitAddon');
     this.fitAddon = new window.FitAddon.FitAddon();
     this.xterm.loadAddon(this.fitAddon);
+    this.log('Step 2 完成');
 
-    // 打开终端
+    this.log('Step 3: 打开终端');
     this.xterm.open(this.container);
+    this.log('Step 3 完成');
 
-    // 初始化适配（延迟确保布局完成）
+    this.log('Step 4: 等待 fit()');
     requestAnimationFrame(() => {
+      this.log('Step 4a: RAF 回调');
       this.fit();
-      // 标记为就绪，处理队列中的数据
+      this.log('Step 4b: fit 完成');
       this.isReady = true;
-      console.log('Terminal ready, pending writes:', this.pendingWrites.length);
+      this.log('Step 4c: 刷新队列 ' + this.pendingWrites.length);
       this.flushPendingWrites();
+      this.log('Step 4d: 队列完成');
       if (this.onReady) {
+        this.log('Step 4e: onReady');
         this.onReady();
+        this.log('Step 4f: onReady 完成');
       }
     });
 
-    // 监听窗口大小变化
     this.resizeHandler = () => {
       this.fit();
     };
-    window.addEventListener('resize', this.resizeHandler);
 
-    // 监听可视区域变化（键盘弹出/收起）
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', this.resizeHandler);
+    this.log('Step 5: 添加监听器');
+    setTimeout(() => {
+      window.addEventListener('resize', this.resizeHandler, { passive: true });
+      this.log('Step 5 完成');
+    }, 100);
+
+    this.log('init 同步完成');
+  }
+
+  /**
+   * 在页面上显示日志
+   */
+  log(msg) {
+    console.log('[Terminal] ' + msg);
+    // 使用 app 的 debugLog
+    if (window.app && window.app.debugLog) {
+      window.app.debugLog('[xterm] ' + msg);
     }
-
-    console.log('Terminal initialized with xterm.js');
   }
 
   /**
@@ -122,13 +141,17 @@ class Terminal {
    * 自适应容器大小
    */
   fit() {
+    console.log('[Terminal] fit() called');
     if (this.fitAddon) {
       try {
+        console.log('[Terminal] fit() - calling fitAddon.fit()...');
         this.fitAddon.fit();
-        console.log('Terminal fitted to container');
+        console.log('[Terminal] fit() - fitAddon.fit() completed, rows:', this.xterm?.rows, 'cols:', this.xterm?.cols);
       } catch (error) {
-        console.error('Fit error:', error);
+        console.error('[Terminal] fit() error:', error);
       }
+    } else {
+      console.log('[Terminal] fit() - no fitAddon available');
     }
   }
 
@@ -172,9 +195,10 @@ class Terminal {
   dispose() {
     // 移除事件监听
     if (this.resizeHandler) {
-      window.removeEventListener('resize', this.resizeHandler);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', this.resizeHandler);
+      try {
+        window.removeEventListener('resize', this.resizeHandler);
+      } catch (e) {
+        console.error('Error removing resize listener:', e);
       }
     }
 
@@ -182,7 +206,11 @@ class Terminal {
     this.pendingWrites = [];
 
     if (this.xterm) {
-      this.xterm.dispose();
+      try {
+        this.xterm.dispose();
+      } catch (e) {
+        console.error('Error disposing xterm:', e);
+      }
       this.xterm = null;
     }
     if (this.fitAddon) {
