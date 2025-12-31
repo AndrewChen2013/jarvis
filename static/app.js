@@ -2374,10 +2374,13 @@ class App {
    */
   /**
    * 连接 WebSocket（新版）
+   * @param {boolean} isReconnect - 是否是重连，重连时不重置计数器
    */
-  connectWebSocket(workDir, sessionId) {
+  connectWebSocket(workDir, sessionId, isReconnect = false) {
     this.debugLog('connectWebSocket() 开始');
-    this.reconnectAttempts = 0;
+    if (!isReconnect) {
+      this.reconnectAttempts = 0;
+    }
 
     // 构建新的 WebSocket URL
     const params = new URLSearchParams({
@@ -2397,14 +2400,17 @@ class App {
   /**
    * 旧版连接方法（兼容）
    * @deprecated
+   * @param {boolean} isReconnect - 是否是重连，重连时不重置计数器
    */
-  connect(sessionId) {
+  connect(sessionId, isReconnect = false) {
     this.debugLog('connect() 开始 (legacy)');
-    this.reconnectAttempts = 0;
+    if (!isReconnect) {
+      this.reconnectAttempts = 0;
+    }
 
     // 如果有 currentWorkDir，使用新端点
     if (this.currentWorkDir) {
-      this.connectWebSocket(this.currentWorkDir, this.currentClaudeSessionId);
+      this.connectWebSocket(this.currentWorkDir, this.currentClaudeSessionId, isReconnect);
       return;
     }
 
@@ -2847,7 +2853,7 @@ class App {
       if (this.shouldReconnect && this.currentSession && !this.isConnecting) {
         this.debugLog(`[${execNow}] execute reconnect to session ${this.currentSession.substring(0, 8)}`);
         this.isConnecting = true;  // 设置连接锁
-        this.connect(this.currentSession);
+        this.connect(this.currentSession, true);  // isReconnect=true，不重置计数器
       } else {
         this.debugLog(`[${execNow}] cancel reconnect: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}, isConnecting=${this.isConnecting}`);
       }
