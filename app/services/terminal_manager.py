@@ -264,6 +264,40 @@ class TerminalManager:
 
         logger.info(f"[Terminal:{terminal_id[:8]}] Closed (see_ya={see_ya_detected})")
 
+    def _write_all(self, fd: int, data: bytes, terminal_id: str) -> bool:
+        """分块写入所有数据到 PTY（处理 buffer 限制）
+
+        PTY 写入 buffer 通常只有 ~1KB，大数据需要分块写入。
+        """
+        total = len(data)
+        written_total = 0
+        chunk_count = 0
+
+        while written_total < total:
+            try:
+                # 每次最多写入 512 字节，给 PTY buffer 留余量
+                chunk = data[written_total:written_total + 512]
+                written = os.write(fd, chunk)
+                written_total += written
+                chunk_count += 1
+
+                if written == 0:
+                    # 写入失败
+                    logger.error(f"[Terminal:{terminal_id[:8]}] Write returned 0, stopping")
+                    break
+            except BlockingIOError:
+                # buffer 满了，等一下再试
+                import time
+                time.sleep(0.01)
+            except OSError as e:
+                logger.error(f"[Terminal:{terminal_id[:8]}] Write error at {written_total}/{total}: {e}")
+                return False
+
+        if total > 100:  # 只记录较长的写入
+            logger.info(f"[Terminal:{terminal_id[:8]}] Write complete: {total} bytes in {chunk_count} chunks")
+
+        return written_total == total
+
     async def write(self, terminal_id: str, data: str) -> bool:
         """向终端写入数据"""
         terminal = self.terminals.get(terminal_id)
@@ -274,11 +308,14 @@ class TerminalManager:
             # 识别以 \n 结尾且有内容的消息，转换为执行命令
             if data.endswith('\n') and len(data) > 1:
                 content = data.rstrip('\n')
-                os.write(terminal.master_fd, content.encode('utf-8'))
-                os.write(terminal.master_fd, b'\r')
+                encoded = content.encode('utf-8')
+                success = self._write_all(terminal.master_fd, encoded, terminal_id)
+                if success:
+                    os.write(terminal.master_fd, b'\r')
+                return success
             else:
-                os.write(terminal.master_fd, data.encode('utf-8'))
-            return True
+                encoded = data.encode('utf-8')
+                return self._write_all(terminal.master_fd, encoded, terminal_id)
         except OSError as e:
             logger.error(f"[Terminal:{terminal_id[:8]}] Write error: {e}")
             return False
