@@ -117,12 +117,16 @@ class TerminalManager:
         """
         # 构建启动命令
         # 注意：resume 需要在正确的 working_dir 下执行（由调用者保证）
+        # root 用户不能使用 --dangerously-skip-permissions 参数
+        is_root = os.getuid() == 0
+        skip_perm_flag = "" if is_root else " --dangerously-skip-permissions"
+
         if session_id:
-            cmd = f"claude --resume {session_id} --dangerously-skip-permissions"
-            logger.info(f"[Terminal] RESUME mode: {session_id[:8]}... (cwd: {working_dir})")
+            cmd = f"claude --resume {session_id}{skip_perm_flag}"
+            logger.info(f"[Terminal] RESUME mode: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
         else:
-            cmd = "claude --dangerously-skip-permissions"
-            logger.info(f"[Terminal] NEW mode (cwd: {working_dir})")
+            cmd = f"claude{skip_perm_flag}"
+            logger.info(f"[Terminal] NEW mode (cwd: {working_dir}, root: {is_root})")
 
         # 创建 PTY
         pid, master_fd = pty.fork()
