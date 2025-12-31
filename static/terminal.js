@@ -25,12 +25,26 @@ class Terminal {
     this.container = container;
     this.xterm = null;
     this.fitAddon = null;
-    this.fontSize = 12;  // 移动端最佳字体大小
+    this.fontSize = this.calcDefaultFontSize();  // 根据屏幕宽度自动计算
     this.isReady = false;
     this.onReady = onReady;
     this.pendingWrites = [];  // 等待写入的数据队列
 
     this.init();
+  }
+
+  /**
+   * 根据屏幕宽度计算默认字体大小
+   */
+  calcDefaultFontSize() {
+    const width = window.innerWidth;
+    if (width < 430) {
+      return 12;  // iPhone
+    } else if (width < 820) {
+      return 14;  // iPad mini / 大手机横屏
+    } else {
+      return 16;  // iPad / 桌面
+    }
   }
 
   init() {
