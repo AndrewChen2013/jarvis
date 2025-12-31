@@ -17,6 +17,7 @@ from typing import Dict, List
 import asyncio
 import json
 import time
+import msgpack
 
 from app.services.session_manager import SessionManager
 from app.core.config import settings
@@ -178,7 +179,7 @@ class ConnectionManager:
         async def delayed_flush():
             """延迟刷新 - 确保数据最终会被发送"""
             try:
-                await asyncio.sleep(0.05)  # 50ms 后刷新
+                await asyncio.sleep(0.02)  # 20ms 后刷新（从 50ms 优化）
                 await flush_buffer()
             except asyncio.CancelledError:
                 pass
@@ -195,8 +196,8 @@ class ConnectionManager:
 
             buffer_size = sum(len(s) for s in output_buffer)
 
-            # 如果缓冲区超过 4KB，立即发送
-            if buffer_size > 4096:
+            # 如果缓冲区超过 8KB，立即发送（从 4KB 优化）
+            if buffer_size > 8192:
                 if flush_task[0]:
                     flush_task[0].cancel()
                     flush_task[0] = None
@@ -209,7 +210,7 @@ class ConnectionManager:
         process.on_output(send_output)
 
     async def _message_loop(self, websocket: WebSocket, session_id: str, process):
-        """消息处理循环"""
+        """消息处理循环 - 支持 MessagePack 和 JSON 双模式"""
         while True:
             try:
                 message = await websocket.receive()
@@ -219,7 +220,17 @@ class ConnectionManager:
                     logger.info(f"WebSocket disconnect message received: {session_id}")
                     break
 
-                if "text" in message:
+                data = None
+
+                # 优先处理二进制消息 (MessagePack)
+                if "bytes" in message:
+                    try:
+                        data = msgpack.unpackb(message["bytes"], raw=False)
+                    except Exception as e:
+                        logger.error(f"Failed to parse MessagePack: {e}")
+                        continue
+                # 兼容 JSON 文本消息（旧客户端）
+                elif "text" in message:
                     try:
                         data = json.loads(message["text"])
                     except Exception as e:
@@ -277,15 +288,18 @@ class ConnectionManager:
             logger.warning(f"Unknown message type: {msg_type}")
 
     async def _send_message(self, websocket: WebSocket, data: dict):
-        """发送消息"""
+        """发送消息 - 使用 MessagePack 二进制协议"""
         try:
-            json_str = json.dumps(data)
             msg_type = data.get('type', 'unknown')
             if msg_type == 'output':
                 logger.info(f"Sending output message: {len(data.get('data', ''))} chars")
-            await websocket.send_text(json_str)
+
+            # 使用 MessagePack 序列化并发送二进制
+            packed = msgpack.packb(data, use_bin_type=True)
+            await websocket.send_bytes(packed)
+
             if msg_type == 'output':
-                logger.info(f"Output message sent successfully")
+                logger.info(f"Output message sent successfully ({len(packed)} bytes)")
         except RuntimeError as e:
             if "websocket.close" in str(e) or "response already completed" in str(e):
                 logger.warning(f"WebSocket already closed, message dropped")

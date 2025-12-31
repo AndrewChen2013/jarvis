@@ -14,7 +14,6 @@
 
 import pty
 import os
-import select
 import asyncio
 import signal
 import subprocess
@@ -111,56 +110,76 @@ class ManagedProcess:
             raise
 
     async def _read_output(self):
-        """读取进程输出"""
+        """读取进程输出 - 使用 asyncio 事件驱动，零延迟响应"""
         loop = asyncio.get_event_loop()
+        queue = asyncio.Queue()
 
-        while self._running:
+        def on_readable():
+            """文件描述符可读时的回调 - 在事件循环线程中执行"""
             try:
-                # 使用 select 检查是否有数据可读
-                ready, _, _ = await loop.run_in_executor(
-                    None,
-                    lambda: select.select([self.master_fd], [], [], 0.1)
-                )
-
-                if ready:
-                    # 读取数据
-                    data = await loop.run_in_executor(
-                        None,
-                        lambda: os.read(self.master_fd, 4096)
-                    )
-
-                    if data:
-                        logger.info(f"PTY read: {len(data)} bytes, callbacks: {len(self._output_callbacks)}")
-                        # 保存到历史缓冲区
-                        self._output_history.extend(data)
-                        # 限制历史大小
-                        if len(self._output_history) > self.MAX_HISTORY_SIZE:
-                            self._output_history = self._output_history[-self.MAX_HISTORY_SIZE:]
-
-                        # 调用所有回调函数
-                        for callback in self._output_callbacks:
-                            try:
-                                if asyncio.iscoroutinefunction(callback):
-                                    await callback(data)
-                                else:
-                                    callback(data)
-                            except Exception as e:
-                                logger.error(f"Output callback error: {e}")
-                    else:
-                        # EOF
-                        break
-
+                # 增大读取块到 8KB 提高吞吐
+                data = os.read(self.master_fd, 8192)
+                if data:
+                    queue.put_nowait(data)
+                else:
+                    # EOF
+                    queue.put_nowait(None)
             except OSError as e:
                 if e.errno == 5:  # I/O error - 进程可能已经退出
                     logger.info("Process terminated (I/O error)")
-                    break
-                logger.error(f"Read error: {e}")
-                break
+                else:
+                    logger.error(f"Read error in callback: {e}")
+                queue.put_nowait(None)
             except Exception as e:
-                logger.error(f"Unexpected read error: {e}")
-                break
+                logger.error(f"Unexpected read error in callback: {e}")
+                queue.put_nowait(None)
 
-            await asyncio.sleep(0.01)
+        # 注册事件监听 - 有数据时立即触发回调
+        loop.add_reader(self.master_fd, on_readable)
+        logger.info("PTY reader registered with asyncio event loop")
+
+        try:
+            while self._running:
+                try:
+                    # 等待数据（无超时，纯事件驱动）
+                    data = await queue.get()
+
+                    if data is None:
+                        # EOF 或错误
+                        break
+
+                    logger.info(f"PTY read: {len(data)} bytes, callbacks: {len(self._output_callbacks)}")
+
+                    # 保存到历史缓冲区
+                    self._output_history.extend(data)
+                    # 限制历史大小
+                    if len(self._output_history) > self.MAX_HISTORY_SIZE:
+                        self._output_history = self._output_history[-self.MAX_HISTORY_SIZE:]
+
+                    # 调用所有回调函数
+                    for callback in self._output_callbacks:
+                        try:
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(data)
+                            else:
+                                callback(data)
+                        except Exception as e:
+                            logger.error(f"Output callback error: {e}")
+
+                except asyncio.CancelledError:
+                    logger.info("Read task cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Queue read error: {e}")
+                    break
+
+        finally:
+            # 清理事件监听
+            try:
+                loop.remove_reader(self.master_fd)
+                logger.info("PTY reader removed from event loop")
+            except Exception as e:
+                logger.warning(f"Failed to remove reader: {e}")
 
         self._running = False
         logger.info("Read task stopped")
