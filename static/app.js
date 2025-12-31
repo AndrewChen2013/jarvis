@@ -2677,11 +2677,12 @@ class App {
 
     this.debugLog('sendInput: value length=' + inputEl.value.length);
 
-    // 发送输入内容（可以为空）+ 回车
+    // 发送输入内容，然后发送回车
     if (inputEl.value) {
       this.sendMessage({ type: 'input', data: inputEl.value });
     }
-    this.sendMessage({ type: 'input', data: '\r' });
+    // 发送回车（与虚拟键盘 Enter 按钮一致）
+    this.sendKey('enter');
 
     // 清空输入框并重置高度
     inputEl.value = '';
