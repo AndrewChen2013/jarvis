@@ -28,6 +28,15 @@ class SessionInstance {
     this.container = null;
     this.status = 'idle'; // idle | connecting | connected | disconnected
     this.lastActive = Date.now();
+
+    // 连接参数（每个 session 独立）
+    this.workDir = null;
+    this.claudeSessionId = null;
+
+    // 重连状态（每个 session 独立）
+    this.shouldReconnect = false;
+    this.reconnectAttempts = 0;
+    this.reconnectTimeout = null;
   }
 
   /**
@@ -141,18 +150,26 @@ class SessionManager {
       this.previousId = this.activeId;
     }
 
-    // 隐藏所有其他 session 的 container
+    // 隐藏所有 session 的 container（包括没有 container 的也记录下来）
     for (const [id, s] of this.sessions) {
-      if (id !== sessionId && s.container) {
-        this.log(`switchTo: hide ${id}`);
-        s.container.style.display = 'none';
+      if (id !== sessionId) {
+        if (s.container) {
+          this.log(`switchTo: hide ${id.substring(0, 8)}, container=${s.container.id}`);
+          s.container.style.display = 'none';
+        } else {
+          this.log(`switchTo: ${id.substring(0, 8)} has no container`);
+        }
       }
     }
 
     // 切换到新 session
     this.activeId = sessionId;
     session.touch();
-    this.log(`switchTo: show session, container=${session.container ? 'exists' : 'null'}`);
+
+    // 检查目标 session 的 container 状态
+    this.log(`switchTo: target session ${sessionId.substring(0, 8)}, container=${session.container ? session.container.id : 'NULL'}, terminal=${session.terminal ? 'exists' : 'NULL'}`);
+
+    // 显示目标 session
     this.showSession(session);
 
     // 更新悬浮按钮
@@ -279,12 +296,54 @@ class SessionManager {
    * 显示 session（切换到前台）
    */
   showSession(session) {
-    this.log(`showSession: ${session.id}, container=${session.container ? session.container.id : 'null'}`);
+    const expectedContainerId = `terminal-container-${session.id}`;
+    this.log(`showSession: ${session.id.substring(0, 8)}, expectedId=${expectedContainerId}`);
+    this.log(`showSession: session.container=${session.container ? session.container.id : 'NULL'}, session.terminal=${session.terminal ? 'exists' : 'NULL'}`);
+
+    const terminalOutput = document.getElementById('terminal-output');
+    if (!terminalOutput) {
+      this.log(`showSession: ERROR - terminalOutput not found!`);
+      return;
+    }
+
+    // 通过 ID 查找正确的容器（不依赖可能过期的 session.container 引用）
+    const targetContainer = document.getElementById(expectedContainerId);
+    this.log(`showSession: targetContainer by ID = ${targetContainer ? 'found' : 'NOT FOUND'}`);
+
+    // 如果 session.container 引用过期（不在 DOM 中或 ID 不匹配），更新它
     if (session.container) {
-      session.container.style.display = 'block';
-      this.log(`showSession: set display=block`);
+      const inDOM = document.body.contains(session.container);
+      const idMatch = session.container.id === expectedContainerId;
+      this.log(`showSession: session.container check - inDOM=${inDOM}, idMatch=${idMatch}`);
+      if (!inDOM || !idMatch) {
+        this.log(`showSession: session.container is STALE, will use targetContainer`);
+        session.container = targetContainer;
+      }
+    } else if (targetContainer) {
+      this.log(`showSession: session.container was NULL, set to targetContainer`);
+      session.container = targetContainer;
+    }
+
+    // 隐藏所有 container，然后只显示目标 container
+    const allContainers = terminalOutput.querySelectorAll('.terminal-session-container');
+    this.log(`showSession: found ${allContainers.length} containers in DOM`);
+
+    allContainers.forEach(container => {
+      if (container.id === expectedContainerId) {
+        container.style.display = 'block';
+        this.log(`showSession: SHOW ${container.id}`);
+      } else {
+        container.style.display = 'none';
+        this.log(`showSession: HIDE ${container.id}`);
+      }
+    });
+
+    // 最终确认
+    if (targetContainer) {
+      targetContainer.style.display = 'block';
+      this.log(`showSession: final confirm - ${expectedContainerId} is visible`);
     } else {
-      this.log(`showSession: no container!`);
+      this.log(`showSession: WARNING - target container ${expectedContainerId} not found in DOM!`);
     }
   }
 

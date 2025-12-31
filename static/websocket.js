@@ -41,6 +41,11 @@ const AppWebSocket = {
 
     // 注册到 SessionManager（支持多 session 后台运行）
     const session = this.sessionManager.openSession(this.currentSession, this.currentSessionName);
+
+    // 保存连接参数到 session（每个 session 独立）
+    session.workDir = workDir;
+    session.claudeSessionId = sessionId;
+
     this.debugLog(`connectTerminal: session registered, sessions.size=${this.sessionManager.sessions.size}`);
 
     // 显示终端视图
@@ -111,14 +116,27 @@ const AppWebSocket = {
       this.debugLog('Session already in background, switch to it');
       const session = this.sessionManager.sessions.get(sessionId);
 
-      // 恢复 app 层面的状态
+      // 详细记录 session 状态
+      this.debugLog(`connectSession: session state - ws=${session.ws ? 'exists' : 'NULL'}, wsState=${session.ws?.readyState}, terminal=${session.terminal ? 'exists' : 'NULL'}, container=${session.container ? session.container.id : 'NULL'}`);
+      this.debugLog(`connectSession: session params - workDir=${session.workDir}, claudeSessionId=${session.claudeSessionId?.substring(0, 8)}`);
+
+      // 恢复 app 层面的状态（从 session 中恢复完整状态）
       this.currentSession = sessionId;
       this.ws = session.ws;
       this.terminal = session.terminal;
-      this.shouldReconnect = true;
+      this.currentWorkDir = session.workDir;
+      this.currentClaudeSessionId = session.claudeSessionId;
+      this.shouldReconnect = session.shouldReconnect;
 
       // 切换到该 session
       this.sessionManager.switchTo(sessionId);
+
+      // 检查 ws 状态，如果不是 OPEN 需要重连
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this.debugLog(`connectSession: ws not open (state=${this.ws?.readyState}), trigger reconnect`);
+        session.shouldReconnect = true;
+        this.attemptReconnectForSession(session);
+      }
 
       // 直接切换视图，不清空终端容器（已有终端）
       this.showView('terminal');
@@ -518,11 +536,17 @@ const AppWebSocket = {
         this.reconnectTimeout = null;
       }
 
-      // 保存 ws 到 SessionManager
+      // 保存状态到 SessionManager（每个 session 独立）
       const session = this.sessionManager.sessions.get(sessionId);
       if (session) {
         session.ws = this.ws;
         session.status = 'connected';
+        session.shouldReconnect = true;
+        session.reconnectAttempts = 0;
+        if (session.reconnectTimeout) {
+          clearTimeout(session.reconnectTimeout);
+          session.reconnectTimeout = null;
+        }
       }
 
       // 更新连接状态（终端已在 connectTerminal 中创建，不需要再调用 showTerminalView）
@@ -580,30 +604,16 @@ const AppWebSocket = {
       };
       this.debugLog(`[${now}] onclose code=${event.code} (${codeNames[event.code] || 'Unknown'}), session=${sessionId.substring(0, 8)}`);
 
+      // 获取断开连接的 session（使用闭包捕获的 sessionId，而不是 this.currentSession）
+      const session = this.sessionManager.sessions.get(sessionId);
+
       // 检查断开的是否是当前活跃的 session
-      // 如果用户已切换到其他 session，不更新 UI 也不重连
       const isCurrentSession = (boundWs === this.ws && sessionId === this.currentSession);
       this.debugLog(`[${now}] onclose: isCurrentSession=${isCurrentSession}, boundWs===this.ws: ${boundWs === this.ws}`);
 
       // 更新 SessionManager 中该 session 的状态
-      const session = this.sessionManager.sessions.get(sessionId);
       if (session) {
         session.status = 'disconnected';
-      }
-
-      // 只有当前活跃 session 断开时才更新 UI 和重连
-      if (!isCurrentSession) {
-        this.debugLog(`[${now}] onclose: background session closed, skip UI update and reconnect`);
-        return;
-      }
-
-      this.isConnecting = false;
-      this.updateConnectStatus('disconnected', `${this.t('status.code')}: ${event.code}`);
-      this.updateStatus(this.t('status.disconnected'), false);
-
-      if (this.heartbeatInterval) {
-        clearInterval(this.heartbeatInterval);
-        this.heartbeatInterval = null;
       }
 
       // 1008 = Invalid token，需要重新登录
@@ -613,16 +623,27 @@ const AppWebSocket = {
         return;
       }
 
-      // 扩展重连条件：除了主动关闭(1000)和认证失败(1008)外都尝试重连
-      if (this.shouldReconnect && this.currentSession) {
-        if (event.code !== 1000) {
-          this.debugLog(`[${now}] Triggering auto reconnect for code ${event.code}`);
-          this.attemptReconnect();
-        } else {
-          this.debugLog(`[${now}] Normal closure, no auto reconnect`);
+      // 只有当前活跃 session 断开时才更新 UI
+      if (isCurrentSession) {
+        this.isConnecting = false;
+        this.updateConnectStatus('disconnected', `${this.t('status.code')}: ${event.code}`);
+        this.updateStatus(this.t('status.disconnected'), false);
+
+        if (this.heartbeatInterval) {
+          clearInterval(this.heartbeatInterval);
+          this.heartbeatInterval = null;
         }
+      }
+
+      // 使用 session 自己的重连状态（不再依赖全局变量）
+      // 无论是前台还是后台 session 都可以独立重连
+      if (session && session.shouldReconnect && event.code !== 1000) {
+        this.debugLog(`[${now}] Triggering auto reconnect for session ${sessionId.substring(0, 8)}`);
+        this.attemptReconnectForSession(session);
+      } else if (event.code === 1000) {
+        this.debugLog(`[${now}] Normal closure, no auto reconnect`);
       } else {
-        this.debugLog(`[${now}] No reconnect: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}`);
+        this.debugLog(`[${now}] No reconnect: session=${!!session}, shouldReconnect=${session?.shouldReconnect}`);
       }
     };
 
@@ -866,49 +887,172 @@ const AppWebSocket = {
   },
 
   /**
-   * 尝试重连
+   * 尝试重连（旧版，兼容）
+   * @deprecated 使用 attemptReconnectForSession 代替
    */
   attemptReconnect() {
+    // 兼容：获取当前 session 并调用新方法
+    const session = this.currentSession ? this.sessionManager.sessions.get(this.currentSession) : null;
+    if (session) {
+      this.attemptReconnectForSession(session);
+    }
+  },
+
+  /**
+   * 为指定 session 尝试重连（使用 session 独立状态）
+   * @param {SessionInstance} session - 要重连的 session
+   */
+  attemptReconnectForSession(session) {
     const now = new Date().toISOString().substr(11, 12);
-    this.debugLog(`[${now}] attemptReconnect called`);
+    const sessionId = session.id;
+    this.debugLog(`[${now}] attemptReconnectForSession called for ${sessionId.substring(0, 8)}`);
 
-    // 检查连接锁
-    if (this.isConnecting) {
-      this.debugLog(`[${now}] connecting (locked), skip reconnect`);
-      return;
+    // 清理该 session 之前的重连定时器
+    if (session.reconnectTimeout) {
+      this.debugLog(`[${now}] clearing previous reconnect timer for ${sessionId.substring(0, 8)}`);
+      clearTimeout(session.reconnectTimeout);
+      session.reconnectTimeout = null;
     }
 
-    // 清理之前的重连定时器
-    if (this.reconnectTimeout) {
-      this.debugLog(`[${now}] clearing previous reconnect timer`);
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.debugLog(`[${now}] max reconnect attempts (${this.maxReconnectAttempts}) reached, giving up`);
-      this.updateStatus(this.t('reconnect.failed'), false);
-      return;
-    }
-
-    this.reconnectAttempts++;
-    // 首次重连延迟 500ms，后续指数退避
-    const delay = this.reconnectAttempts === 1 ? 500 : Math.min(1000 * Math.pow(2, this.reconnectAttempts - 2), 10000);
-
-    this.debugLog(`[${now}] reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}, delay=${delay}ms`);
-    this.updateStatus(`${this.t('reconnect.trying')} (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`, false);
-
-    this.reconnectTimeout = setTimeout(() => {
-      const execNow = new Date().toISOString().substr(11, 12);
-      this.debugLog(`[${execNow}] reconnect timer fired`);
-      if (this.shouldReconnect && this.currentSession && !this.isConnecting) {
-        this.debugLog(`[${execNow}] execute reconnect to session ${this.currentSession.substring(0, 8)}`);
-        // 不要在这里设置 isConnecting，让 connectWebSocket 自己设置
-        this.connect(this.currentSession, true);  // isReconnect=true，不重置计数器
-      } else {
-        this.debugLog(`[${execNow}] cancel reconnect: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}, isConnecting=${this.isConnecting}`);
+    if (session.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.debugLog(`[${now}] max reconnect attempts (${this.maxReconnectAttempts}) reached for ${sessionId.substring(0, 8)}, giving up`);
+      // 只有当前 session 才更新 UI
+      if (sessionId === this.currentSession) {
+        this.updateStatus(this.t('reconnect.failed'), false);
       }
+      return;
+    }
+
+    session.reconnectAttempts++;
+    // 首次重连延迟 500ms，后续指数退避
+    const delay = session.reconnectAttempts === 1 ? 500 : Math.min(1000 * Math.pow(2, session.reconnectAttempts - 2), 10000);
+
+    this.debugLog(`[${now}] reconnect ${session.reconnectAttempts}/${this.maxReconnectAttempts} for ${sessionId.substring(0, 8)}, delay=${delay}ms`);
+
+    // 只有当前 session 才更新 UI
+    if (sessionId === this.currentSession) {
+      this.updateStatus(`${this.t('reconnect.trying')} (${session.reconnectAttempts}/${this.maxReconnectAttempts})...`, false);
+    }
+
+    session.reconnectTimeout = setTimeout(() => {
+      const execNow = new Date().toISOString().substr(11, 12);
+      this.debugLog(`[${execNow}] reconnect timer fired for ${sessionId.substring(0, 8)}`);
+
+      // 检查 session 是否还存在且需要重连
+      if (!this.sessionManager.sessions.has(sessionId)) {
+        this.debugLog(`[${execNow}] session ${sessionId.substring(0, 8)} no longer exists, skip reconnect`);
+        return;
+      }
+
+      if (!session.shouldReconnect) {
+        this.debugLog(`[${execNow}] session ${sessionId.substring(0, 8)} shouldReconnect=false, skip`);
+        return;
+      }
+
+      // 使用 session 自己的 workDir 和 claudeSessionId 进行重连
+      this.debugLog(`[${execNow}] execute reconnect for ${sessionId.substring(0, 8)} with workDir=${session.workDir}`);
+      this.reconnectSession(session);
     }, delay);
+  },
+
+  /**
+   * 重连指定 session（使用 session 自己的连接参数）
+   * @param {SessionInstance} session - 要重连的 session
+   */
+  reconnectSession(session) {
+    const sessionId = session.id;
+
+    // 如果是当前活跃 session，更新全局状态
+    if (sessionId === this.currentSession) {
+      this.currentWorkDir = session.workDir;
+      this.currentClaudeSessionId = session.claudeSessionId;
+    }
+
+    // 构建 WebSocket URL（使用 session 自己的参数）
+    const params = new URLSearchParams({
+      working_dir: session.workDir,
+      token: this.token
+    });
+    if (session.claudeSessionId) {
+      params.append('session_id', session.claudeSessionId);
+    }
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
+
+    this.debugLog(`reconnectSession: ${sessionId.substring(0, 8)}, url=${wsUrl.substring(0, 80)}`);
+
+    // 如果是当前 session，使用全局 ws；否则只更新 session.ws
+    if (sessionId === this.currentSession) {
+      this._doConnect(wsUrl);
+    } else {
+      // 后台 session 重连
+      this._doConnectForSession(session, wsUrl);
+    }
+  },
+
+  /**
+   * 为后台 session 建立连接（不影响全局状态）
+   * @param {SessionInstance} session - 要连接的 session
+   * @param {string} wsUrl - WebSocket URL
+   */
+  _doConnectForSession(session, wsUrl) {
+    const sessionId = session.id;
+    this.debugLog(`_doConnectForSession: ${sessionId.substring(0, 8)}`);
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      session.ws = ws;
+
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        this.debugLog(`[bg] onopen for ${sessionId.substring(0, 8)}`);
+        session.status = 'connected';
+        session.reconnectAttempts = 0;
+        if (session.reconnectTimeout) {
+          clearTimeout(session.reconnectTimeout);
+          session.reconnectTimeout = null;
+        }
+
+        // 如果此 session 现在是当前活跃的，同步更新全局 ws
+        if (sessionId === this.currentSession) {
+          this.debugLog(`[bg] session ${sessionId.substring(0, 8)} is now active, sync this.ws`);
+          this.ws = ws;
+          this.updateConnectStatus('connected', '');
+        }
+      };
+
+      ws.onmessage = (event) => {
+        let message;
+        try {
+          if (event.data instanceof ArrayBuffer) {
+            message = MessagePack.decode(new Uint8Array(event.data));
+          } else {
+            message = JSON.parse(event.data);
+          }
+        } catch (e) {
+          console.error('Failed to parse message:', e);
+          return;
+        }
+        // 使用正确的 sessionId 处理消息
+        this.handleMessage(message, sessionId);
+      };
+
+      ws.onerror = () => {
+        this.debugLog(`[bg] onerror for ${sessionId.substring(0, 8)}`);
+      };
+
+      ws.onclose = (event) => {
+        this.debugLog(`[bg] onclose for ${sessionId.substring(0, 8)}, code=${event.code}`);
+        session.status = 'disconnected';
+
+        // 后台 session 也尝试重连
+        if (session.shouldReconnect && event.code !== 1000 && event.code !== 1008) {
+          this.attemptReconnectForSession(session);
+        }
+      };
+    } catch (e) {
+      this.debugLog(`_doConnectForSession failed: ${e.message}`);
+    }
   },
 
   /**
