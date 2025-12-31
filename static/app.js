@@ -1941,6 +1941,9 @@ class App {
   bindWebSocketEvents(sessionId) {
     if (!this.ws) return;
 
+    // 设置接收二进制数据
+    this.ws.binaryType = 'arraybuffer';
+
     this.ws.onopen = () => {
       this.debugLog('onopen fired');
       this.isConnecting = false;
@@ -1966,10 +1969,22 @@ class App {
     };
 
     this.ws.onmessage = (event) => {
-      // 网络数据日志已关闭，减少噪音
-      // this.debugLog('onmessage: ' + event.data.substring(0, 50));
+      // 解析消息：支持 MessagePack 二进制和 JSON 文本
+      let message;
+      try {
+        if (event.data instanceof ArrayBuffer) {
+          // MessagePack 二进制消息
+          message = MessagePack.decode(new Uint8Array(event.data));
+        } else {
+          // JSON 文本消息（兼容旧版本）
+          message = JSON.parse(event.data);
+        }
+      } catch (e) {
+        console.error('Failed to parse message:', e);
+        return;
+      }
       // 使用捕获的 sessionId，确保消息写入正确的 session 终端
-      this.handleMessage(event.data, sessionId);
+      this.handleMessage(message, sessionId);
     };
 
     this.ws.onerror = (error) => {
@@ -2018,12 +2033,11 @@ class App {
 
   /**
    * 处理 WebSocket 消息
-   * @param {string} data - 消息数据
+   * @param {object} message - 已解析的消息对象
    * @param {string} sessionId - 消息所属的 session ID
    */
-  handleMessage(data, sessionId) {
+  handleMessage(message, sessionId) {
     try {
-      const message = JSON.parse(data);
       console.log('Received message:', message.type, 'for session:', sessionId?.substring(0, 8));
 
       // 获取消息对应的 session
@@ -2095,12 +2109,13 @@ class App {
   }
 
   /**
-   * 发送消息
+   * 发送消息 - 使用 MessagePack 二进制协议
    */
   sendMessage(data) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      // 使用 JSON 发送
-      this.ws.send(JSON.stringify(data));
+      // 使用 MessagePack 二进制编码
+      const packed = MessagePack.encode(data);
+      this.ws.send(packed);
     }
   }
 

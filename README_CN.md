@@ -1,8 +1,15 @@
 # Claude Remote
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
+
+[English](README.md) | **中文**
+
 > 用自然语言，随时随地控制你的电脑。
 
-![主界面截图](screenshots/hero.png)
+<p align="center">
+  <img src="screenshots/demo.gif" width="300" alt="演示">
+</p>
 
 ---
 
@@ -72,8 +79,6 @@ AI 时代，**想象力才是你最大的资产**。不要把它浪费在记忆�
 
 ## 氛围编程
 
-![氛围编程](screenshots/vibe-coding.png)
-
 一种新的编程方式：
 
 - **想到** → **说出来** → **走开** → **回来看结果**
@@ -97,7 +102,7 @@ AI 时代，**想象力才是你最大的资产**。不要把它浪费在记忆�
 
 Claude 有 70% 的时间在输出。等待就是浪费。
 
-![多会话](screenshots/multi-session.png)
+<img src="screenshots/multi-session.png" width="300" alt="多会话">
 
 同时跑 3-4 个任务：
 - Session A 正在生成 → 切到 Session B，下指令
@@ -193,13 +198,11 @@ cloudflared tunnel run claude-remote
 
 ### 登录
 
-![登录](screenshots/login.png)
-
 输入 AUTH_TOKEN（安装时显示，或查看 `.env` 文件）。
 
 ### 会话管理
 
-![会话列表](screenshots/sessions.png)
+<img src="screenshots/sessions.png" width="300" alt="会话列表">
 
 - **创建新会话**：点击 `+`，选择工作目录
 - **恢复历史会话**：浏览 Claude 历史记录，继续之前的对话
@@ -207,7 +210,7 @@ cloudflared tunnel run claude-remote
 
 ### 终端操作
 
-![终端](screenshots/terminal.png)
+<img src="screenshots/terminal.png" width="300" alt="终端">
 
 移动端完整终端体验：
 - **虚拟按键**：Tab、↑↓、Ctrl+C、ESC 等

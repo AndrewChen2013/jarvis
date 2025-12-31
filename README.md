@@ -1,8 +1,15 @@
 # Claude Remote
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
+
+**English** | [中文](README_CN.md)
+
 > Control your computer with natural language, from anywhere.
 
-![Hero Screenshot](screenshots/hero.png)
+<p align="center">
+  <img src="screenshots/demo.gif" width="300" alt="Demo">
+</p>
 
 ---
 
@@ -72,8 +79,6 @@ In the AI age, **imagination is your greatest asset**. Don't waste it on memoriz
 
 ## Vibe Coding
 
-![Vibe Coding](screenshots/vibe-coding.png)
-
 A new way of programming:
 
 - **Think** → **Speak** → **Walk away** → **Come back to results**
@@ -97,7 +102,7 @@ Fragment time adds up to **real productivity**.
 
 Claude spends 70% of the time outputting. Waiting is waste.
 
-![Multi-Session](screenshots/multi-session.png)
+<img src="screenshots/multi-session.png" width="300" alt="Multi-Session">
 
 Run 3-4 tasks simultaneously:
 - Session A is generating → Switch to Session B, give instructions
@@ -193,13 +198,11 @@ Now access from anywhere: `https://claude.yourdomain.com`
 
 ### Login
 
-![Login](screenshots/login.png)
-
 Enter your AUTH_TOKEN (shown during installation or in `.env` file).
 
 ### Session Management
 
-![Sessions](screenshots/sessions.png)
+<img src="screenshots/sessions.png" width="300" alt="Sessions">
 
 - **Create new session**: Tap `+`, select working directory
 - **Resume existing session**: Browse your Claude history and continue
@@ -207,7 +210,7 @@ Enter your AUTH_TOKEN (shown during installation or in `.env` file).
 
 ### Terminal
 
-![Terminal](screenshots/terminal.png)
+<img src="screenshots/terminal.png" width="300" alt="Terminal">
 
 Full terminal experience on mobile:
 - **Virtual keys**: Tab, ↑↓, Ctrl+C, ESC, and more
