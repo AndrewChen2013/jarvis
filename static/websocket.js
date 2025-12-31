@@ -355,10 +355,20 @@ const AppWebSocket = {
    * @param {boolean} isReconnect - 是否是重连，重连时不重置计数器
    */
   connectWebSocket(workDir, sessionId, isReconnect = false) {
-    this.debugLog('connectWebSocket() 开始');
+    this.debugLog('connectWebSocket() 开始, isConnecting=' + this.isConnecting);
+
+    // 检查连接锁，避免重复连接
+    if (this.isConnecting) {
+      this.debugLog('connectWebSocket: already connecting, skip');
+      return;
+    }
+
     if (!isReconnect) {
       this.reconnectAttempts = 0;
     }
+
+    // 设置连接锁
+    this.isConnecting = true;
 
     // 构建新的 WebSocket URL
     const params = new URLSearchParams({
@@ -392,6 +402,13 @@ const AppWebSocket = {
       return;
     }
 
+    // 旧路径也需要连接锁保护
+    if (this.isConnecting) {
+      this.debugLog('connect: already connecting, skip');
+      return;
+    }
+    this.isConnecting = true;
+
     // 否则使用旧端点（兼容）
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${sessionId}?token=${this.token}`;
     this.debugLog('WebSocket URL: ' + wsUrl.substring(0, 60));
@@ -411,6 +428,9 @@ const AppWebSocket = {
    * 3. 创建第二个 WebSocket，这次能正常连接
    */
   _doConnect(wsUrl) {
+    // 保存当前连接的 URL，用于后续检查
+    this._currentConnectUrl = wsUrl;
+
     // ====== iOS 26 Safari Workaround: 二次连接法 ======
     // 第一次连接：可能会卡在 CONNECTING，但能激活网络栈
     this.debugLog('1st WebSocket create');
@@ -419,14 +439,35 @@ const AppWebSocket = {
       this.debugLog('1st create ok, state=' + this.ws.readyState);
     } catch (e) {
       this.debugLog('1st create failed: ' + e.message);
+      this.isConnecting = false;
+      return;
     }
+
+    // 保存第一个 WebSocket 的引用，用于后续检查
+    const firstWs = this.ws;
 
     // 1 秒后检查：如果仍卡在 CONNECTING，关闭并创建第二个连接
     setTimeout(() => {
-      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-        this.debugLog('1st still CONNECTING, close and retry');
-        try { this.ws.close(); } catch (e) {}
+      // 确保是同一个 WebSocket 且仍在 CONNECTING 状态
+      // 如果 this.ws 已经不是 firstWs，说明已经被其他逻辑替换，不再处理
+      if (this.ws === firstWs && this.ws.readyState === WebSocket.CONNECTING) {
+        this.debugLog('1st still CONNECTING after 1s, close and retry');
+        // 先移除事件处理器，避免 onclose 触发额外的重连
+        this.debugLog('iOS workaround: removing event handlers before close');
+        firstWs.onopen = null;
+        firstWs.onclose = null;
+        firstWs.onerror = null;
+        firstWs.onmessage = null;
+        try { firstWs.close(); } catch (e) {}
+        this.debugLog('iOS workaround: 1st ws closed cleanly (no onclose triggered)');
         this.ws = null;
+
+        // 检查 URL 是否仍然匹配（避免重连到错误的 session）
+        if (this._currentConnectUrl !== wsUrl) {
+          this.debugLog('URL changed, skip 2nd connect');
+          this.isConnecting = false;
+          return;
+        }
 
         // 第二次连接：此时网络栈已激活，连接应该能成功
         this.debugLog('2nd WebSocket create');
@@ -440,9 +481,11 @@ const AppWebSocket = {
           this.isConnecting = false;
           this.updateConnectStatus('failed', e.message);
         }
+      } else if (this.ws !== firstWs) {
+        this.debugLog('1st ws replaced, skip iOS workaround');
       } else {
         // 第一次连接成功（非 iOS 26 Safari，或已修复）
-        this.debugLog('1st connection state: ' + (this.ws ? this.ws.readyState : 'null'));
+        this.debugLog('1st connection ok, state=' + this.ws.readyState);
       }
     }, 1000);
     // ====== End iOS 26 Workaround ======
@@ -458,6 +501,7 @@ const AppWebSocket = {
     if (!this.ws) return;
 
     const sessionId = this.currentSession;
+    const boundWs = this.ws;  // 捕获当前 ws 引用，用于 onclose 判断
 
     // 设置接收二进制数据
     this.ws.binaryType = 'arraybuffer';
@@ -534,8 +578,24 @@ const AppWebSocket = {
         1013: 'Try Again Later',
         1015: 'TLS Handshake'
       };
-      this.debugLog(`[${now}] onclose code=${event.code} (${codeNames[event.code] || 'Unknown'}), reason="${event.reason}"`);
-      this.debugLog(`[${now}] onclose state: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}`);
+      this.debugLog(`[${now}] onclose code=${event.code} (${codeNames[event.code] || 'Unknown'}), session=${sessionId.substring(0, 8)}`);
+
+      // 检查断开的是否是当前活跃的 session
+      // 如果用户已切换到其他 session，不更新 UI 也不重连
+      const isCurrentSession = (boundWs === this.ws && sessionId === this.currentSession);
+      this.debugLog(`[${now}] onclose: isCurrentSession=${isCurrentSession}, boundWs===this.ws: ${boundWs === this.ws}`);
+
+      // 更新 SessionManager 中该 session 的状态
+      const session = this.sessionManager.sessions.get(sessionId);
+      if (session) {
+        session.status = 'disconnected';
+      }
+
+      // 只有当前活跃 session 断开时才更新 UI 和重连
+      if (!isCurrentSession) {
+        this.debugLog(`[${now}] onclose: background session closed, skip UI update and reconnect`);
+        return;
+      }
 
       this.isConnecting = false;
       this.updateConnectStatus('disconnected', `${this.t('status.code')}: ${event.code}`);
@@ -843,7 +903,7 @@ const AppWebSocket = {
       this.debugLog(`[${execNow}] reconnect timer fired`);
       if (this.shouldReconnect && this.currentSession && !this.isConnecting) {
         this.debugLog(`[${execNow}] execute reconnect to session ${this.currentSession.substring(0, 8)}`);
-        this.isConnecting = true;  // 设置连接锁
+        // 不要在这里设置 isConnecting，让 connectWebSocket 自己设置
         this.connect(this.currentSession, true);  // isReconnect=true，不重置计数器
       } else {
         this.debugLog(`[${execNow}] cancel reconnect: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}, isConnecting=${this.isConnecting}`);
