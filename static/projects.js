@@ -405,11 +405,15 @@ const AppProjects = {
         nameHtml = `<div class="claude-session-name">${activeIndicator}${session.session_id.substring(0, 8)}...</div>`;
       }
 
+      // 格式化 token 数量
+      const tokenDisplay = session.total_tokens > 0 ? this.formatTokens(session.total_tokens) : '--';
+
       item.innerHTML = `
         <div class="claude-session-info">
           ${nameHtml}
           <div class="claude-session-meta">
             <span class="claude-session-id">${session.session_id.substring(0, 8)}...</span>
+            <span class="claude-session-tokens">${tokenDisplay}</span>
             <span>${this.formatTime(session.updated_at)}</span>
           </div>
         </div>

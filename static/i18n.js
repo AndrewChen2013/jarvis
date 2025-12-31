@@ -68,7 +68,11 @@ const i18n = {
       'usage.period': '当前周期',
       'usage.today': '今日',
       'usage.month': '本月',
+      'usage.fiveHour': '5小时周期',
+      'usage.sevenDay': '7天周期',
       'usage.connections': '连接',
+      'usage.terminals': '终端',
+      'usage.days': '天',
       'usage.refresh': '刷新',
       'usage.trend': '7日趋势',
       'usage.loading': '加载中...',
@@ -234,7 +238,11 @@ const i18n = {
       'usage.period': 'Current period',
       'usage.today': 'Today',
       'usage.month': 'Month',
+      'usage.fiveHour': '5-hour period',
+      'usage.sevenDay': '7-day period',
       'usage.connections': 'Conn',
+      'usage.terminals': 'Term',
+      'usage.days': 'd',
       'usage.refresh': 'Refresh',
       'usage.trend': '7-day trend',
       'usage.loading': 'Loading...',
@@ -400,7 +408,11 @@ const i18n = {
       'usage.period': '現在の期間',
       'usage.today': '今日',
       'usage.month': '今月',
+      'usage.fiveHour': '5時間周期',
+      'usage.sevenDay': '7日周期',
       'usage.connections': '接続',
+      'usage.terminals': '端末',
+      'usage.days': '日',
       'usage.refresh': '更新',
       'usage.trend': '7日間の推移',
       'usage.loading': '読み込み中...',
@@ -566,7 +578,11 @@ const i18n = {
       'usage.period': '현재 기간',
       'usage.today': '오늘',
       'usage.month': '이번 달',
+      'usage.fiveHour': '5시간 주기',
+      'usage.sevenDay': '7일 주기',
       'usage.connections': '연결',
+      'usage.terminals': '터미널',
+      'usage.days': '일',
       'usage.refresh': '새로고침',
       'usage.trend': '7일 추이',
       'usage.loading': '로딩 중...',
@@ -732,7 +748,11 @@ const i18n = {
       'usage.period': 'Période actuelle',
       'usage.today': 'Aujourd\'hui',
       'usage.month': 'Ce mois',
+      'usage.fiveHour': 'Période 5h',
+      'usage.sevenDay': 'Période 7j',
       'usage.connections': 'Conn.',
+      'usage.terminals': 'Term.',
+      'usage.days': 'j',
       'usage.refresh': 'Actualiser',
       'usage.trend': 'Tendance 7 jours',
       'usage.loading': 'Chargement...',
@@ -898,7 +918,11 @@ const i18n = {
       'usage.period': 'Aktueller Zeitraum',
       'usage.today': 'Heute',
       'usage.month': 'Monat',
+      'usage.fiveHour': '5h-Zeitraum',
+      'usage.sevenDay': '7-Tage-Zeitraum',
       'usage.connections': 'Verb.',
+      'usage.terminals': 'Term.',
+      'usage.days': 'T',
       'usage.refresh': 'Aktualisieren',
       'usage.trend': '7-Tage-Trend',
       'usage.loading': 'Laden...',
@@ -1064,7 +1088,11 @@ const i18n = {
       'usage.period': 'Período actual',
       'usage.today': 'Hoy',
       'usage.month': 'Mes',
+      'usage.fiveHour': 'Período 5h',
+      'usage.sevenDay': 'Período 7d',
       'usage.connections': 'Conex.',
+      'usage.terminals': 'Term.',
+      'usage.days': 'd',
       'usage.refresh': 'Actualizar',
       'usage.trend': 'Tendencia 7 días',
       'usage.loading': 'Cargando...',
@@ -1230,7 +1258,11 @@ const i18n = {
       'usage.period': 'Текущий период',
       'usage.today': 'Сегодня',
       'usage.month': 'Месяц',
+      'usage.fiveHour': '5-часовой период',
+      'usage.sevenDay': '7-дневный период',
       'usage.connections': 'Подкл.',
+      'usage.terminals': 'Терм.',
+      'usage.days': 'д',
       'usage.refresh': 'Обновить',
       'usage.trend': 'Тренд за 7 дней',
       'usage.loading': 'Загрузка...',
@@ -1396,7 +1428,11 @@ const i18n = {
       'usage.period': 'Período atual',
       'usage.today': 'Hoje',
       'usage.month': 'Mês',
+      'usage.fiveHour': 'Período 5h',
+      'usage.sevenDay': 'Período 7d',
       'usage.connections': 'Conex.',
+      'usage.terminals': 'Term.',
+      'usage.days': 'd',
       'usage.refresh': 'Atualizar',
       'usage.trend': 'Tendência 7 dias',
       'usage.loading': 'Carregando...',
@@ -1536,32 +1572,12 @@ const i18n = {
    * 初始化
    */
   init() {
-    // 从 localStorage 读取语言设置
+    // 从 localStorage 读取语言设置，默认英文
     const savedLang = localStorage.getItem('language');
     if (savedLang && this.translations[savedLang]) {
       this.currentLang = savedLang;
     } else {
-      // 检测浏览器语言
-      const browserLang = navigator.language.toLowerCase();
-      if (browserLang.startsWith('zh')) {
-        this.currentLang = 'zh';
-      } else if (browserLang.startsWith('ja')) {
-        this.currentLang = 'ja';
-      } else if (browserLang.startsWith('ko')) {
-        this.currentLang = 'ko';
-      } else if (browserLang.startsWith('fr')) {
-        this.currentLang = 'fr';
-      } else if (browserLang.startsWith('de')) {
-        this.currentLang = 'de';
-      } else if (browserLang.startsWith('es')) {
-        this.currentLang = 'es';
-      } else if (browserLang.startsWith('ru')) {
-        this.currentLang = 'ru';
-      } else if (browserLang.startsWith('pt')) {
-        this.currentLang = 'pt';
-      } else {
-        this.currentLang = 'en';
-      }
+      this.currentLang = 'en';
     }
     this.apply();
   },

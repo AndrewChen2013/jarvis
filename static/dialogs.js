@@ -187,6 +187,20 @@ const AppDialogs = {
     if (drawer && btn) {
       const isActive = drawer.classList.toggle('active');
       btn.classList.toggle('active', isActive);
+
+      if (isActive) {
+        // 抽屉打开：加载数据并设置定时轮询
+        this.loadUsageSummary();
+        this.usagePollingInterval = setInterval(() => {
+          this.loadUsageSummary();
+        }, 60000); // 1分钟
+      } else {
+        // 抽屉关闭：清除定时轮询
+        if (this.usagePollingInterval) {
+          clearInterval(this.usagePollingInterval);
+          this.usagePollingInterval = null;
+        }
+      }
     }
   },
 

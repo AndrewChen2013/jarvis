@@ -116,6 +116,11 @@ class TerminalManager:
         Returns:
             Terminal 实例
         """
+        # 验证工作目录是否存在，不存在则回退到用户主目录
+        if not os.path.isdir(working_dir):
+            logger.warning(f"[Terminal] Working dir not found: {working_dir}, falling back to home")
+            working_dir = os.path.expanduser("~")
+
         # 构建启动命令
         # 注意：resume 需要在正确的 working_dir 下执行（由调用者保证）
         # root 用户不能使用 --dangerously-skip-permissions 参数

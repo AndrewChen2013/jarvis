@@ -49,6 +49,7 @@ class SessionResponse(BaseModel):
     display_name: str           # 显示名称（优先 custom_name，其次 summary）
     updated_at: str
     file_size: int
+    total_tokens: int           # 总 token 消耗
 
 
 class SetNameRequest(BaseModel):
@@ -98,7 +99,8 @@ async def list_sessions(
                 custom_name=custom_name,
                 display_name=display_name,
                 updated_at=s.updated_at.isoformat(),
-                file_size=s.file_size
+                file_size=s.file_size,
+                total_tokens=s.total_tokens
             ))
 
         return result
@@ -130,7 +132,8 @@ async def get_session(
             custom_name=custom_name,
             display_name=display_name,
             updated_at=session.updated_at.isoformat(),
-            file_size=session.file_size
+            file_size=session.file_size,
+            total_tokens=session.total_tokens
         )
     except HTTPException:
         raise

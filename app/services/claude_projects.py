@@ -37,6 +37,7 @@ class ClaudeSession:
     summary: Optional[str]   # 从文件读取的 summary
     updated_at: datetime     # 文件修改时间
     file_size: int           # 文件大小
+    total_tokens: int = 0    # 总 token 消耗
 
 
 @dataclass
@@ -58,20 +59,23 @@ class ClaudeProjectsScanner:
     def _path_to_hash(self, working_dir: str) -> str:
         """将工作目录转换为 Claude 的路径 hash
         例如: /Users/bill → -Users-bill
+        Claude 会把 /、空格、~ 都替换为 -
         """
         path = os.path.normpath(working_dir)
-        return path.replace("/", "-")
+        path = path.replace("/", "-")
+        path = path.replace(" ", "-")
+        path = path.replace("~", "-")
+        return path
 
     def _hash_to_path(self, path_hash: str) -> str:
         """将路径 hash 转换回工作目录
 
-        注意：Claude 的 hash 方式是把 / 替换为 -，这是有损转换。
-        例如 /Users/bill/claude-remote 和 /Users/bill/claude/remote
-        都会变成 -Users-bill-claude-remote
+        注意：Claude 的 hash 方式是把 /、空格、~ 都替换为 -，这是有损转换。
 
         我们的策略：
         1. 先尝试简单替换
-        2. 如果路径不存在，尝试智能修复（把多个连续的 / 合并回 -）
+        2. 尝试已知的特殊路径模式（如 iCloud）
+        3. 如果路径不存在，尝试智能修复
         """
         if not path_hash.startswith("-"):
             return path_hash.replace("-", "/")
@@ -81,9 +85,17 @@ class ClaudeProjectsScanner:
         if os.path.exists(simple_path):
             return simple_path
 
+        # 尝试已知的特殊路径模式
+        # iCloud: Mobile-Documents -> "Mobile Documents", com-apple-XXX -> com~apple~XXX
+        special_path = "/" + path_hash[1:].replace("-", "/")
+        special_path = special_path.replace("/Mobile/Documents/", "/Mobile Documents/")
+        special_path = special_path.replace("/com/apple/", "/com~apple~")
+        if os.path.exists(special_path):
+            logger.info(f"[Projects] Fixed iCloud path: {path_hash} -> {special_path}")
+            return special_path
+
         # 智能修复：尝试不同的 - 和 / 组合
-        # 策略：从右向左，尝试把某些 / 改回 -
-        parts = path_hash[1:].split("-")  # 去掉开头的 -
+        parts = path_hash[1:].split("-")
 
         def try_combinations(parts, index, current_path):
             """递归尝试不同组合"""
@@ -101,10 +113,24 @@ class ClaudeProjectsScanner:
             if result:
                 return result
 
-            # 尝试用 - 连接（只有在有前一部分时）
+            # 尝试用 - 连接
             if current_path:
                 path_with_dash = current_path + "-" + part
                 result = try_combinations(parts, index + 1, path_with_dash)
+                if result:
+                    return result
+
+            # 尝试用空格连接
+            if current_path:
+                path_with_space = current_path + " " + part
+                result = try_combinations(parts, index + 1, path_with_space)
+                if result:
+                    return result
+
+            # 尝试用 ~ 连接
+            if current_path:
+                path_with_tilde = current_path + "~" + part
+                result = try_combinations(parts, index + 1, path_with_tilde)
                 if result:
                     return result
 
@@ -211,7 +237,8 @@ class ClaudeProjectsScanner:
                 project_dir=working_dir,  # 项目目录（从 hash 推断）
                 summary=metadata["summary"],
                 updated_at=mtime,
-                file_size=file_size
+                file_size=file_size,
+                total_tokens=metadata["total_tokens"]
             ))
 
         # 按更新时间降序排序
@@ -245,23 +272,25 @@ class ClaudeProjectsScanner:
                 project_dir=working_dir,
                 summary=metadata["summary"],
                 updated_at=mtime,
-                file_size=file_size
+                file_size=file_size,
+                total_tokens=metadata["total_tokens"]
             )
         except OSError as e:
             logger.error(f"Error reading session {session_id}: {e}")
             return None
 
     def _parse_session_metadata(self, jsonl_file: str) -> Dict:
-        """从会话文件中提取 metadata（summary、真实 cwd、是否有对话）
+        """从会话文件中提取 metadata（summary、真实 cwd、是否有对话、token 使用量）
 
         Returns:
             {
                 "summary": str or None,  # 最新的 summary
                 "cwd": str or None,      # 会话的真实工作目录
-                "has_messages": bool     # 是否有实际对话（user/assistant 消息）
+                "has_messages": bool,    # 是否有实际对话（user/assistant 消息）
+                "total_tokens": int      # 总 token 消耗
             }
         """
-        result = {"summary": None, "cwd": None, "has_messages": False}
+        result = {"summary": None, "cwd": None, "has_messages": False, "total_tokens": 0}
 
         try:
             summaries = []
@@ -281,6 +310,15 @@ class ClaudeProjectsScanner:
                         # 检查是否有实际对话消息
                         if data.get("type") in ("user", "assistant"):
                             result["has_messages"] = True
+                        # 提取 token 使用量（从 assistant 消息中）
+                        if data.get("type") == "assistant":
+                            msg = data.get("message", {})
+                            usage = msg.get("usage", {})
+                            if usage:
+                                result["total_tokens"] += usage.get("input_tokens", 0)
+                                result["total_tokens"] += usage.get("cache_creation_input_tokens", 0)
+                                result["total_tokens"] += usage.get("cache_read_input_tokens", 0)
+                                result["total_tokens"] += usage.get("output_tokens", 0)
                     except json.JSONDecodeError:
                         continue
 

@@ -290,11 +290,6 @@ class App {
       this.toggleUsageDrawer();
     });
 
-    // 刷新用量按钮
-    document.getElementById('refresh-usage').addEventListener('click', () => {
-      this.loadUsageSummary();
-    });
-
     // 创建会话按钮 - 打开模态框
     document.getElementById('create-session').addEventListener('click', () => {
       this.openCreateModal();

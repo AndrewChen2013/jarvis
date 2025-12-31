@@ -265,33 +265,23 @@ const AppSettings = {
   },
 
   /**
-   * 更新账户信息显示
+   * 加载用量摘要（使用新的实时 API）
    */
-  updateAccountDisplay(data) {
-    const planEl = document.getElementById('account-plan');
-    const limitEl = document.getElementById('account-limit');
-    const sessionsEl = document.getElementById('usage-sessions');
-
-    if (planEl) {
-      planEl.textContent = data.plan_name || 'Unknown';
-    }
-
-    if (limitEl) {
-      const limit = data.token_limit_per_5h || 0;
-      limitEl.textContent = `${this.formatTokens(limit)}/5h`;
-    }
-
-    if (sessionsEl && data.stats) {
-      sessionsEl.textContent = data.stats.total_sessions || '--';
-    }
+  async loadUsageSummary() {
+    // 并行加载所有数据
+    await Promise.all([
+      this.loadProfile(),
+      this.loadRealtimeUsage(),
+      this.loadActiveConnections()
+    ]);
   },
 
   /**
-   * 加载用量摘要
+   * 加载用户资料
    */
-  async loadUsageSummary() {
+  async loadProfile() {
     try {
-      const response = await fetch('/api/usage/summary', {
+      const response = await fetch('/api/profile', {
         headers: {
           'Authorization': `Bearer ${this.token}`
         }
@@ -299,17 +289,138 @@ const AppSettings = {
 
       if (response.ok) {
         const data = await response.json();
-        this.updateUsageDisplay(data);
-        // 启动倒计时
-        this.startCountdown(data.period_end);
+        this.updateProfileDisplay(data);
       }
     } catch (error) {
-      console.error('Load usage summary error:', error);
+      console.error('Load profile error:', error);
+    }
+  },
+
+  /**
+   * 更新用户资料显示
+   */
+  updateProfileDisplay(data) {
+    const nameEl = document.getElementById('profile-name');
+    const planEl = document.getElementById('profile-plan');
+    const emailEl = document.getElementById('profile-email');
+
+    if (nameEl) {
+      nameEl.textContent = data.user?.name || '--';
+    }
+    if (planEl) {
+      planEl.textContent = data.plan_name || '--';
+    }
+    if (emailEl) {
+      emailEl.textContent = data.user?.email || '--';
+    }
+  },
+
+  /**
+   * 加载实时用量
+   */
+  async loadRealtimeUsage() {
+    try {
+      const response = await fetch('/api/usage/realtime', {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.updateRealtimeUsageDisplay(data);
+      }
+    } catch (error) {
+      console.error('Load realtime usage error:', error);
+    }
+  },
+
+  /**
+   * 更新实时用量显示
+   */
+  updateRealtimeUsageDisplay(data) {
+    // 5小时周期
+    if (data.five_hour) {
+      this.updateUsageBar('5h', data.five_hour);
     }
 
-    // 同时加载活跃连接数和历史数据
-    this.loadActiveConnections();
-    this.loadUsageHistory();
+    // 7天周期
+    if (data.seven_day) {
+      this.updateUsageBar('7d', data.seven_day);
+    }
+
+    // Sonnet 专用
+    const sonnetSection = document.getElementById('usage-sonnet-section');
+    if (data.seven_day_sonnet) {
+      this.updateUsageBar('sonnet', data.seven_day_sonnet);
+      if (sonnetSection) sonnetSection.style.display = 'block';
+    } else {
+      if (sonnetSection) sonnetSection.style.display = 'none';
+    }
+  },
+
+  /**
+   * 更新单个用量进度条
+   */
+  updateUsageBar(type, data) {
+    const progressEl = document.getElementById(`usage-${type}-progress`);
+    const percentEl = document.getElementById(`usage-${type}-percent`);
+    const resetEl = document.getElementById(`usage-${type}-reset`);
+
+    const percent = data.utilization || 0;
+
+    if (progressEl) {
+      progressEl.style.width = `${Math.min(percent, 100)}%`;
+      // 颜色
+      progressEl.classList.remove('warning', 'danger');
+      if (percent >= 90) {
+        progressEl.classList.add('danger');
+      } else if (percent >= 70) {
+        progressEl.classList.add('warning');
+      }
+    }
+
+    if (percentEl) {
+      percentEl.textContent = `${Math.round(percent)}%`;
+      percentEl.classList.remove('warning', 'danger');
+      if (percent >= 90) {
+        percentEl.classList.add('danger');
+      } else if (percent >= 70) {
+        percentEl.classList.add('warning');
+      }
+    }
+
+    if (resetEl && data.resets_at) {
+      resetEl.textContent = this.formatResetTime(data.resets_at);
+    }
+  },
+
+  /**
+   * 格式化重置时间
+   */
+  formatResetTime(isoString) {
+    try {
+      const resetTime = new Date(isoString);
+      const now = new Date();
+      const diff = resetTime - now;
+
+      if (diff <= 0) {
+        return this.t('usage.periodReset') || '已重置';
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const resetIn = this.t('usage.resetIn') || '后重置';
+
+      if (hours > 24) {
+        const days = Math.floor(hours / 24);
+        return `${days}${this.t('usage.days') || '天'} ${resetIn}`;
+      }
+
+      return `${hours}:${String(mins).padStart(2, '0')} ${resetIn}`;
+    } catch (e) {
+      return '--';
+    }
   },
 
   /**
@@ -325,33 +436,18 @@ const AppSettings = {
 
       if (response.ok) {
         const data = await response.json();
-        const el = document.getElementById('active-connections');
-        if (el) {
-          el.textContent = data.total_connections || 0;
+        const connEl = document.getElementById('active-connections');
+        const termEl = document.getElementById('active-terminals');
+
+        if (connEl) {
+          connEl.textContent = data.total_connections || 0;
+        }
+        if (termEl) {
+          termEl.textContent = data.active_terminals || 0;
         }
       }
     } catch (error) {
       console.error('Load active connections error:', error);
-    }
-  },
-
-  /**
-   * 加载历史用量
-   */
-  async loadUsageHistory() {
-    try {
-      const response = await fetch('/api/usage/history?days=7', {
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.renderUsageChart(data.history || []);
-      }
-    } catch (error) {
-      console.error('Load usage history error:', error);
     }
   },
 
@@ -438,49 +534,6 @@ const AppSettings = {
     this.countdownInterval = setInterval(updateCountdown, 1000);
   },
 
-  /**
-   * 更新用量显示
-   */
-  updateUsageDisplay(data) {
-    // 更新进度条
-    const progressEl = document.getElementById('usage-progress');
-    const percentEl = document.getElementById('usage-period-percent');
-    const periodTextEl = document.getElementById('usage-period-text');
-    const todayEl = document.getElementById('usage-today');
-    const monthEl = document.getElementById('usage-month');
-
-    if (progressEl && percentEl) {
-      const percent = data.period_percentage || 0;
-      progressEl.style.width = `${Math.min(percent, 100)}%`;
-
-      // 根据百分比设置颜色
-      progressEl.classList.remove('warning', 'danger');
-      percentEl.classList.remove('warning', 'danger');
-      if (percent >= 90) {
-        progressEl.classList.add('danger');
-        percentEl.classList.add('danger');
-      } else if (percent >= 70) {
-        progressEl.classList.add('warning');
-        percentEl.classList.add('warning');
-      }
-
-      percentEl.textContent = `${percent}%`;
-    }
-
-    if (periodTextEl) {
-      const total = data.current_period_total || 0;
-      const limit = data.period_limit || 88000;
-      periodTextEl.textContent = `当前周期: ${this.formatTokens(total)} / ${this.formatTokens(limit)}`;
-    }
-
-    if (todayEl) {
-      todayEl.textContent = this.formatTokens(data.today_total || 0);
-    }
-
-    if (monthEl) {
-      monthEl.textContent = this.formatTokens(data.month_total || 0);
-    }
-  }
 };
 
 // 导出到全局

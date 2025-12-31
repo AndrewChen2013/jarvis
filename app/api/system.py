@@ -27,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from app.api.auth import verify_token
 from app.services.usage_tracker import usage_tracker
 from app.services.terminal_manager import terminal_manager
+from app.services.anthropic_oauth import anthropic_oauth
 from app.core.logging import logger
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -107,6 +108,21 @@ async def get_terminals_stats(_: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/connections/count")
+async def get_connections_count(_: str = Depends(verify_token)):
+    """获取活跃连接数"""
+    try:
+        stats = terminal_manager.get_stats()
+        total = sum(t.get("websocket_count", 0) for t in stats.get("terminals", []))
+        return {
+            "total_connections": total,
+            "active_terminals": stats.get("active_terminals", 0)
+        }
+    except Exception as e:
+        logger.error(f"Get connections count error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/account/info")
 async def get_account_info(_: str = Depends(verify_token)):
     """获取 Claude 账户信息"""
@@ -170,4 +186,101 @@ async def get_account_info(_: str = Depends(verify_token)):
 
     except Exception as e:
         logger.error(f"Get account info error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/usage/realtime")
+async def get_usage_realtime(_: str = Depends(verify_token)):
+    """获取实时用量（来自 Anthropic 服务器）
+
+    返回 5 小时周期、7 天周期等真实用量数据
+    """
+    try:
+        usage = anthropic_oauth.get_usage()
+        if not usage:
+            raise HTTPException(status_code=503, detail="Unable to fetch usage from Anthropic API")
+
+        # 格式化返回数据
+        result = {
+            "five_hour": None,
+            "seven_day": None,
+            "seven_day_sonnet": None,
+            "extra_usage": None
+        }
+
+        if usage.get("five_hour"):
+            result["five_hour"] = {
+                "utilization": usage["five_hour"].get("utilization", 0),
+                "resets_at": usage["five_hour"].get("resets_at")
+            }
+
+        if usage.get("seven_day"):
+            result["seven_day"] = {
+                "utilization": usage["seven_day"].get("utilization", 0),
+                "resets_at": usage["seven_day"].get("resets_at")
+            }
+
+        if usage.get("seven_day_sonnet"):
+            result["seven_day_sonnet"] = {
+                "utilization": usage["seven_day_sonnet"].get("utilization", 0),
+                "resets_at": usage["seven_day_sonnet"].get("resets_at")
+            }
+
+        if usage.get("extra_usage"):
+            result["extra_usage"] = usage["extra_usage"]
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get realtime usage error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/profile")
+async def get_profile(_: str = Depends(verify_token)):
+    """获取用户资料（来自 Anthropic 服务器）"""
+    try:
+        profile = anthropic_oauth.get_profile()
+        if not profile:
+            raise HTTPException(status_code=503, detail="Unable to fetch profile from Anthropic API")
+
+        account = profile.get("account", {})
+        org = profile.get("organization", {})
+
+        # 解析套餐信息
+        plan_name = "Unknown"
+        rate_limit_tier = org.get("rate_limit_tier", "")
+        if "max_20x" in rate_limit_tier:
+            plan_name = "Max 20x"
+        elif "max_5x" in rate_limit_tier:
+            plan_name = "Max 5x"
+        elif account.get("has_claude_pro"):
+            plan_name = "Pro"
+        elif account.get("has_claude_max"):
+            plan_name = "Max"
+
+        return {
+            "user": {
+                "uuid": account.get("uuid"),
+                "name": account.get("display_name") or account.get("full_name"),
+                "email": account.get("email"),
+                "has_max": account.get("has_claude_max", False),
+                "has_pro": account.get("has_claude_pro", False)
+            },
+            "organization": {
+                "uuid": org.get("uuid"),
+                "name": org.get("name"),
+                "type": org.get("organization_type"),
+                "rate_limit_tier": rate_limit_tier,
+                "extra_usage_enabled": org.get("has_extra_usage_enabled", False)
+            },
+            "plan_name": plan_name
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get profile error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

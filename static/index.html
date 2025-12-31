@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Claude Remote</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=2">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -95,50 +95,59 @@
     <!-- 用量统计抽屉 -->
     <div id="usage-drawer" class="usage-drawer">
       <div class="usage-drawer-content">
-        <!-- 账户信息卡片 -->
-        <div class="drawer-section">
-          <div class="account-header">
-            <span id="account-plan" class="account-plan">--</span>
-            <span id="account-limit" class="account-limit">--</span>
+        <!-- 用户信息 -->
+        <div class="drawer-section user-profile">
+          <div class="profile-header">
+            <span id="profile-name" class="profile-name">--</span>
+            <span id="profile-plan" class="profile-plan">--</span>
           </div>
-          <div class="usage-period">
-            <div class="usage-progress-bar">
-              <div id="usage-progress" class="usage-progress" style="width: 0%"></div>
-            </div>
-            <div class="usage-period-info">
-              <span id="usage-period-text">当前周期: --</span>
-              <span id="usage-period-percent">--%</span>
-            </div>
-          </div>
-          <div class="usage-stats">
-            <div class="usage-stat">
-              <div class="usage-stat-label" data-i18n="usage.today">今日</div>
-              <div id="usage-today" class="usage-stat-value">--</div>
-            </div>
-            <div class="usage-stat">
-              <div class="usage-stat-label" data-i18n="usage.month">本月</div>
-              <div id="usage-month" class="usage-stat-value">--</div>
-            </div>
-            <div class="usage-stat">
-              <div class="usage-stat-label" data-i18n="usage.connections">连接</div>
-              <div id="active-connections" class="usage-stat-value">--</div>
-            </div>
-          </div>
-          <div class="usage-footer">
-            <span id="period-countdown" class="period-countdown">--</span>
-            <button id="refresh-usage" class="btn-refresh" data-i18n-title="usage.refresh" title="刷新">↻</button>
+          <div class="profile-footer">
+            <span id="profile-email" class="profile-email">--</span>
+            <span class="profile-stats">
+              <span id="active-connections" class="stat-num">0</span><span data-i18n="usage.connections">连接</span> · <span id="active-terminals" class="stat-num">0</span><span data-i18n="usage.terminals">终端</span>
+            </span>
           </div>
         </div>
 
-        <!-- 历史用量趋势 -->
-        <div class="drawer-section">
-          <div class="history-header">
-            <span class="history-title" data-i18n="usage.trend">7日趋势</span>
+        <!-- 用量进度条 -->
+        <div class="drawer-section usage-bars">
+          <!-- 5小时周期 -->
+          <div class="usage-bar-item">
+            <div class="usage-bar-header">
+              <span class="usage-bar-label" data-i18n="usage.fiveHour">5小时周期</span>
+              <span id="usage-5h-percent" class="usage-bar-percent">--%</span>
+            </div>
+            <div class="usage-progress-bar">
+              <div id="usage-5h-progress" class="usage-progress" style="width: 0%"></div>
+            </div>
+            <div id="usage-5h-reset" class="usage-bar-reset">--</div>
           </div>
-          <div id="usage-chart" class="usage-chart">
-            <div class="chart-loading" data-i18n="usage.loading">加载中...</div>
+
+          <!-- 7天周期 -->
+          <div class="usage-bar-item">
+            <div class="usage-bar-header">
+              <span class="usage-bar-label" data-i18n="usage.sevenDay">7天周期</span>
+              <span id="usage-7d-percent" class="usage-bar-percent">--%</span>
+            </div>
+            <div class="usage-progress-bar">
+              <div id="usage-7d-progress" class="usage-progress" style="width: 0%"></div>
+            </div>
+            <div id="usage-7d-reset" class="usage-bar-reset">--</div>
+          </div>
+
+          <!-- Sonnet 专用 -->
+          <div class="usage-bar-item" id="usage-sonnet-section">
+            <div class="usage-bar-header">
+              <span class="usage-bar-label">Sonnet</span>
+              <span id="usage-sonnet-percent" class="usage-bar-percent">--%</span>
+            </div>
+            <div class="usage-progress-bar">
+              <div id="usage-sonnet-progress" class="usage-progress" style="width: 0%"></div>
+            </div>
+            <div id="usage-sonnet-reset" class="usage-bar-reset">--</div>
           </div>
         </div>
+
       </div>
     </div>
 
@@ -376,14 +385,14 @@
   <script src="/static/terminal.js"></script>
   <script src="/static/session-manager.js"></script>
   <script src="/static/floating-button.js"></script>
-  <script src="/static/i18n.js"></script>
+  <script src="/static/i18n.js?v=3"></script>
   <!-- App 模块 -->
-  <script src="/static/utils.js"></script>
-  <script src="/static/debug.js"></script>
-  <script src="/static/dialogs.js"></script>
-  <script src="/static/settings.js"></script>
-  <script src="/static/projects.js"></script>
-  <script src="/static/websocket.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/utils.js?v=3"></script>
+  <script src="/static/debug.js?v=3"></script>
+  <script src="/static/dialogs.js?v=3"></script>
+  <script src="/static/settings.js?v=3"></script>
+  <script src="/static/projects.js?v=3"></script>
+  <script src="/static/websocket.js?v=3"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

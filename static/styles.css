@@ -206,7 +206,7 @@ body {
 }
 
 .usage-drawer.active {
-  max-height: 280px;
+  max-height: 350px;
   border-bottom-color: #2a2a2a;
 }
 
@@ -225,73 +225,153 @@ body {
   margin-bottom: 0;
 }
 
-.account-header {
+/* 用户资料区域 */
+.user-profile {
+  padding: 8px 12px;
+}
+
+.profile-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
 }
 
-.account-plan {
+.profile-name {
   font-size: 14px;
   font-weight: 600;
-  color: #f59e0b;
+  color: #fff;
 }
 
-.account-limit {
+.profile-plan {
   font-size: 11px;
-  color: #888;
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-weight: 600;
+  color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
-.usage-footer {
+.profile-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2a2a2a;
+  margin-top: 4px;
 }
 
-.period-countdown {
-  font-size: 12px;
-  color: #10b981;
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+.profile-email {
+  font-size: 10px;
+  color: #888;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-stats {
+  font-size: 10px;
+  color: #666;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.profile-stats .stat-num {
+  color: #4a9eff;
   font-weight: 600;
 }
 
-.period-countdown.warning {
+/* 用量进度条区域 */
+.usage-bars {
+  padding: 8px 12px;
+}
+
+.usage-bar-item {
+  margin-bottom: 10px;
+}
+
+.usage-bar-item:last-child {
+  margin-bottom: 0;
+}
+
+.usage-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.usage-bar-label {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.usage-bar-percent {
+  font-size: 12px;
+  font-weight: 600;
+  color: #10b981;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+.usage-bar-percent.warning {
   color: #f59e0b;
 }
 
-.period-countdown.danger {
+.usage-bar-percent.danger {
   color: #ef4444;
 }
 
-/* ========== 历史用量趋势 ========== */
-.history-header {
-  margin-bottom: 6px;
-}
-
-.history-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #888;
-}
-
-.usage-chart {
-  height: 60px;
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-}
-
-.chart-loading {
-  width: 100%;
-  text-align: center;
+.usage-bar-reset {
+  font-size: 10px;
   color: #666;
+  margin-top: 2px;
+}
+
+/* 底部连接和刷新 */
+.usage-footer-section {
+  padding: 8px 12px;
+}
+
+.usage-stats-row {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 8px;
+}
+
+.usage-stat-item {
+  text-align: center;
+}
+
+.usage-stat-item .usage-stat-label {
+  font-size: 10px;
+  color: #666;
+  display: block;
+}
+
+.usage-stat-item .usage-stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #4a9eff;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+.btn-refresh-full {
+  width: 100%;
+  padding: 8px;
+  background-color: #2a2a2a;
+  border: none;
+  border-radius: 6px;
+  color: #aaa;
   font-size: 12px;
-  padding: 12px 0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-refresh-full:hover {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+.btn-refresh-full:active {
+  background-color: #4a4a4a;
 }
 
 .chart-bar-wrapper {
@@ -1381,6 +1461,15 @@ body {
 .claude-session-id {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 11px;
+}
+
+.claude-session-tokens {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 11px;
+  color: #10b981;
+  padding: 1px 4px;
+  background-color: rgba(16, 185, 129, 0.1);
+  border-radius: 3px;
 }
 
 .no-sessions {
