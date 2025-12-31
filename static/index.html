@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+ Copyright (c) 2025 BillChen
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -11,18 +27,129 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
 <body>
-  <!-- 会话列表视图 -->
-  <div id="sessions-view" class="view active">
-    <header class="header">
-      <div class="header-title">
-        <div class="logo" onclick="window.app && window.app.toggleDebugPanel()">C</div>
-        <h1>Claude Remote</h1>
+  <!-- 登录视图 -->
+  <div id="login-view" class="view active">
+    <div class="login-container">
+      <div class="login-card">
+        <div class="login-logo">C</div>
+        <h1 class="login-title">Claude Remote</h1>
+        <p class="login-subtitle" data-i18n="login.subtitle">请输入访问令牌</p>
+        <form id="login-form" class="login-form">
+          <input
+            type="password"
+            id="login-token"
+            class="login-input"
+            data-i18n-placeholder="login.placeholder"
+            placeholder="访问令牌"
+            autocomplete="current-password"
+            required
+          >
+          <div id="login-error" class="login-error"></div>
+          <button type="submit" id="login-btn" class="btn btn-primary btn-block" data-i18n="login.button">
+            登录
+          </button>
+        </form>
       </div>
-      <button id="create-session" class="btn-add">+</button>
+    </div>
+  </div>
+
+  <!-- 会话列表视图 -->
+  <div id="sessions-view" class="view">
+    <header class="header">
+      <div class="header-title" onclick="window.app && window.app.toggleDebugPanel()">
+        <div class="system-info">
+          <span id="system-hostname" class="system-hostname">--</span>
+          <span id="system-ip" class="system-ip">--</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="usage-toggle-btn" class="btn-usage" data-i18n-title="sessions.usage">≡</button>
+        <button id="create-session" class="btn-add">+</button>
+        <button id="settings-btn" class="btn-settings" data-i18n-title="sessions.settings">⚙︎</button>
+        <button id="sessions-help-btn" class="btn-help" data-i18n-title="sessions.help">?</button>
+        <button id="logout-btn" class="btn-logout" data-i18n-title="sessions.logout">⏻</button>
+      </div>
     </header>
-    <main class="main">
+
+    <!-- 帮助面板 -->
+    <div id="sessions-help-panel" class="help-panel sessions-help-panel">
+      <div class="help-content">
+        <div class="help-header">
+          <span data-i18n="sessions.help.title">使用说明</span>
+          <button id="sessions-help-close">✕</button>
+        </div>
+        <div class="help-list">
+          <div class="help-item"><span class="help-key">+</span><span data-i18n="sessions.help.create">创建新会话</span></div>
+          <div class="help-item"><span class="help-key" data-i18n="session.card">卡片</span><span data-i18n="sessions.help.card">点击进入终端</span></div>
+          <div class="help-item"><span class="help-key" data-i18n="common.rename">重命名</span><span data-i18n="sessions.help.rename">修改会话名称</span></div>
+          <div class="help-item"><span class="help-key" data-i18n="common.delete">删除</span><span data-i18n="sessions.help.delete">删除会话记录</span></div>
+          <div class="help-item"><span class="help-key">⚙</span><span data-i18n="sessions.help.password">修改访问密码</span></div>
+          <div class="help-item"><span class="help-key">⏻</span><span data-i18n="sessions.help.logout">退出登录</span></div>
+        </div>
+        <div class="help-tips">
+          <div class="help-tip">💡 <span data-i18n="sessions.help.tip">点击左上角可查看调试日志</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 用量统计抽屉 -->
+    <div id="usage-drawer" class="usage-drawer">
+      <div class="usage-drawer-content">
+        <!-- 账户信息卡片 -->
+        <div class="drawer-section">
+          <div class="account-header">
+            <span id="account-plan" class="account-plan">--</span>
+            <span id="account-limit" class="account-limit">--</span>
+          </div>
+          <div class="usage-period">
+            <div class="usage-progress-bar">
+              <div id="usage-progress" class="usage-progress" style="width: 0%"></div>
+            </div>
+            <div class="usage-period-info">
+              <span id="usage-period-text">当前周期: --</span>
+              <span id="usage-period-percent">--%</span>
+            </div>
+          </div>
+          <div class="usage-stats">
+            <div class="usage-stat">
+              <div class="usage-stat-label" data-i18n="usage.today">今日</div>
+              <div id="usage-today" class="usage-stat-value">--</div>
+            </div>
+            <div class="usage-stat">
+              <div class="usage-stat-label" data-i18n="usage.month">本月</div>
+              <div id="usage-month" class="usage-stat-value">--</div>
+            </div>
+            <div class="usage-stat">
+              <div class="usage-stat-label" data-i18n="usage.connections">连接</div>
+              <div id="active-connections" class="usage-stat-value">--</div>
+            </div>
+          </div>
+          <div class="usage-footer">
+            <span id="period-countdown" class="period-countdown">--</span>
+            <button id="refresh-usage" class="btn-refresh" data-i18n-title="usage.refresh" title="刷新">↻</button>
+          </div>
+        </div>
+
+        <!-- 历史用量趋势 -->
+        <div class="drawer-section">
+          <div class="history-header">
+            <span class="history-title" data-i18n="usage.trend">7日趋势</span>
+          </div>
+          <div id="usage-chart" class="usage-chart">
+            <div class="chart-loading" data-i18n="usage.loading">加载中...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <main class="main" id="sessions-main">
+      <!-- 下拉刷新指示器 -->
+      <div id="pull-refresh" class="pull-refresh">
+        <div class="pull-refresh-spinner"></div>
+        <span class="pull-refresh-text" data-i18n="sessions.pullToRefresh">下拉刷新</span>
+      </div>
       <div id="sessions-list" class="sessions-list">
-        <div class="loading">加载中...</div>
+        <div class="loading" data-i18n="sessions.loading">加载中...</div>
       </div>
     </main>
   </div>
@@ -50,7 +177,7 @@
             <div class="section-label">浏览目录</div>
             <div class="current-path">
               <button id="go-parent" class="btn btn-icon">↑</button>
-              <span id="current-path-text">/Users/bill</span>
+              <span id="current-path-text">~</span>
               <button id="select-current" class="btn btn-primary">选择</button>
             </div>
             <div id="dir-list" class="dir-list">
@@ -74,41 +201,107 @@
     </div>
   </div>
 
+  <!-- 设置模态框 -->
+  <div id="settings-modal" class="modal">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <button id="settings-back-btn" class="btn-back-small hidden">←</button>
+        </div>
+        <h2 id="settings-modal-title" data-i18n="sessions.settings">设置</h2>
+        <div class="modal-header-right">
+          <button id="settings-modal-close" class="btn-close">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <!-- 主菜单 -->
+        <div id="settings-menu" class="settings-menu">
+          <div class="settings-menu-item" id="menu-language">
+            <span data-i18n="settings.language">语言</span>
+            <div class="settings-menu-right">
+              <span class="settings-menu-value" id="current-lang-display">中文</span>
+              <span class="settings-menu-arrow">›</span>
+            </div>
+          </div>
+          <div class="settings-menu-item" id="menu-password">
+            <span data-i18n="settings.title">修改密码</span>
+            <span class="settings-menu-arrow">›</span>
+          </div>
+        </div>
+
+        <!-- 语言设置页 (动态生成) -->
+        <div id="settings-language" class="settings-page"></div>
+
+        <!-- 修改密码页 -->
+        <div id="settings-password" class="settings-page">
+          <form id="change-password-form" class="settings-form">
+            <div class="form-group">
+              <label data-i18n="settings.oldPassword">旧密码</label>
+              <input type="password" id="old-password" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label data-i18n="settings.newPassword">新密码</label>
+              <input type="password" id="new-password" class="form-input" data-i18n-placeholder="settings.newPasswordHint" placeholder="至少6位" required>
+            </div>
+            <div class="form-group">
+              <label data-i18n="settings.confirmPassword">确认新密码</label>
+              <input type="password" id="confirm-password" class="form-input" required>
+            </div>
+            <div id="password-error" class="form-error"></div>
+            <button type="submit" id="change-password-btn" class="btn btn-primary btn-block" data-i18n="settings.confirm">
+              确认修改
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 终端视图 -->
   <div id="terminal-view" class="view">
     <!-- 工具栏 -->
     <header class="toolbar">
-      <button id="back-btn" class="btn-back">←</button>
-      <div class="toolbar-center">
-        <span id="terminal-title" class="terminal-title">终端</span>
-        <span id="connection-status" class="connection-status" onclick="window.app && window.app.toggleDebugPanel()">连接中...</span>
+      <button id="minimize-btn" class="btn-minimize" data-i18n-title="terminal.minimize" title="收起">⌄</button>
+      <button id="back-btn" class="btn-back" data-i18n-title="terminal.close" title="关闭">←</button>
+      <div class="toolbar-center" onclick="window.app && window.app.toggleDebugPanel()">
+        <span id="connection-dot" class="connection-dot"></span>
+        <span id="terminal-title" class="terminal-title" data-i18n="terminal.title">终端</span>
+        <span id="connection-status" class="connection-status"></span>
       </div>
       <div class="toolbar-right">
-        <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel()">?</button>
-        <button id="font-decrease" class="btn btn-icon">A-</button>
-        <button id="font-increase" class="btn btn-icon">A+</button>
+        <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel(event)">?</button>
       </div>
     </header>
+
+    <!-- 悬浮字体控制 -->
+    <div class="font-controls-float">
+      <button id="font-decrease" class="btn-font">A-</button>
+      <button id="font-increase" class="btn-font">A+</button>
+    </div>
 
     <!-- 帮助面板 -->
     <div id="help-panel" class="help-panel">
       <div class="help-content">
         <div class="help-header">
-          <span>按键说明</span>
-          <button onclick="window.app && window.app.toggleHelpPanel()">✕</button>
+          <span data-i18n="terminal.help.title">按键说明</span>
+          <button onclick="window.app && window.app.toggleHelpPanel(event)">✕</button>
+        </div>
+        <div class="help-color-legend">
+          <span class="legend-item legend-nav" data-i18n="terminal.help.nav">导航</span>
+          <span class="legend-item legend-danger" data-i18n="terminal.help.danger">中断</span>
+          <span class="legend-item legend-action" data-i18n="terminal.help.action">确认</span>
+          <span class="legend-item legend-edit" data-i18n="terminal.help.control">控制</span>
         </div>
         <div class="help-list">
-          <div class="help-item"><span class="help-key">↑</span><span>上一条历史命令</span></div>
-          <div class="help-item"><span class="help-key">↓</span><span>下一条历史命令</span></div>
-          <div class="help-item"><span class="help-key">ESC</span><span>取消当前输入</span></div>
-          <div class="help-item"><span class="help-key">TAB</span><span>自动补全</span></div>
-          <div class="help-item"><span class="help-key">^C</span><span>中断当前操作</span></div>
-          <div class="help-item"><span class="help-key">⤒</span><span>点击到顶部 / 长按向上滚动</span></div>
-          <div class="help-item"><span class="help-key">⤓</span><span>点击到底部 / 长按向下滚动</span></div>
-          <div class="help-item"><span class="help-key">↵</span><span>回车确认</span></div>
+          <div class="help-item"><span class="help-key help-key-nav">↑↓</span><span data-i18n="terminal.help.history">历史命令导航</span></div>
+          <div class="help-item"><span class="help-key help-key-nav">⤒⤓</span><span data-i18n="terminal.help.scroll">滚动（长按连续）</span></div>
+          <div class="help-item"><span class="help-key help-key-danger">ESC</span><span data-i18n="terminal.help.cancel">取消当前输入</span></div>
+          <div class="help-item"><span class="help-key help-key-danger">^C</span><span data-i18n="terminal.help.interrupt">中断当前操作</span></div>
+          <div class="help-item"><span class="help-key help-key-action">TAB</span><span data-i18n="terminal.help.complete">自动补全</span></div>
+          <div class="help-item"><span class="help-key help-key-action">↵</span><span data-i18n="terminal.help.send">发送/确认</span></div>
         </div>
         <div class="help-tips">
-          <div class="help-tip">💡 点击状态栏查看调试日志</div>
+          <div class="help-tip">💡 <span data-i18n="terminal.help.tip">点击 ⋯ 展开组合键和斜杠命令</span></div>
         </div>
       </div>
     </div>
@@ -118,19 +311,47 @@
 
     <!-- 底部输入栏（常驻） -->
     <div class="bottom-input-bar">
+      <!-- 展开的更多按键面板 -->
+      <div id="more-keys-panel" class="more-keys-panel">
+        <div class="more-keys-section">
+          <div class="more-keys-label" data-i18n="terminal.keys.combo">组合键</div>
+          <div class="more-keys-row">
+            <button class="key-btn key-edit" data-key="ctrl-l">^L <span data-i18n="terminal.keys.clear">清屏</span></button>
+            <button class="key-btn key-edit" data-key="ctrl-o">^O <span data-i18n="terminal.keys.verbose">详细</span></button>
+            <button class="key-btn key-nav" data-key="ctrl-b">^B <span data-i18n="terminal.keys.background">后台</span></button>
+            <button class="key-btn key-danger" data-key="esc-esc">ESC×2 <span data-i18n="terminal.keys.rollback">回滚</span></button>
+            <button class="key-btn key-nav" data-key="shift-tab">⇧Tab <span data-i18n="terminal.keys.mode">模式</span></button>
+          </div>
+        </div>
+        <div class="more-keys-section">
+          <div class="more-keys-label" data-i18n="terminal.keys.slash">斜杠命令</div>
+          <div class="more-keys-row">
+            <button class="key-btn key-action" data-key="cmd-resume">/resume</button>
+            <button class="key-btn key-action" data-key="cmd-clear">/clear</button>
+            <button class="key-btn key-action" data-key="cmd-help">/help</button>
+          </div>
+          <div class="more-keys-row" style="margin-top: 6px;">
+            <button class="key-btn key-action" data-key="cmd-context">/context</button>
+            <button class="key-btn key-action" data-key="cmd-memory">/memory</button>
+            <button class="key-btn key-action" data-key="cmd-compact">/compact</button>
+          </div>
+        </div>
+      </div>
+      <!-- 主按键行 -->
       <div class="special-keys">
-        <button class="key-btn" data-key="up">↑</button>
-        <button class="key-btn" data-key="down">↓</button>
-        <button class="key-btn" data-key="escape">ESC</button>
-        <button class="key-btn" data-key="tab">TAB</button>
-        <button class="key-btn" data-key="ctrl-c">^C</button>
-        <button class="key-btn" data-key="top">⤒</button>
-        <button class="key-btn" data-key="bottom">⤓</button>
-        <button class="key-btn" data-key="enter">↵</button>
+        <button class="key-btn key-action" data-key="tab">TAB</button>
+        <button class="key-btn key-nav" data-key="up">↑</button>
+        <button class="key-btn key-nav" data-key="down">↓</button>
+        <button class="key-btn key-danger" data-key="ctrl-c">^C</button>
+        <button class="key-btn key-danger" data-key="escape">ESC</button>
+        <button class="key-btn key-nav" data-key="top">⤒</button>
+        <button class="key-btn key-nav" data-key="bottom">⤓</button>
+        <button class="key-btn key-action" data-key="enter">↵</button>
+        <button class="key-btn key-more" id="more-keys-btn">⋯</button>
       </div>
       <div class="input-row" id="input-row">
         <!-- input 动态创建 -->
-        <button id="send-btn" class="btn btn-primary">发送</button>
+        <button id="send-btn" class="btn btn-primary" data-i18n="terminal.send">发送</button>
       </div>
     </div>
   </div>
@@ -150,6 +371,9 @@
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
   <script src="/static/terminal.js"></script>
+  <script src="/static/session-manager.js"></script>
+  <script src="/static/floating-button.js"></script>
+  <script src="/static/i18n.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

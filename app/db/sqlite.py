@@ -1,3 +1,17 @@
+# Copyright (c) 2025 BillChen
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import aiosqlite
 import json
 from datetime import datetime
@@ -50,6 +64,15 @@ class SQLiteDB:
             await self.conn.commit()
         except Exception:
             pass  # 列已存在
+
+        # 创建配置表
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+        await self.conn.commit()
 
         logger.info("SQLite connected successfully")
 
@@ -133,4 +156,25 @@ class SQLiteDB:
             DELETE FROM sessions
             WHERE last_active < ? AND status != 'active'
         """, (cutoff_str,))
+        await self.conn.commit()
+
+    # ==================== 配置管理 ====================
+
+    async def get_config(self, key: str) -> Optional[str]:
+        """获取配置项"""
+        async with self.conn.execute(
+            "SELECT value FROM config WHERE key = ?",
+            (key,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0]
+            return None
+
+    async def set_config(self, key: str, value: str):
+        """设置配置项"""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            (key, value)
+        )
         await self.conn.commit()

@@ -1,3 +1,17 @@
+# Copyright (c) 2025 BillChen
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pty
 import os
 import select
@@ -39,6 +53,9 @@ class ManagedProcess:
         self._monitor_task: Optional[asyncio.Task] = None
         # 历史输出缓冲区
         self._output_history: bytearray = bytearray()
+        # 防止重复停止
+        self._stopped = False
+        self._stop_lock = asyncio.Lock()
 
     async def start(self):
         """启动进程"""
@@ -246,6 +263,13 @@ class ManagedProcess:
 
     async def stop(self):
         """停止进程"""
+        async with self._stop_lock:
+            # 防止重复停止
+            if self._stopped:
+                logger.debug(f"Process {self.pid} already stopped, skipping")
+                return
+            self._stopped = True
+
         self._running = False
 
         # 取消任务

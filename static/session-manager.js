@@ -1,0 +1,339 @@
+/**
+ * Copyright (c) 2025 BillChen
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * Session Manager - 多 Session 管理
+ * 支持同时打开多个 session，在后台保持连接
+ */
+
+class SessionInstance {
+  constructor(sessionId, name) {
+    this.id = sessionId;
+    this.name = name;
+    this.ws = null;
+    this.terminal = null;
+    this.container = null;
+    this.status = 'idle'; // idle | connecting | connected | disconnected
+    this.lastActive = Date.now();
+  }
+
+  /**
+   * 更新最后活跃时间
+   */
+  touch() {
+    this.lastActive = Date.now();
+  }
+}
+
+class SessionManager {
+  constructor(app) {
+    this.app = app;
+    this.sessions = new Map(); // sessionId -> SessionInstance
+    this.activeId = null;
+    this.previousId = null; // 上一个活跃的 session，用于快速切换
+  }
+
+  /**
+   * 调试日志
+   */
+  log(msg) {
+    if (this.app && this.app.debugLog) {
+      this.app.debugLog('[SessionMgr] ' + msg);
+    } else {
+      console.log('[SessionMgr] ' + msg);
+    }
+  }
+
+  /**
+   * 获取当前活跃的 session
+   */
+  getActive() {
+    return this.activeId ? this.sessions.get(this.activeId) : null;
+  }
+
+  /**
+   * 获取所有后台 session（不包括当前活跃的）
+   */
+  getBackgroundSessions() {
+    const result = [];
+    for (const [id, session] of this.sessions) {
+      if (id !== this.activeId) {
+        result.push(session);
+      }
+    }
+    // 按最后活跃时间排序，最近的在前
+    return result.sort((a, b) => b.lastActive - a.lastActive);
+  }
+
+  /**
+   * 获取后台 session 数量
+   */
+  getBackgroundCount() {
+    return this.sessions.size - (this.activeId ? 1 : 0);
+  }
+
+  /**
+   * 获取所有 session
+   */
+  getAllSessions() {
+    return Array.from(this.sessions.values());
+  }
+
+  /**
+   * 检查 session 是否已打开
+   */
+  isSessionOpen(sessionId) {
+    return this.sessions.has(sessionId);
+  }
+
+  /**
+   * 打开或切换到 session
+   * @param {string} sessionId
+   * @param {string} name
+   * @returns {SessionInstance}
+   */
+  openSession(sessionId, name) {
+    this.log(`openSession: ${sessionId}, name=${name}`);
+    let session = this.sessions.get(sessionId);
+
+    if (session) {
+      // 已存在，切换到它
+      this.log(`openSession: exists, switch`);
+      this.switchTo(sessionId);
+    } else {
+      // 新建 session 实例
+      this.log(`openSession: new instance`);
+      session = new SessionInstance(sessionId, name);
+      this.sessions.set(sessionId, session);
+      this.switchTo(sessionId);
+    }
+
+    this.log(`openSession: sessions.size=${this.sessions.size}`);
+    return session;
+  }
+
+  /**
+   * 切换到指定 session
+   */
+  switchTo(sessionId) {
+    this.log(`switchTo: ${sessionId}, activeId=${this.activeId}`);
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      this.log(`switchTo: session not found!`);
+      return;
+    }
+
+    // 记录上一个活跃的 session
+    if (this.activeId && this.activeId !== sessionId) {
+      this.previousId = this.activeId;
+    }
+
+    // 隐藏所有其他 session 的 container
+    for (const [id, s] of this.sessions) {
+      if (id !== sessionId && s.container) {
+        this.log(`switchTo: hide ${id}`);
+        s.container.style.display = 'none';
+      }
+    }
+
+    // 切换到新 session
+    this.activeId = sessionId;
+    session.touch();
+    this.log(`switchTo: show session, container=${session.container ? 'exists' : 'null'}`);
+    this.showSession(session);
+
+    // 更新悬浮按钮
+    if (this.app.floatingButton) {
+      this.app.floatingButton.update();
+    }
+    this.log(`switchTo: done`);
+  }
+
+  /**
+   * 快速切换到上一个 session
+   */
+  switchToPrevious() {
+    if (this.previousId && this.sessions.has(this.previousId)) {
+      this.switchTo(this.previousId);
+      return true;
+    }
+
+    // 没有上一个，切换到最近活跃的后台 session
+    const backgrounds = this.getBackgroundSessions();
+    if (backgrounds.length > 0) {
+      this.switchTo(backgrounds[0].id);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * 收起当前 session（放入后台）
+   */
+  minimizeCurrent() {
+    this.log(`minimizeCurrent: activeId=${this.activeId}`);
+    if (!this.activeId) {
+      this.log('minimizeCurrent: no active session');
+      return;
+    }
+
+    const session = this.sessions.get(this.activeId);
+    if (session) {
+      this.log(`minimizeCurrent: hide session ${session.id}`);
+      this.hideSession(session);
+    }
+
+    // 记录为上一个
+    this.previousId = this.activeId;
+    this.activeId = null;
+    this.log(`minimizeCurrent: previousId=${this.previousId}, activeId=null`);
+
+    // 更新悬浮按钮
+    if (this.app.floatingButton) {
+      this.app.floatingButton.update();
+    }
+
+    // 返回 session 列表
+    this.log('minimizeCurrent: switch to sessions view');
+    this.app.showView('sessions');
+  }
+
+  /**
+   * 关闭指定 session
+   */
+  closeSession(sessionId) {
+    this.log(`closeSession: ${sessionId}`);
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      this.log('closeSession: session not found');
+      return;
+    }
+
+    // 断开 WebSocket
+    if (session.ws) {
+      this.log('closeSession: close WebSocket');
+      session.ws.close();
+      session.ws = null;
+    }
+
+    // 销毁终端
+    if (session.terminal) {
+      this.log('closeSession: destroy terminal');
+      session.terminal.dispose();
+      session.terminal = null;
+    }
+
+    // 移除容器
+    if (session.container) {
+      this.log('closeSession: remove container');
+      session.container.remove();
+      session.container = null;
+    }
+
+    // 从 Map 中移除
+    this.sessions.delete(sessionId);
+    this.log(`closeSession: sessions.size=${this.sessions.size}`);
+
+    // 如果关闭的是当前活跃的
+    if (this.activeId === sessionId) {
+      this.activeId = null;
+      this.log('closeSession: clear activeId');
+    }
+
+    // 如果关闭的是上一个
+    if (this.previousId === sessionId) {
+      this.previousId = null;
+      this.log('closeSession: clear previousId');
+    }
+
+    // 更新悬浮按钮
+    if (this.app.floatingButton) {
+      this.app.floatingButton.update();
+    }
+  }
+
+  /**
+   * 关闭所有 session
+   */
+  closeAll() {
+    for (const sessionId of this.sessions.keys()) {
+      this.closeSession(sessionId);
+    }
+  }
+
+  /**
+   * 显示 session（切换到前台）
+   */
+  showSession(session) {
+    this.log(`showSession: ${session.id}, container=${session.container ? session.container.id : 'null'}`);
+    if (session.container) {
+      session.container.style.display = 'block';
+      this.log(`showSession: set display=block`);
+    } else {
+      this.log(`showSession: no container!`);
+    }
+  }
+
+  /**
+   * 隐藏 session（放入后台）
+   */
+  hideSession(session) {
+    this.log(`hideSession: ${session.id}, container=${session.container ? session.container.id : 'null'}`);
+    if (session.container) {
+      session.container.style.display = 'none';
+      this.log(`hideSession: set display=none`);
+    }
+  }
+
+  /**
+   * 为 session 创建终端容器
+   */
+  createContainer(session) {
+    this.log(`createContainer: ${session.id}`);
+    const container = document.createElement('div');
+    container.id = `terminal-container-${session.id}`;
+    container.className = 'terminal-session-container';
+    container.style.display = 'none';
+
+    const terminalOutput = document.getElementById('terminal-output');
+    this.log(`createContainer: terminalOutput=${terminalOutput ? 'exists' : 'null'}`);
+    if (terminalOutput) {
+      terminalOutput.appendChild(container);
+      this.log(`createContainer: added to terminalOutput`);
+    } else {
+      this.log(`createContainer: terminalOutput not found!`);
+    }
+
+    session.container = container;
+    return container;
+  }
+
+  /**
+   * 获取或创建 session 的容器
+   */
+  getOrCreateContainer(session) {
+    this.log(`getOrCreateContainer: ${session.id}, hasContainer=${!!session.container}`);
+    if (!session.container) {
+      this.createContainer(session);
+    }
+    return session.container;
+  }
+}
+
+// 导出
+window.SessionManager = SessionManager;
+window.SessionInstance = SessionInstance;

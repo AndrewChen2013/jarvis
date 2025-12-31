@@ -1,4 +1,20 @@
 /**
+ * Copyright (c) 2025 BillChen
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
  * 移动端优化的 xterm.js 终端包装器
  * - 使用 xterm.js 处理所有 ANSI 控制序列
  * - 禁用内置键盘输入，使用悬浮按钮
@@ -18,7 +34,7 @@ class Terminal {
   }
 
   init() {
-    this.log('Step 1: 创建 xterm 实例');
+    this.log('Step 1: create xterm instance');
 
     // 创建 xterm.js 实例，移动端性能优化配置
     this.xterm = new window.Terminal({
@@ -48,19 +64,19 @@ class Terminal {
       scrollSensitivity: 20,    // 增大滚动灵敏度（默认1）
       fastScrollSensitivity: 40, // 快速滚动灵敏度
     });
-    this.log('Step 1 完成');
+    this.log('Step 1 done');
 
-    this.log('Step 2: 创建 FitAddon');
+    this.log('Step 2: create FitAddon');
     this.fitAddon = new window.FitAddon.FitAddon();
     this.xterm.loadAddon(this.fitAddon);
-    this.log('Step 2 完成');
+    this.log('Step 2 done');
 
-    this.log('Step 3: 打开终端');
+    this.log('Step 3: open terminal');
     this.xterm.open(this.container);
-    this.log('Step 3 完成');
+    this.log('Step 3 done');
 
     // 尝试加载 WebGL 渲染器（GPU 加速）
-    this.log('Step 3.5: 尝试 WebGL 加速');
+    this.log('Step 3.5: try WebGL');
     if (window.WebglAddon) {
       try {
         const webglAddon = new window.WebglAddon.WebglAddon();
@@ -69,32 +85,32 @@ class Terminal {
           this.log('WebGL context lost, falling back to canvas');
         });
         this.xterm.loadAddon(webglAddon);
-        this.log('WebGL 加速已启用');
+        this.log('WebGL enabled');
       } catch (e) {
-        this.log('WebGL 不可用: ' + e.message);
+        this.log('WebGL unavailable: ' + e.message);
       }
     } else {
-      this.log('WebglAddon 未加载');
+      this.log('WebglAddon not loaded');
     }
 
-    this.log('Step 4: 等待 fit()');
+    this.log('Step 4: wait for fit()');
     requestAnimationFrame(() => {
-      this.log('Step 4a: RAF 回调');
+      this.log('Step 4a: RAF callback');
       this.fit();
-      this.log('Step 4b: fit 完成');
+      this.log('Step 4b: fit done');
       this.isReady = true;
-      this.log('Step 4c: 刷新队列 ' + this.pendingWrites.length);
+      this.log('Step 4c: flush queue ' + this.pendingWrites.length);
       this.flushPendingWrites();
-      this.log('Step 4d: 队列完成');
+      this.log('Step 4d: queue done');
 
       // 设置触摸滚动（DOM 已渲染）
-      this.log('Step 4e: 设置触摸滚动');
+      this.log('Step 4e: setup touch scroll');
       this.setupTouchScroll();
 
       if (this.onReady) {
         this.log('Step 4f: onReady');
         this.onReady();
-        this.log('Step 4g: onReady 完成');
+        this.log('Step 4g: onReady done');
       }
     });
 
@@ -102,13 +118,13 @@ class Terminal {
       this.fit();
     };
 
-    this.log('Step 5: 添加监听器');
+    this.log('Step 5: add listeners');
     setTimeout(() => {
       window.addEventListener('resize', this.resizeHandler, { passive: true });
-      this.log('Step 5 完成');
+      this.log('Step 5 done');
     }, 100);
 
-    this.log('init 同步完成');
+    this.log('init sync done');
   }
 
   /**
@@ -197,7 +213,7 @@ class Terminal {
       }
     }, { passive: true, capture: true });
 
-    this.log('触摸滚动已设置(capture模式)');
+    this.log('touch scroll setup (capture mode)');
   }
 
   /**

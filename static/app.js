@@ -1,9 +1,25 @@
 /**
+ * Copyright (c) 2025 BillChen
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
  * Claude Remote - 主应用
  */
 class App {
   constructor() {
-    this.token = 'your-secret-token-change-me';
+    this.token = localStorage.getItem('auth_token') || '';
     this.currentSession = null;
     this.ws = null;
     this.terminal = null;
@@ -19,30 +35,55 @@ class App {
     this.outputQueue = []; // 输出消息队列（终端未就绪时缓存）
     this.currentSessionName = ''; // 当前会话名称
 
+    // 多 Session 管理
+    this.sessionManager = new SessionManager(this);
+    this.floatingButton = new FloatingButton(this);
+
+    // 下拉刷新状态
+    this.pullRefresh = {
+      startY: 0,
+      pulling: false,
+      refreshing: false,
+      threshold: 80,  // 触发刷新的阈值
+      maxPull: 120    // 最大下拉距离
+    };
+
     this.init();
   }
 
-  init() {
-    // 加载会话列表
-    this.loadSessions();
+  /**
+   * 获取翻译文本
+   */
+  t(key, fallback) {
+    return window.i18n ? window.i18n.t(key, fallback) : (fallback || key);
+  }
 
-    // 绑定事件
+  init() {
+    // 初始化国际化
+    if (window.i18n) {
+      window.i18n.init();
+    }
+
+    // 绑定事件（包括登录表单）
     this.bindEvents();
+
+    // 检查认证状态
+    this.checkAuth();
 
     // 监听页面可见性变化（iOS Safari 挂起/恢复）
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        this.debugLog('页面隐藏');
+        this.debugLog('page hidden');
       } else {
-        this.debugLog('页面恢复可见');
+        this.debugLog('page visible');
         // 检查连接状态
         if (this.currentSession && this.ws) {
-          this.debugLog('当前连接状态: state=' + this.ws.readyState);
+          this.debugLog('connection state=' + this.ws.readyState);
         }
         // 如果连接已断开且应该重连
         if (this.currentSession && this.shouldReconnect && !this.isConnecting) {
           if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-            this.debugLog('页面恢复触发重连');
+            this.debugLog('page visible, reconnecting');
             this.attemptReconnect();
           }
         }
@@ -62,9 +103,155 @@ class App {
     window.addEventListener('pagehide', (e) => {
       console.log('pagehide event, persisted:', e.persisted);
     });
+
+    // 初始化下拉刷新
+    this.initPullRefresh();
+  }
+
+  /**
+   * 初始化下拉刷新
+   */
+  initPullRefresh() {
+    const main = document.getElementById('sessions-main');
+    const pullRefresh = document.getElementById('pull-refresh');
+    const sessionsList = document.getElementById('sessions-list');
+
+    if (!main || !pullRefresh || !sessionsList) return;
+
+    let startY = 0;
+    let currentY = 0;
+    let pulling = false;
+
+    main.addEventListener('touchstart', (e) => {
+      // 只在滚动到顶部时才启用下拉刷新
+      if (main.scrollTop <= 0 && !this.pullRefresh.refreshing) {
+        startY = e.touches[0].clientY;
+        pulling = true;
+      }
+    }, { passive: true });
+
+    main.addEventListener('touchmove', (e) => {
+      if (!pulling || this.pullRefresh.refreshing) return;
+
+      currentY = e.touches[0].clientY;
+      const deltaY = currentY - startY;
+
+      // 只处理向下拉
+      if (deltaY > 0 && main.scrollTop <= 0) {
+        e.preventDefault();
+
+        // 计算下拉距离（带阻尼效果）
+        const pullDistance = Math.min(deltaY * 0.5, this.pullRefresh.maxPull);
+
+        // 更新 UI
+        pullRefresh.style.transform = `translateY(${pullDistance}px)`;
+        sessionsList.style.transform = `translateY(${pullDistance}px)`;
+
+        // 更新状态
+        if (pullDistance >= this.pullRefresh.threshold) {
+          pullRefresh.classList.add('pulling');
+          const textEl = pullRefresh.querySelector('.pull-refresh-text');
+          if (textEl) textEl.textContent = this.t('sessions.releaseToRefresh', '释放刷新');
+        } else {
+          pullRefresh.classList.remove('pulling');
+          const textEl = pullRefresh.querySelector('.pull-refresh-text');
+          if (textEl) textEl.textContent = this.t('sessions.pullToRefresh', '下拉刷新');
+        }
+      }
+    }, { passive: false });
+
+    main.addEventListener('touchend', async () => {
+      if (!pulling) return;
+      pulling = false;
+
+      const deltaY = currentY - startY;
+      const pullDistance = Math.min(deltaY * 0.5, this.pullRefresh.maxPull);
+
+      if (pullDistance >= this.pullRefresh.threshold && !this.pullRefresh.refreshing) {
+        // 触发刷新 - 立即执行，不等待
+        location.reload();
+      } else {
+        // 未达到阈值，恢复位置
+        pullRefresh.style.transform = '';
+        sessionsList.style.transform = '';
+        pullRefresh.classList.remove('pulling');
+      }
+
+      startY = 0;
+      currentY = 0;
+    }, { passive: true });
   }
 
   bindEvents() {
+    // 登录表单提交
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleLogin();
+    });
+
+    // 退出按钮
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      this.handleLogout();
+    });
+
+    // 设置按钮
+    document.getElementById('settings-btn').addEventListener('click', () => {
+      this.openSettingsModal();
+    });
+
+    // 关闭设置模态框
+    document.getElementById('settings-modal-close').addEventListener('click', () => {
+      this.closeSettingsModal();
+    });
+
+    // 点击设置模态框背景关闭
+    document.getElementById('settings-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'settings-modal') {
+        this.closeSettingsModal();
+      }
+    });
+
+    // 设置菜单项点击 - 语言
+    document.getElementById('menu-language').addEventListener('click', () => {
+      this.showSettingsPage('language');
+    });
+
+    // 设置菜单项点击 - 修改密码
+    document.getElementById('menu-password').addEventListener('click', () => {
+      this.showSettingsPage('password');
+    });
+
+    // 设置返回按钮
+    document.getElementById('settings-back-btn').addEventListener('click', () => {
+      this.showSettingsMenu();
+    });
+
+    // 修改密码表单
+    document.getElementById('change-password-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleChangePassword();
+    });
+
+    // 会话列表帮助按钮
+    document.getElementById('sessions-help-btn').addEventListener('click', (e) => {
+      this.toggleSessionsHelpPanel(e);
+    });
+
+    // 会话列表帮助关闭按钮
+    document.getElementById('sessions-help-close').addEventListener('click', () => {
+      this.closeSessionsHelpPanel();
+    });
+
+    // 用量抽屉切换按钮
+    document.getElementById('usage-toggle-btn').addEventListener('click', () => {
+      this.toggleUsageDrawer();
+    });
+
+    // 刷新用量按钮
+    document.getElementById('refresh-usage').addEventListener('click', () => {
+      this.loadUsageSummary();
+    });
+
     // 创建会话按钮 - 打开模态框
     document.getElementById('create-session').addEventListener('click', () => {
       this.openCreateModal();
@@ -117,6 +304,9 @@ class App {
     document.querySelectorAll('.key-btn').forEach(btn => {
       const key = btn.dataset.key;
 
+      // 跳过展开更多按钮
+      if (btn.id === 'more-keys-btn') return;
+
       // ⤒ ⤓ 按钮：支持单击跳转和长按持续滚动
       if (key === 'top' || key === 'bottom') {
         this.setupScrollButton(btn, key);
@@ -128,6 +318,11 @@ class App {
       }
     });
 
+    // 展开更多按键按钮
+    document.getElementById('more-keys-btn').addEventListener('click', () => {
+      this.toggleMoreKeysPanel();
+    });
+
     // 字体大小调整
     document.getElementById('font-decrease').addEventListener('click', () => {
       this.adjustFontSize(-1);
@@ -137,12 +332,632 @@ class App {
       this.adjustFontSize(1);
     });
 
-    // 返回按钮
+    // 返回按钮 - 关闭session
     document.getElementById('back-btn').addEventListener('click', () => {
-      this.disconnect();
-      this.showView('sessions');
+      this.debugLog('back button clicked (close session)');
+      this.closeCurrentSession();
     });
 
+    // 收起按钮 - 放入后台，保持连接
+    const minimizeBtn = document.getElementById('minimize-btn');
+    if (minimizeBtn) {
+      this.debugLog('minimize button bindend');
+      minimizeBtn.addEventListener('click', () => {
+        this.debugLog('minimize button clicked');
+        this.minimizeCurrentSession();
+      });
+    } else {
+      this.debugLog('warning: minimize button not found!');
+    }
+
+  }
+
+  // ==================== 认证相关 ====================
+
+  /**
+   * 检查认证状态
+   */
+  async checkAuth() {
+    // 如果没有 token，显示登录页
+    if (!this.token) {
+      this.showView('login');
+      return;
+    }
+
+    // 验证 token 是否有效
+    try {
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+
+      if (response.ok) {
+        // token 有效，显示会话列表
+        this.showView('sessions');
+        this.loadSessions();
+        this.loadSystemInfo();
+        this.loadAccountInfo();
+        this.loadUsageSummary();
+      } else {
+        // token 无效，清除并显示登录页
+        this.clearAuth();
+        this.showView('login');
+        this.showLoginError(this.t('login.tokenExpired'));
+      }
+    } catch (error) {
+      console.error('Auth check error:', error);
+      // 网络错误，尝试使用缓存的 token
+      this.showView('sessions');
+      this.loadSessions();
+    }
+  }
+
+  /**
+   * 处理登录
+   */
+  async handleLogin() {
+    const tokenInput = document.getElementById('login-token');
+    const loginBtn = document.getElementById('login-btn');
+    const token = tokenInput.value.trim();
+
+    if (!token) {
+      this.showLoginError(this.t('login.placeholder'));
+      return;
+    }
+
+    // 禁用按钮，显示加载状态
+    loginBtn.disabled = true;
+    loginBtn.textContent = this.t('login.verifying');
+    this.showLoginError('');
+
+    try {
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        // 登录成功，保存 token
+        this.token = token;
+        localStorage.setItem('auth_token', token);
+
+        // 清空输入框
+        tokenInput.value = '';
+
+        // 显示会话列表
+        this.showView('sessions');
+        this.loadSessions();
+        this.loadSystemInfo();
+        this.loadAccountInfo();
+        this.loadUsageSummary();
+      } else {
+        this.showLoginError(this.t('login.tokenInvalid'));
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      this.showLoginError(this.t('login.networkError'));
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.textContent = this.t('login.button');
+    }
+  }
+
+  /**
+   * 处理退出登录
+   */
+  handleLogout() {
+    if (!confirm(this.t('confirm.logout'))) return;
+
+    this.clearAuth();
+    // 关闭所有 session
+    this.sessionManager.closeAll();
+    this.disconnect();
+    this.showView('login');
+  }
+
+  /**
+   * 清除认证信息
+   */
+  clearAuth() {
+    this.token = '';
+    localStorage.removeItem('auth_token');
+  }
+
+  /**
+   * 显示登录错误
+   */
+  showLoginError(message) {
+    const errorEl = document.getElementById('login-error');
+    if (errorEl) {
+      errorEl.textContent = message;
+    }
+  }
+
+  /**
+   * 处理 401 未授权响应
+   */
+  handleUnauthorized() {
+    this.clearAuth();
+    this.disconnect();
+    this.showView('login');
+    this.showLoginError(this.t('login.sessionExpired'));
+  }
+
+  /**
+   * 打开设置模态框
+   */
+  openSettingsModal() {
+    document.getElementById('settings-modal').classList.add('active');
+    // 清空表单
+    document.getElementById('old-password').value = '';
+    document.getElementById('new-password').value = '';
+    document.getElementById('confirm-password').value = '';
+    document.getElementById('password-error').textContent = '';
+    // 显示主菜单
+    this.showSettingsMenu();
+    // 更新语言显示
+    this.updateLangDisplay();
+  }
+
+  /**
+   * 显示设置主菜单
+   */
+  showSettingsMenu() {
+    // 隐藏所有子页面
+    document.querySelectorAll('.settings-page').forEach(page => {
+      page.classList.remove('active');
+    });
+    // 显示主菜单
+    document.getElementById('settings-menu').style.display = 'flex';
+    // 隐藏返回按钮
+    document.getElementById('settings-back-btn').classList.add('hidden');
+    // 更新标题
+    document.getElementById('settings-modal-title').textContent = this.t('sessions.settings');
+  }
+
+  /**
+   * 显示设置子页面
+   */
+  showSettingsPage(page) {
+    // 隐藏主菜单
+    document.getElementById('settings-menu').style.display = 'none';
+    // 隐藏所有子页面
+    document.querySelectorAll('.settings-page').forEach(p => {
+      p.classList.remove('active');
+    });
+    // 显示目标页面
+    const targetPage = document.getElementById(`settings-${page}`);
+    if (targetPage) {
+      targetPage.classList.add('active');
+    }
+    // 显示返回按钮
+    document.getElementById('settings-back-btn').classList.remove('hidden');
+    // 更新标题
+    if (page === 'language') {
+      document.getElementById('settings-modal-title').textContent = this.t('settings.language');
+      this.renderLanguageList();
+    } else if (page === 'password') {
+      document.getElementById('settings-modal-title').textContent = this.t('settings.title');
+    }
+  }
+
+  /**
+   * 渲染语言列表
+   */
+  renderLanguageList() {
+    const container = document.getElementById('settings-language');
+    if (!container || !window.i18n) return;
+
+    const currentLang = window.i18n.currentLang;
+    const languages = window.i18n.languages;
+
+    let html = '<div class="lang-list">';
+    for (const [code, name] of Object.entries(languages)) {
+      const isActive = code === currentLang;
+      html += `
+        <div class="lang-list-item" data-lang="${code}">
+          <span>${name}</span>
+          <span class="lang-check">${isActive ? '✓' : ''}</span>
+        </div>
+      `;
+    }
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    // 绑定点击事件
+    container.querySelectorAll('.lang-list-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const lang = item.dataset.lang;
+        this.switchLanguage(lang);
+      });
+    });
+  }
+
+  /**
+   * 切换语言
+   */
+  switchLanguage(lang) {
+    if (window.i18n) {
+      window.i18n.setLanguage(lang);
+      this.renderLanguageList();
+      this.updateLangDisplay();
+      // 重置调试面板以更新语言
+      this.resetDebugPanel();
+      // 刷新会话列表
+      this.loadSessions();
+    }
+  }
+
+  /**
+   * 更新主菜单中的语言显示
+   */
+  updateLangDisplay() {
+    const currentLang = window.i18n ? window.i18n.currentLang : 'zh';
+    const display = document.getElementById('current-lang-display');
+    if (display) {
+      display.textContent = window.i18n.getLanguageName(currentLang);
+    }
+  }
+
+  /**
+   * 关闭设置模态框
+   */
+  closeSettingsModal() {
+    document.getElementById('settings-modal').classList.remove('active');
+  }
+
+  /**
+   * 显示密码错误
+   */
+  showPasswordError(message) {
+    const errorEl = document.getElementById('password-error');
+    if (errorEl) {
+      errorEl.textContent = message;
+    }
+  }
+
+  /**
+   * 处理修改密码
+   */
+  async handleChangePassword() {
+    const oldPassword = document.getElementById('old-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+    const submitBtn = document.getElementById('change-password-btn');
+
+    // 前端验证
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      this.showPasswordError(this.t('settings.fillAll'));
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      this.showPasswordError(this.t('settings.minLength'));
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      this.showPasswordError(this.t('settings.notMatch'));
+      return;
+    }
+
+    // 禁用按钮
+    submitBtn.disabled = true;
+    submitBtn.textContent = this.t('settings.updating');
+    this.showPasswordError('');
+
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`
+        },
+        body: JSON.stringify({
+          old_password: oldPassword,
+          new_password: newPassword
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // 修改成功，清除本地 token，跳转登录
+        this.closeSettingsModal();
+        this.clearAuth();
+        this.disconnect();
+        this.showView('login');
+        this.showLoginError(this.t('settings.passwordChanged'));
+      } else {
+        this.showPasswordError(data.detail || this.t('settings.changeFailed'));
+      }
+    } catch (error) {
+      console.error('Change password error:', error);
+      this.showPasswordError(this.t('login.networkError'));
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = this.t('settings.confirm');
+    }
+  }
+
+  /**
+   * 加载系统信息（IP 和主机名）
+   */
+  async loadSystemInfo() {
+    try {
+      const response = await fetch('/api/system/info', {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const hostnameEl = document.getElementById('system-hostname');
+        const ipEl = document.getElementById('system-ip');
+        if (hostnameEl) hostnameEl.textContent = data.hostname || '--';
+        if (ipEl) ipEl.textContent = data.ip || '--';
+        // 保存用户主目录用于路径简化
+        this.homeDir = data.home_dir || '';
+      }
+    } catch (error) {
+      console.error('Load system info error:', error);
+    }
+  }
+
+  /**
+   * 加载账户信息
+   */
+  async loadAccountInfo() {
+    try {
+      const response = await fetch('/api/account/info', {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.updateAccountDisplay(data);
+      }
+    } catch (error) {
+      console.error('Load account info error:', error);
+    }
+  }
+
+  /**
+   * 更新账户信息显示
+   */
+  updateAccountDisplay(data) {
+    const planEl = document.getElementById('account-plan');
+    const limitEl = document.getElementById('account-limit');
+    const sessionsEl = document.getElementById('usage-sessions');
+
+    if (planEl) {
+      planEl.textContent = data.plan_name || 'Unknown';
+    }
+
+    if (limitEl) {
+      const limit = data.token_limit_per_5h || 0;
+      limitEl.textContent = `${this.formatTokens(limit)}/5h`;
+    }
+
+    if (sessionsEl && data.stats) {
+      sessionsEl.textContent = data.stats.total_sessions || '--';
+    }
+  }
+
+  /**
+   * 加载用量摘要
+   */
+  async loadUsageSummary() {
+    try {
+      const response = await fetch('/api/usage/summary', {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.updateUsageDisplay(data);
+        // 启动倒计时
+        this.startCountdown(data.period_end);
+      }
+    } catch (error) {
+      console.error('Load usage summary error:', error);
+    }
+
+    // 同时加载活跃连接数和历史数据
+    this.loadActiveConnections();
+    this.loadUsageHistory();
+  }
+
+  /**
+   * 加载活跃连接数
+   */
+  async loadActiveConnections() {
+    try {
+      const response = await fetch('/api/connections/count', {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const el = document.getElementById('active-connections');
+        if (el) {
+          el.textContent = data.total_connections || 0;
+        }
+      }
+    } catch (error) {
+      console.error('Load active connections error:', error);
+    }
+  }
+
+  /**
+   * 加载历史用量
+   */
+  async loadUsageHistory() {
+    try {
+      const response = await fetch('/api/usage/history?days=7', {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.renderUsageChart(data.history || []);
+      }
+    } catch (error) {
+      console.error('Load usage history error:', error);
+    }
+  }
+
+  /**
+   * 渲染用量图表
+   */
+  renderUsageChart(history) {
+    const container = document.getElementById('usage-chart');
+    if (!container || history.length === 0) {
+      if (container) {
+        container.innerHTML = '<div class="chart-loading">暂无数据</div>';
+      }
+      return;
+    }
+
+    // 找出最大值用于计算高度比例
+    const maxValue = Math.max(...history.map(d => d.total_tokens), 1);
+    const chartHeight = 60; // 柱状图最大高度
+
+    // 今天的日期
+    const today = new Date().toISOString().split('T')[0];
+
+    container.innerHTML = history.map(day => {
+      const height = Math.max((day.total_tokens / maxValue) * chartHeight, 2);
+      const isToday = day.date === today;
+      const dateLabel = day.date.slice(5); // MM-DD
+
+      return `
+        <div class="chart-bar-wrapper">
+          <div class="chart-value">${this.formatTokens(day.total_tokens)}</div>
+          <div class="chart-bar ${isToday ? 'today' : ''}" style="height: ${height}px"></div>
+          <div class="chart-label">${dateLabel}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
+   * 启动周期倒计时
+   */
+  startCountdown(periodEnd) {
+    // 清除之前的倒计时
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+    }
+
+    const endTime = new Date(periodEnd);
+
+    const updateCountdown = () => {
+      // 每次都重新获取元素，确保能找到
+      const countdownEl = document.getElementById('period-countdown');
+      if (!countdownEl) return;
+
+      const now = new Date();
+      const diffMs = endTime - now;
+
+      if (diffMs <= 0) {
+        countdownEl.textContent = this.t('usage.periodReset');
+        countdownEl.classList.remove('warning', 'danger');
+        clearInterval(this.countdownInterval);
+        // 5秒后刷新数据
+        setTimeout(() => this.loadUsageSummary(), 5000);
+        return;
+      }
+
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
+
+      countdownEl.textContent = `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} ${this.t('usage.resetIn')}`;
+
+      // 根据剩余时间设置颜色
+      countdownEl.classList.remove('warning', 'danger');
+      if (hours < 1) {
+        countdownEl.classList.add('danger');
+      } else if (hours < 2) {
+        countdownEl.classList.add('warning');
+      }
+    };
+
+    // 立即更新一次
+    updateCountdown();
+    // 每秒更新
+    this.countdownInterval = setInterval(updateCountdown, 1000);
+  }
+
+  /**
+   * 更新用量显示
+   */
+  updateUsageDisplay(data) {
+    // 更新进度条
+    const progressEl = document.getElementById('usage-progress');
+    const percentEl = document.getElementById('usage-period-percent');
+    const periodTextEl = document.getElementById('usage-period-text');
+    const todayEl = document.getElementById('usage-today');
+    const monthEl = document.getElementById('usage-month');
+
+    if (progressEl && percentEl) {
+      const percent = data.period_percentage || 0;
+      progressEl.style.width = `${Math.min(percent, 100)}%`;
+
+      // 根据百分比设置颜色
+      progressEl.classList.remove('warning', 'danger');
+      percentEl.classList.remove('warning', 'danger');
+      if (percent >= 90) {
+        progressEl.classList.add('danger');
+        percentEl.classList.add('danger');
+      } else if (percent >= 70) {
+        progressEl.classList.add('warning');
+        percentEl.classList.add('warning');
+      }
+
+      percentEl.textContent = `${percent}%`;
+    }
+
+    if (periodTextEl) {
+      const total = data.current_period_total || 0;
+      const limit = data.period_limit || 88000;
+      periodTextEl.textContent = `当前周期: ${this.formatTokens(total)} / ${this.formatTokens(limit)}`;
+    }
+
+    if (todayEl) {
+      todayEl.textContent = this.formatTokens(data.today_total || 0);
+    }
+
+    if (monthEl) {
+      monthEl.textContent = this.formatTokens(data.month_total || 0);
+    }
+  }
+
+  /**
+   * 格式化 token 数量
+   */
+  formatTokens(tokens) {
+    if (tokens >= 1000000) {
+      return (tokens / 1000000).toFixed(1) + 'M';
+    } else if (tokens >= 1000) {
+      return (tokens / 1000).toFixed(1) + 'k';
+    }
+    return tokens.toString();
   }
 
   // ==================== 模态框操作 ====================
@@ -175,9 +990,9 @@ class App {
     document.getElementById(`step-${step}`).classList.add('active');
 
     if (step === 'workdir') {
-      document.getElementById('modal-title').textContent = '新建会话';
+      document.getElementById('modal-title').textContent = this.t('create.title');
     } else if (step === 'session') {
-      document.getElementById('modal-title').textContent = '选择会话';
+      document.getElementById('modal-title').textContent = this.t('create.step2');
     }
   }
 
@@ -186,7 +1001,7 @@ class App {
    */
   async loadWorkingDirs() {
     const container = document.getElementById('workdir-list');
-    container.innerHTML = '<div class="loading">加载中...</div>';
+    container.innerHTML = `<div class="loading">${this.t('sessions.loading')}</div>`;
 
     try {
       const response = await fetch('/api/claude/working-dirs', {
@@ -195,13 +1010,18 @@ class App {
         }
       });
 
+      if (response.status === 401) {
+        this.handleUnauthorized();
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to load working dirs');
 
       const data = await response.json();
       const dirs = data.working_dirs || [];
 
       if (dirs.length === 0) {
-        container.innerHTML = '<div class="no-sessions">暂无工作目录记录</div>';
+        container.innerHTML = `<div class="no-sessions">${this.t('create.noHistory')}</div>`;
         return;
       }
 
@@ -217,7 +1037,7 @@ class App {
       });
     } catch (error) {
       console.error('Load working dirs error:', error);
-      container.innerHTML = '<div class="no-sessions">加载失败</div>';
+      container.innerHTML = `<div class="no-sessions">${this.t('sessions.loadFailed')}</div>`;
     }
   }
 
@@ -226,7 +1046,7 @@ class App {
    */
   async browseDirectory(path) {
     const container = document.getElementById('dir-list');
-    container.innerHTML = '<div class="loading">加载中...</div>';
+    container.innerHTML = `<div class="loading">${this.t('sessions.loading')}</div>`;
 
     try {
       const url = path
@@ -254,7 +1074,7 @@ class App {
       const dirs = data.dirs || [];
 
       if (dirs.length === 0) {
-        container.innerHTML = '<div class="no-sessions">无子目录</div>';
+        container.innerHTML = `<div class="no-sessions">${this.t('create.noSubdirs')}</div>`;
         return;
       }
 
@@ -270,7 +1090,7 @@ class App {
       });
     } catch (error) {
       console.error('Browse directory error:', error);
-      container.innerHTML = '<div class="no-sessions">加载失败</div>';
+      container.innerHTML = `<div class="no-sessions">${this.t('sessions.loadFailed')}</div>`;
     }
   }
 
@@ -289,7 +1109,7 @@ class App {
    */
   async loadClaudeSessions(workDir) {
     const container = document.getElementById('claude-sessions');
-    container.innerHTML = '<div class="loading">加载中...</div>';
+    container.innerHTML = `<div class="loading">${this.t('sessions.loading')}</div>`;
 
     try {
       const response = await fetch(`/api/claude/sessions?working_dir=${encodeURIComponent(workDir)}`, {
@@ -304,7 +1124,7 @@ class App {
       const sessions = data.sessions || [];
 
       if (sessions.length === 0) {
-        container.innerHTML = '<div class="no-sessions">该目录暂无 Claude 会话历史</div>';
+        container.innerHTML = `<div class="no-sessions">${this.t('create.noClaude')}</div>`;
         return;
       }
 
@@ -313,7 +1133,7 @@ class App {
         const item = document.createElement('div');
         item.className = 'claude-session-item';
         item.innerHTML = `
-          <div class="claude-session-name">${this.escapeHtml(session.name || '未命名会话')}</div>
+          <div class="claude-session-name">${this.escapeHtml(session.name || this.t('create.unnamed'))}</div>
           <div class="claude-session-meta">
             <span class="claude-session-id">${session.session_id.substring(0, 8)}...</span>
             <span>${this.formatTime(session.updated_at)}</span>
@@ -326,7 +1146,7 @@ class App {
       });
     } catch (error) {
       console.error('Load Claude sessions error:', error);
-      container.innerHTML = '<div class="no-sessions">加载失败</div>';
+      container.innerHTML = `<div class="no-sessions">${this.t('sessions.loadFailed')}</div>`;
     }
   }
 
@@ -343,13 +1163,18 @@ class App {
         }
       });
 
+      if (response.status === 401) {
+        this.handleUnauthorized();
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to load sessions');
 
       const sessions = await response.json();
       this.renderSessions(sessions);
     } catch (error) {
       console.error('Load sessions error:', error);
-      this.showError('加载会话列表失败');
+      this.showError(this.t('error.loadSessions'));
     }
   }
 
@@ -364,8 +1189,8 @@ class App {
       container.innerHTML = `
         <div class="empty">
           <div class="empty-icon">📱</div>
-          <div class="empty-text">暂无会话</div>
-          <div class="empty-hint">点击右上角 + 创建新会话</div>
+          <div class="empty-text">${this.t('sessions.empty')}</div>
+          <div class="empty-hint">${this.t('sessions.emptyHint')}</div>
         </div>
       `;
       return;
@@ -373,7 +1198,10 @@ class App {
 
     sessions.forEach(session => {
       const item = document.createElement('div');
-      item.className = `session-item status-${session.status}`;
+
+      // 检查是否在 SessionManager 中运行
+      const isRunning = this.sessionManager.isSessionOpen(session.id);
+      item.className = `session-item status-${session.status}${isRunning ? ' running' : ''}`;
 
       // 显示名称，如果没有则显示工作目录的最后一级
       const displayName = session.name || this.getLastPathComponent(session.working_dir);
@@ -386,8 +1214,11 @@ class App {
         ? `<div class="session-desc">${this.escapeHtml(session.description)}</div>`
         : '';
 
+      // 运行中标记
+      const runningBadge = isRunning ? `<span class="session-running-badge">${this.t('session.running')}</span>` : '';
+
       item.innerHTML = `
-        <div class="session-name">${this.escapeHtml(displayName)}</div>
+        <div class="session-name">${this.escapeHtml(displayName)}${runningBadge}</div>
         ${descHtml}
         <div class="session-workdir">${this.escapeHtml(shortPath)}</div>
         <div class="session-footer">
@@ -396,8 +1227,8 @@ class App {
             <span class="session-time">${this.formatTime(session.last_active)}</span>
           </div>
           <div class="session-actions">
-            <button class="btn-rename" data-id="${session.id}">重命名</button>
-            <button class="btn-delete" data-id="${session.id}">删除</button>
+            <button class="btn-rename" data-id="${session.id}">${this.t('session.rename')}</button>
+            <button class="btn-delete" data-id="${session.id}">${this.t('session.delete')}</button>
           </div>
         </div>
       `;
@@ -408,7 +1239,7 @@ class App {
         e.stopPropagation();
         // 如果点击的是按钮，不触发连接
         if (e.target.classList.contains('btn-delete') || e.target.classList.contains('btn-rename')) return;
-        this.debugLog('卡片点击: ' + session.id);
+        this.debugLog('card clicked: ' + session.id);
         this.connectSession(session.id, displayName);
       });
 
@@ -434,7 +1265,7 @@ class App {
   shortenPath(path) {
     if (!path) return '';
     // 替换用户目录为 ~
-    const home = '/Users/bill';
+    const home = this.homeDir || '';
     if (path.startsWith(home)) {
       return '~' + path.substring(home.length);
     }
@@ -445,12 +1276,7 @@ class App {
    * 获取状态文本
    */
   getStatusText(status) {
-    const statusMap = {
-      'active': '运行中',
-      'idle': '空闲',
-      'stopped': '已停止'
-    };
-    return statusMap[status] || status;
+    return this.t(`session.status.${status}`, status);
   }
 
   /**
@@ -471,6 +1297,11 @@ class App {
         })
       });
 
+      if (response.status === 401) {
+        this.handleUnauthorized();
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to create session');
 
       const session = await response.json();
@@ -479,22 +1310,95 @@ class App {
       this.connectSession(session.id, sessionName);
     } catch (error) {
       console.error('Create session error:', error);
-      this.showError('创建会话失败');
+      this.showError(this.t('create.failed'));
     }
+  }
+
+  /**
+   * 收起当前 session（放入后台，保持连接）
+   */
+  minimizeCurrentSession() {
+    this.debugLog(`minimizeCurrentSession: currentSession=${this.currentSession}`);
+    if (!this.currentSession) {
+      this.debugLog('minimizeCurrentSession: no current session');
+      return;
+    }
+
+    // 使用 SessionManager 收起
+    this.sessionManager.minimizeCurrent();
+    this.debugLog(`minimizeCurrentSession: done, sessions.size=${this.sessionManager.sessions.size}`);
+  }
+
+  /**
+   * 关闭当前 session（断开连接）
+   */
+  closeCurrentSession() {
+    if (!this.currentSession) {
+      this.showView('sessions');
+      return;
+    }
+
+    const sessionId = this.currentSession;
+
+    // 从 SessionManager 关闭
+    this.sessionManager.closeSession(sessionId);
+
+    // 清理 app 层面的状态
+    this.disconnect();
+    this.showView('sessions');
   }
 
   /**
    * 连接会话
    */
   async connectSession(sessionId, sessionName = '') {
-    this.debugLog('connectSession: ' + sessionId + ', 锁=' + this.isConnecting + ', ws=' + (this.ws ? this.ws.readyState : 'null'));
+    this.debugLog('connectSession: ' + sessionId + ', lock=' + this.isConnecting + ', ws=' + (this.ws ? this.ws.readyState : 'null'));
 
     // 保存会话名称
     this.currentSessionName = sessionName || sessionId.substring(0, 8);
 
+    // 检查 SessionManager 中是否已有此 session
+    if (this.sessionManager.isSessionOpen(sessionId)) {
+      this.debugLog('Session already in background, switch to it');
+      const session = this.sessionManager.sessions.get(sessionId);
+
+      // 恢复 app 层面的状态
+      this.currentSession = sessionId;
+      this.ws = session.ws;
+      this.terminal = session.terminal;
+      this.shouldReconnect = true;
+
+      // 切换到该 session
+      this.sessionManager.switchTo(sessionId);
+
+      // 直接切换视图，不清空终端容器（已有终端）
+      this.showView('terminal');
+
+      // 更新标题
+      const titleEl = document.getElementById('terminal-title');
+      if (titleEl) {
+        titleEl.textContent = this.currentSessionName;
+      }
+
+      // 更新连接状态显示
+      if (session.status === 'connected') {
+        const statusEl = document.getElementById('connection-status');
+        if (statusEl) {
+          statusEl.textContent = '';  // 已连接时不显示文字
+          statusEl.className = 'connection-status connected';
+        }
+        const dot = document.getElementById('connection-dot');
+        if (dot) {
+          dot.className = 'connection-dot connected';
+        }
+      }
+
+      return;
+    }
+
     // 连接锁：防止并发连接
     if (this.isConnecting) {
-      this.debugLog('正在连接中(锁)，跳过');
+      this.debugLog('connecting (locked), skip');
       return;
     }
 
@@ -502,39 +1406,38 @@ class App {
     if (this.currentSession === sessionId && this.ws) {
       const state = this.ws.readyState;
       if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) {
-        this.debugLog('已在连接中(ws)，跳过');
+        this.debugLog('already connecting (ws), skip');
         return;
       }
     }
 
     // 设置连接锁
     this.isConnecting = true;
-    this.debugLog('设置连接锁');
+    this.debugLog('set connection lock');
 
-    if (this.ws) {
-      this.debugLog('关闭旧连接');
-      this.shouldReconnect = false;  // 禁用自动重连
-      this.ws.close();
-      this.ws = null;
-    }
+    // 创建新的 SessionInstance
+    const session = this.sessionManager.openSession(sessionId, this.currentSessionName);
 
+    // 不再关闭旧连接，保持在后台
+    // 只重置当前状态
     this.currentSession = sessionId;
     this.outputQueue = [];
     this.terminal = null;
+    this.ws = null;
 
-    // 测试：先创建 WebSocket，不切换视图
-    this.debugLog('先创建WebSocket（不切换视图）');
+    // 创建 WebSocket
+    this.debugLog('create new WebSocket');
     this.connect(sessionId);
-    this.debugLog('connectSession完成');
+    this.debugLog('connectSession done');
   }
 
   /**
    * 显示终端视图并初始化状态显示
    */
   showTerminalView() {
-    this.debugLog('showTerminalView 开始');
+    this.debugLog('showTerminalView start');
     this.showView('terminal');
-    this.debugLog('showView 完成');
+    this.debugLog('showView done');
 
     // 设置终端标题为会话名称
     const titleEl = document.getElementById('terminal-title');
@@ -542,16 +1445,34 @@ class App {
       titleEl.textContent = this.currentSessionName;
     }
 
-    const terminalContainer = document.getElementById('terminal-output');
-    this.debugLog('获取容器');
-    terminalContainer.innerHTML = `
-      <div id="connect-status" class="connect-status">
-        <div class="connect-spinner"></div>
-        <div class="connect-text">正在连接...</div>
-        <div class="connect-detail">准备中</div>
-      </div>
-    `;
-    this.debugLog('showTerminalView 完成');
+    // 获取或创建当前 session 的容器，在里面显示连接状态
+    const session = this.currentSession ? this.sessionManager.sessions.get(this.currentSession) : null;
+    if (session) {
+      const container = this.sessionManager.getOrCreateContainer(session);
+      container.style.display = 'block';
+      container.innerHTML = `
+        <div id="connect-status" class="connect-status">
+          <div class="connect-spinner"></div>
+          <div class="connect-text">${this.t('status.connecting')}</div>
+          <div class="connect-detail"></div>
+        </div>
+      `;
+      this.debugLog('showTerminalView: show connect status in session container');
+    } else {
+      // 兼容：没有 session 时使用主容器
+      const terminalContainer = document.getElementById('terminal-output');
+      if (terminalContainer) {
+        terminalContainer.innerHTML = `
+          <div id="connect-status" class="connect-status">
+            <div class="connect-spinner"></div>
+            <div class="connect-text">${this.t('status.connecting')}</div>
+            <div class="connect-detail"></div>
+          </div>
+        `;
+      }
+      this.debugLog('showTerminalView: show connect status in main container');
+    }
+    this.debugLog('showTerminalView done');
   }
 
   /**
@@ -588,14 +1509,14 @@ class App {
     // 标题栏
     const header = document.createElement('div');
     header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #333;';
-    header.innerHTML = '<span style="color:#0f0;font-weight:bold;">调试日志</span>';
+    header.innerHTML = `<span style="color:#0f0;font-weight:bold;">${this.t('debug.title')}</span>`;
 
     // 按钮组
     const btnGroup = document.createElement('div');
 
     // 复制按钮
     const copyBtn = document.createElement('button');
-    copyBtn.textContent = '复制';
+    copyBtn.textContent = this.t('debug.copy');
     copyBtn.style.cssText = 'padding:5px 15px;margin-right:10px;background:#333;color:#fff;border:none;border-radius:4px;';
     copyBtn.onclick = () => {
       const text = (window.app?.debugLogs || []).join('\n');
@@ -606,13 +1527,13 @@ class App {
       textarea.select();
       document.execCommand('copy');
       document.body.removeChild(textarea);
-      copyBtn.textContent = '已复制!';
-      setTimeout(() => copyBtn.textContent = '复制', 1000);
+      copyBtn.textContent = this.t('debug.copied');
+      setTimeout(() => copyBtn.textContent = this.t('debug.copy'), 1000);
     };
 
     // 清除按钮
     const clearBtn = document.createElement('button');
-    clearBtn.textContent = '清除';
+    clearBtn.textContent = this.t('debug.clear');
     clearBtn.style.cssText = 'padding:5px 15px;margin-right:10px;background:#333;color:#fff;border:none;border-radius:4px;';
     clearBtn.onclick = () => {
       this.debugLogs = [];
@@ -622,7 +1543,7 @@ class App {
 
     // 关闭按钮
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '关闭';
+    closeBtn.textContent = this.t('debug.close');
     closeBtn.style.cssText = 'padding:5px 15px;background:#c00;color:#fff;border:none;border-radius:4px;';
     closeBtn.onclick = () => this.toggleDebugPanel();
 
@@ -659,40 +1580,188 @@ class App {
   }
 
   /**
+   * 重置调试面板（语言切换时调用）
+   */
+  resetDebugPanel() {
+    const panel = document.getElementById('debug-panel');
+    if (panel) {
+      panel.remove();
+    }
+  }
+
+  /**
    * 切换帮助面板显示
    */
-  toggleHelpPanel() {
+  toggleHelpPanel(event) {
+    if (event) event.stopPropagation();
     const panel = document.getElementById('help-panel');
     if (panel) {
-      panel.classList.toggle('active');
+      const isActive = panel.classList.toggle('active');
+      // 如果打开面板，添加点击外部关闭的监听
+      if (isActive) {
+        setTimeout(() => {
+          document.addEventListener('click', this.closeHelpOnClickOutside);
+        }, 0);
+      } else {
+        document.removeEventListener('click', this.closeHelpOnClickOutside);
+      }
+    }
+  }
+
+  /**
+   * 点击外部关闭帮助面板
+   */
+  closeHelpOnClickOutside = (event) => {
+    const panel = document.getElementById('help-panel');
+    const helpBtn = document.getElementById('help-btn');
+    // 如果点击的不是面板内部也不是帮助按钮，关闭面板
+    if (panel && !panel.contains(event.target) && event.target !== helpBtn) {
+      panel.classList.remove('active');
+      document.removeEventListener('click', this.closeHelpOnClickOutside);
+    }
+  }
+
+  /**
+   * 切换会话列表帮助面板
+   */
+  toggleSessionsHelpPanel(event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById('sessions-help-panel');
+    if (panel) {
+      const isActive = panel.classList.toggle('active');
+      if (isActive) {
+        setTimeout(() => {
+          document.addEventListener('click', this.closeSessionsHelpOnClickOutside);
+        }, 0);
+      } else {
+        document.removeEventListener('click', this.closeSessionsHelpOnClickOutside);
+      }
+    }
+  }
+
+  /**
+   * 关闭会话列表帮助面板
+   */
+  closeSessionsHelpPanel() {
+    const panel = document.getElementById('sessions-help-panel');
+    if (panel) {
+      panel.classList.remove('active');
+      document.removeEventListener('click', this.closeSessionsHelpOnClickOutside);
+    }
+  }
+
+  /**
+   * 点击外部关闭会话列表帮助面板
+   */
+  closeSessionsHelpOnClickOutside = (event) => {
+    const panel = document.getElementById('sessions-help-panel');
+    const helpBtn = document.getElementById('sessions-help-btn');
+    if (panel && !panel.contains(event.target) && event.target !== helpBtn) {
+      panel.classList.remove('active');
+      document.removeEventListener('click', this.closeSessionsHelpOnClickOutside);
+    }
+  }
+
+  /**
+   * 切换用量抽屉
+   */
+  toggleUsageDrawer() {
+    const drawer = document.getElementById('usage-drawer');
+    const btn = document.getElementById('usage-toggle-btn');
+    if (drawer && btn) {
+      const isActive = drawer.classList.toggle('active');
+      btn.classList.toggle('active', isActive);
+    }
+  }
+
+  /**
+   * 切换更多按键面板显示
+   */
+  toggleMoreKeysPanel() {
+    const panel = document.getElementById('more-keys-panel');
+    const btn = document.getElementById('more-keys-btn');
+    if (panel && btn) {
+      const isActive = panel.classList.toggle('active');
+      btn.classList.toggle('active', isActive);
+    }
+  }
+
+  /**
+   * 关闭更多按键面板
+   */
+  closeMoreKeysPanel() {
+    const panel = document.getElementById('more-keys-panel');
+    const btn = document.getElementById('more-keys-btn');
+    if (panel) {
+      panel.classList.remove('active');
+    }
+    if (btn) {
+      btn.classList.remove('active');
     }
   }
 
   /**
    * 更新连接状态显示
+   * @param {string} statusKey - 状态类型: 'connected', 'connecting', 'disconnected', 'error', 'timeout'
+   * @param {string} detail - 详细信息
    */
-  updateConnectStatus(text, detail) {
+  updateConnectStatus(statusKey, detail) {
+    // 根据状态类型获取显示文本
+    const statusTextMap = {
+      'connected': this.t('status.connected'),
+      'connecting': this.t('status.connecting'),
+      'disconnected': this.t('status.disconnected'),
+      'error': this.t('status.error'),
+      'timeout': this.t('status.timeout'),
+      'failed': this.t('status.failed')
+    };
+    const text = statusTextMap[statusKey] || statusKey;
+
+    // 更新终端容器内的连接状态（连接中显示）
     const statusEl = document.getElementById('connect-status');
     if (statusEl) {
       const textEl = statusEl.querySelector('.connect-text');
       const detailEl = statusEl.querySelector('.connect-detail');
       if (textEl) textEl.textContent = text;
-      if (detailEl) detailEl.textContent = detail;
+      if (detailEl) detailEl.textContent = detail || '';
 
       // 如果是超时或错误，显示重试按钮
-      if (text === '连接超时' || text === '连接错误') {
+      if (statusKey === 'timeout' || statusKey === 'error' || statusKey === 'failed') {
         let retryBtn = statusEl.querySelector('.retry-btn');
         if (!retryBtn) {
           retryBtn = document.createElement('button');
           retryBtn.className = 'retry-btn';
-          retryBtn.textContent = '点击重试';
+          retryBtn.textContent = this.t('status.clickRetry');
           retryBtn.style.cssText = 'margin-top:15px;padding:12px 30px;font-size:16px;background:#007aff;color:#fff;border:none;border-radius:8px;cursor:pointer;';
           retryBtn.onclick = () => {
-            this.debugLog('用户点击重试按钮');
+            this.debugLog('user clicked retry');
             this.manualRetryConnect();
           };
           statusEl.appendChild(retryBtn);
         }
+      }
+    }
+
+    // 更新工具栏的圆点和状态文字
+    const dot = document.getElementById('connection-dot');
+    const statusTextEl = document.getElementById('connection-status');
+
+    if (dot && statusTextEl) {
+      // 根据状态设置圆点样式
+      dot.className = 'connection-dot';
+      statusTextEl.className = 'connection-status';
+
+      if (statusKey === 'connected') {
+        dot.classList.add('connected');
+        statusTextEl.textContent = ''; // 已连接时不显示文字
+      } else if (statusKey === 'connecting') {
+        dot.classList.add('connecting');
+        statusTextEl.classList.add('connecting');
+        statusTextEl.textContent = text;
+      } else {
+        dot.classList.add('disconnected');
+        statusTextEl.classList.add('disconnected');
+        statusTextEl.textContent = text;
       }
     }
   }
@@ -703,8 +1772,8 @@ class App {
   manualRetryConnect() {
     if (!this.currentSession) return;
 
-    this.debugLog('手动重试: 直接创建 WebSocket');
-    this.updateConnectStatus('正在连接...', '手动重试中');
+    this.debugLog('manual retry: create WebSocket');
+    this.updateConnectStatus('connecting', this.t('status.manualRetry'));
 
     // 清理旧连接
     if (this.ws) {
@@ -717,12 +1786,12 @@ class App {
     // 直接在点击事件中创建 WebSocket（不使用任何延迟）
     try {
       this.ws = new WebSocket(wsUrl);
-      this.debugLog('手动重试: WebSocket 创建成功, state=' + this.ws.readyState);
+      this.debugLog('manual retry: WebSocket created, state=' + this.ws.readyState);
       this.isConnecting = true;
       this.setupWebSocketHandlers(this.currentSession);
     } catch (e) {
-      this.debugLog('手动重试: 创建失败 ' + e.message);
-      this.updateConnectStatus('连接失败', e.message);
+      this.debugLog('manual retry: failed ' + e.message);
+      this.updateConnectStatus('failed', e.message);
     }
   }
 
@@ -730,7 +1799,7 @@ class App {
    * 初始化终端（在 WebSocket 连接成功后调用）
    */
   initTerminal() {
-    this.debugLog('initTerminal 开始');
+    this.debugLog('initTerminal start');
     console.log('initTerminal called, terminal exists:', !!this.terminal);
 
     // 如果终端已存在，不重复初始化
@@ -740,26 +1809,52 @@ class App {
       return;
     }
 
-    const terminalContainer = document.getElementById('terminal-output');
-    if (!terminalContainer) {
+    // 获取当前 session
+    const session = this.currentSession ? this.sessionManager.sessions.get(this.currentSession) : null;
+    this.debugLog(`initTerminal: session=${session ? session.id : 'null'}`);
+
+    // 获取或创建 session 专属容器
+    let container;
+    if (session) {
+      container = this.sessionManager.getOrCreateContainer(session);
+      container.style.display = 'block';
+      container.innerHTML = ''; // 清空状态显示
+      this.debugLog(`initTerminal: use session container ${container.id}`);
+    } else {
+      // 兼容：没有 session 时使用主容器
+      container = document.getElementById('terminal-output');
+      if (container) {
+        container.innerHTML = '';
+      }
+      this.debugLog('initTerminal: use main container');
+    }
+
+    if (!container) {
       console.error('Terminal container not found');
+      this.debugLog('initTerminal: container not found!');
       return;
     }
 
-    // 清空状态显示
-    terminalContainer.innerHTML = '';
-
     try {
       console.log('Creating new Terminal instance...');
-      this.terminal = new Terminal(terminalContainer, () => {
+      this.debugLog('initTerminal: create Terminal instance');
+      this.terminal = new Terminal(container, () => {
         // 终端就绪后，刷新队列中的输出
         console.log('Terminal ready callback, flushing queue...');
         this.flushOutputQueue();
       });
       console.log('Terminal created successfully');
+      this.debugLog('initTerminal: Terminal created');
+
+      // 保存 terminal 到 SessionManager
+      if (session) {
+        session.terminal = this.terminal;
+        this.debugLog('initTerminal: save terminal to session');
+      }
     } catch (error) {
       console.error('Terminal init error:', error);
-      terminalContainer.innerHTML = '<div style="color:red;padding:20px;">终端初始化失败: ' + error.message + '</div>';
+      this.debugLog('initTerminal: error ' + error.message);
+      container.innerHTML = '<div style="color:red;padding:20px;">终端初始化失败: ' + error.message + '</div>';
     }
   }
 
@@ -802,36 +1897,36 @@ class App {
 
     // ====== iOS 26 Safari Workaround: 二次连接法 ======
     // 第一次连接：可能会卡在 CONNECTING，但能激活网络栈
-    this.debugLog('第一次创建 WebSocket');
+    this.debugLog('1st WebSocket create');
     try {
       this.ws = new WebSocket(wsUrl);
-      this.debugLog('第一次创建成功, state=' + this.ws.readyState);
+      this.debugLog('1st create ok, state=' + this.ws.readyState);
     } catch (e) {
-      this.debugLog('第一次创建失败: ' + e.message);
+      this.debugLog('1st create failed: ' + e.message);
     }
 
     // 1 秒后检查：如果仍卡在 CONNECTING，关闭并创建第二个连接
     setTimeout(() => {
       if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-        this.debugLog('第一次连接仍在 CONNECTING，关闭并重试');
+        this.debugLog('1st still CONNECTING, close and retry');
         try { this.ws.close(); } catch (e) {}
         this.ws = null;
 
         // 第二次连接：此时网络栈已激活，连接应该能成功
-        this.debugLog('第二次创建 WebSocket');
+        this.debugLog('2nd WebSocket create');
         try {
           this.ws = new WebSocket(wsUrl);
-          this.debugLog('第二次创建成功, state=' + this.ws.readyState);
+          this.debugLog('2nd create ok, state=' + this.ws.readyState);
           // 重新绑定事件到新的 WebSocket 实例
           this.bindWebSocketEvents(sessionId);
         } catch (e) {
-          this.debugLog('第二次创建失败: ' + e.message);
+          this.debugLog('2nd create failed: ' + e.message);
           this.isConnecting = false;
-          this.updateConnectStatus('连接失败', e.message);
+          this.updateConnectStatus('failed', e.message);
         }
       } else {
         // 第一次连接成功（非 iOS 26 Safari，或已修复）
-        this.debugLog('第一次连接状态: ' + (this.ws ? this.ws.readyState : 'null'));
+        this.debugLog('1st connection state: ' + (this.ws ? this.ws.readyState : 'null'));
       }
     }, 1000);
     // ====== End iOS 26 Workaround ======
@@ -847,45 +1942,67 @@ class App {
     if (!this.ws) return;
 
     this.ws.onopen = () => {
-      this.debugLog('onopen 触发');
+      this.debugLog('onopen fired');
       this.isConnecting = false;
       this.shouldReconnect = true;
       this.reconnectAttempts = 0;
+
+      // 保存 ws 到 SessionManager
+      const session = this.sessionManager.sessions.get(sessionId);
+      if (session) {
+        session.ws = this.ws;
+        session.status = 'connected';
+      }
+
       // 连接成功后再切换视图
-      this.debugLog('连接成功，切换到终端视图');
+      this.debugLog('Connection success, switch to terminal view');
       this.showTerminalView();
-      this.updateConnectStatus('已连接', 'WebSocket已连接');
+      this.updateConnectStatus('connected', '');
+
+      // 更新悬浮按钮
+      if (this.floatingButton) {
+        this.floatingButton.update();
+      }
     };
 
     this.ws.onmessage = (event) => {
-      this.debugLog('onmessage: ' + event.data.substring(0, 50));
-      this.handleMessage(event.data);
+      // 网络数据日志已关闭，减少噪音
+      // this.debugLog('onmessage: ' + event.data.substring(0, 50));
+      // 使用捕获的 sessionId，确保消息写入正确的 session 终端
+      this.handleMessage(event.data, sessionId);
     };
 
     this.ws.onerror = (error) => {
-      this.debugLog('onerror 触发');
+      this.debugLog('onerror triggered');
       this.isConnecting = false;
-      this.updateConnectStatus('连接错误', '请检查网络连接');
+      this.updateConnectStatus('error', this.t('status.checkNetwork'));
     };
 
     this.ws.onclose = (event) => {
       this.debugLog('onclose code=' + event.code);
       this.isConnecting = false;
-      this.updateConnectStatus('连接断开', `代码: ${event.code}`);
-      this.updateStatus('连接断开', false);
+      this.updateConnectStatus('disconnected', `${this.t('status.code')}: ${event.code}`);
+      this.updateStatus(this.t('status.disconnected'), false);
 
       if (this.heartbeatInterval) {
         clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = null;
       }
 
+      // 1008 = Invalid token，需要重新登录
+      if (event.code === 1008) {
+        this.debugLog('Token invalid, redirect to login');
+        this.handleUnauthorized();
+        return;
+      }
+
       if (this.shouldReconnect && this.currentSession) {
         if (event.code === 1001 || event.code === 1006) {
-          this.debugLog('触发自动重连');
+          this.debugLog('Triggering auto reconnect');
           this.attemptReconnect();
         }
       } else {
-        this.debugLog('不重连: shouldReconnect=' + this.shouldReconnect);
+        this.debugLog('No reconnect: shouldReconnect=' + this.shouldReconnect);
       }
     };
 
@@ -901,30 +2018,35 @@ class App {
 
   /**
    * 处理 WebSocket 消息
+   * @param {string} data - 消息数据
+   * @param {string} sessionId - 消息所属的 session ID
    */
-  handleMessage(data) {
+  handleMessage(data, sessionId) {
     try {
       const message = JSON.parse(data);
-      console.log('Received message:', message.type);
+      console.log('Received message:', message.type, 'for session:', sessionId?.substring(0, 8));
+
+      // 获取消息对应的 session
+      const session = sessionId ? this.sessionManager.sessions.get(sessionId) : null;
 
       switch (message.type) {
         case 'connecting':
           console.log('Session connecting:', message.message);
-          this.updateStatus('连接中...', false);
-          this.updateConnectStatus('正在连接...', '启动会话进程');
+          this.updateStatus(this.t('status.connecting'), false);
+          this.updateConnectStatus('connecting', this.t('status.startingSession'));
           break;
 
         case 'connected':
-          this.debugLog('收到connected消息');
-          this.updateConnectStatus('已连接', '等待500ms后初始化终端');
-          this.updateStatus('已连接', true);
+          this.debugLog('received connected message');
+          this.updateConnectStatus('connected', this.t('status.waitingInit'));
+          this.updateStatus(this.t('status.connected'), true);
           // 延迟初始化 xterm.js，避免与 DOM 操作冲突
           setTimeout(() => {
-            this.debugLog('开始初始化终端');
+            this.debugLog('start initializing terminal');
             this.initTerminal();
-            this.debugLog('终端初始化完成，等待resize');
+            this.debugLog('terminal init done, waiting for resize');
             setTimeout(() => {
-              this.debugLog('调用resizeTerminal');
+              this.debugLog('call resizeTerminal');
               this.resizeTerminal();
             }, 200);
           }, 500);
@@ -933,9 +2055,11 @@ class App {
         case 'output':
           console.log('Output received, data length:', message.data?.length);
           if (message.data) {
-            if (this.terminal) {
+            // 使用 session 对应的终端，而不是全局 this.terminal
+            const targetTerminal = session?.terminal || this.terminal;
+            if (targetTerminal) {
               try {
-                this.terminal.write(message.data);
+                targetTerminal.write(message.data);
               } catch (writeError) {
                 console.error('Terminal write error:', writeError);
               }
@@ -949,7 +2073,7 @@ class App {
 
         case 'error':
           console.error('Server error:', message.message);
-          this.updateConnectStatus('错误', message.message);
+          this.updateConnectStatus('error', message.message);
           this.showError(message.message);
           break;
 
@@ -984,9 +2108,15 @@ class App {
    * 发送输入
    */
   sendInput() {
+    this.debugLog('sendInput called');
     const inputRow = document.getElementById('input-row');
     const inputEl = inputRow?.querySelector('.input-field');
-    if (!inputEl) return;
+    if (!inputEl) {
+      this.debugLog('sendInput: input field not found');
+      return;
+    }
+
+    this.debugLog('sendInput: value length=' + inputEl.value.length);
 
     // 发送输入内容（可以为空）+ 回车
     if (inputEl.value) {
@@ -994,8 +2124,9 @@ class App {
     }
     this.sendMessage({ type: 'input', data: '\r' });
 
-    // 清空输入框
+    // 清空输入框并重置高度
     inputEl.value = '';
+    inputEl.style.height = 'auto';
   }
 
   /**
@@ -1070,13 +2201,39 @@ class App {
    */
   sendKey(key) {
     const keyMap = {
+      // 导航
       'up': '\x1b[A',
       'down': '\x1b[B',
+      // 中断/退出
       'escape': '\x1b',
-      'tab': '\t',
       'ctrl-c': '\x03',
+      // 输入/确认
+      'tab': '\t',
       'enter': '\r',
+      // 组合键
+      'ctrl-o': '\x0f',      // 切换详细输出模式
+      'ctrl-b': '\x02',      // 后台运行
+      'esc-esc': '\x1b\x1b', // 回滚（双击 ESC）
+      'shift-tab': '\x1b[Z', // 切换权限模式
     };
+
+    // 斜杠命令（需要分两次发送：命令 + 回车）
+    const cmdMap = {
+      'cmd-resume': '/resume',
+      'cmd-clear': '/clear',
+      'cmd-help': '/help',
+      'cmd-context': '/context',
+      'cmd-memory': '/memory',
+      'cmd-compact': '/compact',
+    };
+
+    // 处理斜杠命令：先发命令，再发回车
+    if (cmdMap[key]) {
+      // 方法1：直接连续发送两条消息
+      this.sendMessage({ type: 'input', data: cmdMap[key] });
+      this.sendMessage({ type: 'input', data: '\r' });
+      return;
+    }
 
     const sequence = keyMap[key];
     if (sequence) {
@@ -1091,11 +2248,11 @@ class App {
    * 尝试重连
    */
   attemptReconnect() {
-    this.debugLog('attemptReconnect 调用');
+    this.debugLog('attemptReconnect called');
 
     // 检查连接锁
     if (this.isConnecting) {
-      this.debugLog('正在连接中(锁)，跳过重连');
+      this.debugLog('connecting (locked), skip reconnect');
       return;
     }
 
@@ -1106,24 +2263,24 @@ class App {
     }
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.debugLog('达到最大重连次数');
-      this.updateStatus('连接失败，请手动重连', false);
+      this.debugLog('max reconnect attempts reached');
+      this.updateStatus(this.t('reconnect.failed'), false);
       return;
     }
 
     this.reconnectAttempts++;
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
 
-    this.debugLog(`重连 ${this.reconnectAttempts}/${this.maxReconnectAttempts}, ${delay}ms后`);
-    this.updateStatus(`重连中 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`, false);
+    this.debugLog(`reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}, in ${delay}ms`);
+    this.updateStatus(`${this.t('reconnect.trying')} (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`, false);
 
     this.reconnectTimeout = setTimeout(() => {
       if (this.shouldReconnect && this.currentSession && !this.isConnecting) {
-        this.debugLog('执行重连');
+        this.debugLog('execute reconnect');
         this.isConnecting = true;  // 设置连接锁
         this.connect(this.currentSession);
       } else {
-        this.debugLog('取消重连: shouldReconnect=' + this.shouldReconnect + ', isConnecting=' + this.isConnecting);
+        this.debugLog('cancel reconnect: shouldReconnect=' + this.shouldReconnect + ', isConnecting=' + this.isConnecting);
       }
     }, delay);
   }
@@ -1157,7 +2314,7 @@ class App {
       const size = this.terminal.getSize();
       // 减少列数，让内容显示更宽松
       const adjustedCols = Math.max(size.cols - 3, 20);
-      console.log('Terminal resized to:', size.rows, 'x', adjustedCols, '(原始:', size.cols, ')');
+      console.log('Terminal resized to:', size.rows, 'x', adjustedCols, '(original:', size.cols, ')');
       this.sendMessage({
         type: 'resize',
         rows: size.rows,
@@ -1170,7 +2327,7 @@ class App {
    * 重命名会话
    */
   async renameSession(sessionId, currentName) {
-    const newName = prompt('输入新名称:', currentName);
+    const newName = prompt(this.t('prompt.rename'), currentName);
     if (!newName || newName === currentName) return;
 
     try {
@@ -1188,7 +2345,7 @@ class App {
       this.loadSessions();
     } catch (error) {
       console.error('Rename session error:', error);
-      this.showError('重命名失败');
+      this.showError(this.t('error.renameFailed'));
     }
   }
 
@@ -1196,7 +2353,7 @@ class App {
    * 删除会话
    */
   async deleteSession(sessionId) {
-    if (!confirm('确定要删除这个会话吗？')) return;
+    if (!confirm(this.t('confirm.delete'))) return;
 
     try {
       const response = await fetch(`/api/sessions/${sessionId}`, {
@@ -1211,7 +2368,7 @@ class App {
       this.loadSessions();
     } catch (error) {
       console.error('Delete session error:', error);
-      this.showError('删除会话失败');
+      this.showError(this.t('error.deleteFailed'));
     }
   }
 
@@ -1219,7 +2376,7 @@ class App {
    * 断开连接
    */
   disconnect() {
-    this.debugLog('disconnect 调用');
+    this.debugLog('disconnect called');
     // 禁用自动重连
     this.shouldReconnect = false;
     // 重置连接锁
@@ -1236,6 +2393,12 @@ class App {
       this.heartbeatInterval = null;
     }
 
+    // 清理倒计时定时器
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -1249,6 +2412,9 @@ class App {
     // 清空输出队列
     this.outputQueue = [];
 
+    // 关闭更多按键面板
+    this.closeMoreKeysPanel();
+
     this.currentSession = null;
   }
 
@@ -1260,10 +2426,10 @@ class App {
     document.querySelectorAll('.view').forEach(view => {
       view.classList.remove('active');
     });
-    this.debugLog('移除active完成');
+    this.debugLog('remove active done');
 
     document.getElementById(`${viewName}-view`).classList.add('active');
-    this.debugLog('添加active完成');
+    this.debugLog('add active done');
 
     // 动态创建/销毁 input
     const inputRow = document.getElementById('input-row');
@@ -1271,21 +2437,28 @@ class App {
 
     if (viewName === 'terminal') {
       if (!input) {
-        input = document.createElement('input');
-        input.type = 'text';
+        input = document.createElement('textarea');
         input.className = 'input-field';
         input.autocomplete = 'off';
+        input.rows = 1;
+        input.placeholder = this.t('terminal.inputPlaceholder');
 
         // 监听输入法
         input.addEventListener('compositionstart', () => { this.isComposing = true; });
         input.addEventListener('compositionend', () => { this.isComposing = false; });
 
-        // 回车发送
+        // 回车发送（Shift+Enter 换行）
         input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !this.isComposing) {
+          if (e.key === 'Enter' && !e.shiftKey && !this.isComposing) {
             e.preventDefault();
             this.sendInput();
           }
+        });
+
+        // 自动调整高度
+        input.addEventListener('input', () => {
+          input.style.height = 'auto';
+          input.style.height = Math.min(input.scrollHeight, 300) + 'px';
         });
 
         inputRow.insertBefore(input, inputRow.firstChild);
@@ -1298,6 +2471,7 @@ class App {
 
     if (viewName === 'sessions') {
       this.loadSessions();
+      this.loadUsageSummary();
     }
   }
 
@@ -1347,15 +2521,15 @@ class App {
 
     // 小于1分钟
     if (diff < 60000) {
-      return '刚刚';
+      return this.t('time.justNow');
     }
     // 小于1小时
     if (diff < 3600000) {
-      return Math.floor(diff / 60000) + '分钟前';
+      return Math.floor(diff / 60000) + ' ' + this.t('time.minutesAgo');
     }
     // 小于24小时
     if (diff < 86400000) {
-      return Math.floor(diff / 3600000) + '小时前';
+      return Math.floor(diff / 3600000) + ' ' + this.t('time.hoursAgo');
     }
     // 其他
     return date.toLocaleDateString();

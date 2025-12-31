@@ -1,3 +1,17 @@
+# Copyright (c) 2025 BillChen
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from fastapi import FastAPI, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +43,16 @@ async def lifespan(app: FastAPI):
     # 连接数据库
     db = SQLiteDB("data/sessions.db")
     await db.connect()
+
+    # 从数据库加载 AUTH_TOKEN，如果没有则使用 .env 中的值并保存到数据库
+    db_token = await db.get_config("AUTH_TOKEN")
+    if db_token:
+        settings.AUTH_TOKEN = db_token
+        logger.info("AUTH_TOKEN loaded from database")
+    else:
+        # 首次启动，将 .env 中的 token 保存到数据库
+        await db.set_config("AUTH_TOKEN", settings.AUTH_TOKEN)
+        logger.info("AUTH_TOKEN saved to database from .env")
 
     # 创建 session manager
     session_manager = SessionManager(db)

@@ -1,3 +1,17 @@
+# Copyright (c) 2025 BillChen
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 会话管理器
 管理 Claude Code 会话的生命周期
@@ -25,6 +39,8 @@ class SessionManager:
         # 活跃进程: session_id -> ManagedProcess
         self.active_processes: Dict[str, ManagedProcess] = {}
         self._cleanup_task: Optional[asyncio.Task] = None
+        # 防止并发停止进程
+        self._stop_locks: Dict[str, asyncio.Lock] = {}
 
     async def start(self):
         """启动管理器"""
@@ -185,7 +201,8 @@ class SessionManager:
 
     async def delete_session(self, session_id: str):
         """删除会话"""
-        await self._stop_process(session_id)
+        # 停止进程，不更新数据库（因为马上要删除）
+        await self._stop_process(session_id, update_db=False)
         await self.db.delete_session(session_id)
         logger.info(f"Session deleted: {session_id}")
 
@@ -248,20 +265,49 @@ class SessionManager:
 
         return process
 
-    async def _stop_process(self, session_id: str):
-        """停止会话进程"""
-        if session_id in self.active_processes:
-            process = self.active_processes[session_id]
-            await process.stop()
-            del self.active_processes[session_id]
+    async def _stop_process(self, session_id: str, update_db: bool = True):
+        """停止会话进程
 
-            await self.db.update_session(session_id, {
-                "status": "idle",
-                "pid": None,
-                "updated_at": datetime.now().isoformat()
-            })
+        Args:
+            session_id: 会话ID
+            update_db: 是否更新数据库状态（删除时不需要更新）
+        """
+        # 获取或创建锁
+        if session_id not in self._stop_locks:
+            self._stop_locks[session_id] = asyncio.Lock()
+
+        lock = self._stop_locks[session_id]
+
+        async with lock:
+            # 再次检查是否存在（可能已被其他协程停止）
+            if session_id not in self.active_processes:
+                logger.debug(f"Process already stopped for session {session_id}")
+                return
+
+            process = self.active_processes[session_id]
+            try:
+                await process.stop()
+            except Exception as e:
+                logger.error(f"Error stopping process for session {session_id}: {e}")
+
+            # 从字典中移除
+            self.active_processes.pop(session_id, None)
+
+            # 只在需要时更新数据库（删除操作不需要）
+            if update_db:
+                try:
+                    await self.db.update_session(session_id, {
+                        "status": "idle",
+                        "pid": None,
+                        "updated_at": datetime.now().isoformat()
+                    })
+                except Exception as e:
+                    logger.error(f"Error updating session status: {e}")
 
             logger.info(f"Process stopped for session {session_id}")
+
+        # 清理锁
+        self._stop_locks.pop(session_id, None)
 
     async def _stop_oldest_process(self):
         """停止最久未使用的进程"""
