@@ -224,7 +224,13 @@ class TerminalManager:
             return False
 
         try:
-            os.write(terminal.master_fd, data.encode('utf-8'))
+            # 识别以 \n 结尾且有内容的消息，转换为执行命令
+            if data.endswith('\n') and len(data) > 1:
+                content = data.rstrip('\n')
+                os.write(terminal.master_fd, content.encode('utf-8'))
+                os.write(terminal.master_fd, b'\r')
+            else:
+                os.write(terminal.master_fd, data.encode('utf-8'))
             return True
         except OSError as e:
             logger.error(f"[Terminal:{terminal_id[:8]}] Write error: {e}")

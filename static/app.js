@@ -2683,16 +2683,11 @@ class App {
     inputEl.value = '';
     inputEl.style.height = 'auto';
 
-    // 必须分开发送：先发内容，再单独发回车
-    // 加延迟避免时序问题
+    // 合并发送：content + '\n'，后端识别并处理
     if (content) {
-      this.sendMessage({ type: 'input', data: content });
-      // 延迟 100ms 再发送回车，避免时序问题
-      setTimeout(() => {
-        this.sendMessage({ type: 'input', data: '\r' });
-      }, 100);
+      this.sendMessage({ type: 'input', data: content + '\n' });
     } else {
-      this.sendMessage({ type: 'input', data: '\r' });
+      this.sendMessage({ type: 'input', data: '\n' });
     }
   }
 

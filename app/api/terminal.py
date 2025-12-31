@@ -193,6 +193,7 @@ async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict):
 
     if msg_type == "input":
         input_data = data.get("data", "")
+        logger.info(f"[Terminal:{terminal.terminal_id[:8]}] Input received: {repr(input_data)}")
         await terminal_manager.write(terminal.terminal_id, input_data)
 
     elif msg_type == "resize":
