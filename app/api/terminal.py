@@ -181,10 +181,7 @@ async def handle_terminal_websocket(
         if terminal:
             remaining = terminal_manager.decrement_websocket_count(terminal.terminal_id)
             logger.info(f"[Terminal:{terminal.terminal_id[:8]}] WebSocket disconnected (remaining: {remaining})")
-
-            # 如果没有连接了，关闭终端
-            if remaining == 0:
-                await terminal_manager.close_terminal(terminal.terminal_id)
+            # 不立即关闭，让 cleanup_loop 延迟清理（给重连机会）
 
 
 async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict):

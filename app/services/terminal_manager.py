@@ -45,6 +45,7 @@ class Terminal:
     master_fd: int                # PTY master fd
     created_at: datetime = field(default_factory=datetime.now)
     websocket_count: int = 0      # 连接的 WebSocket 数量
+    last_disconnect_at: Optional[datetime] = None  # 最后断开时间（用于延迟清理）
     _output_callbacks: List[Callable] = field(default_factory=list)
     _output_history: bytearray = field(default_factory=bytearray)
     _read_task: Optional[asyncio.Task] = None
@@ -175,14 +176,52 @@ class TerminalManager:
         return self.terminals.get(terminal_id)
 
     async def close_terminal(self, terminal_id: str):
-        """关闭终端"""
+        """关闭终端（优雅退出）"""
         terminal = self.terminals.pop(terminal_id, None)
         if not terminal:
             return
 
-        logger.info(f"[Terminal:{terminal_id[:8]}] Closing...")
+        logger.info(f"[Terminal:{terminal_id[:8]}] Closing gracefully...")
 
-        # 取消读取任务
+        # 1. 发送 /exit 命令让 Claude CLI 优雅退出（持久化历史）
+        try:
+            os.write(terminal.master_fd, b'/exit\r')
+            logger.info(f"[Terminal:{terminal_id[:8]}] Sent /exit command")
+        except OSError as e:
+            logger.warning(f"[Terminal:{terminal_id[:8]}] Failed to send /exit: {e}")
+
+        # 2. 等待 "See ya!" 响应或进程退出（最多 10 秒）
+        exited = False
+        see_ya_detected = False
+        output_buffer = b''
+
+        for i in range(20):  # 20 * 0.5s = 10s
+            # 检查进程是否已退出
+            try:
+                os.kill(terminal.pid, 0)
+            except ProcessLookupError:
+                logger.info(f"[Terminal:{terminal_id[:8]}] Process exited gracefully after {(i+1)*0.5:.1f}s")
+                exited = True
+                break
+
+            # 尝试读取输出，检测 "See ya!"
+            if not see_ya_detected:
+                try:
+                    import select
+                    readable, _, _ = select.select([terminal.master_fd], [], [], 0.1)
+                    if readable:
+                        data = os.read(terminal.master_fd, 4096)
+                        output_buffer += data
+                        # 检测退出确认（可能包含 ANSI 转义序列）
+                        if b'See ya' in output_buffer or b'see ya' in output_buffer:
+                            see_ya_detected = True
+                            logger.info(f"[Terminal:{terminal_id[:8]}] Detected 'See ya!' - Claude is exiting")
+                except OSError:
+                    pass
+
+            await asyncio.sleep(0.4 if not see_ya_detected else 0.5)
+
+        # 3. 取消读取任务
         if terminal._read_task:
             terminal._read_task.cancel()
             try:
@@ -190,32 +229,35 @@ class TerminalManager:
             except asyncio.CancelledError:
                 pass
 
-        # 关闭 PTY
+        # 4. 关闭 PTY
         try:
             os.close(terminal.master_fd)
         except OSError:
             pass
 
-        # 终止进程
-        try:
-            os.kill(terminal.pid, signal.SIGTERM)
-            # 等待一小段时间
-            await asyncio.sleep(0.1)
-            # 如果还活着，强制杀死
+        # 5. 如果进程还没退出，强制终止
+        if not exited:
             try:
-                os.kill(terminal.pid, signal.SIGKILL)
+                os.kill(terminal.pid, 0)
+                logger.warning(f"[Terminal:{terminal_id[:8]}] Process didn't exit after 10s, sending SIGTERM")
+                os.kill(terminal.pid, signal.SIGTERM)
+                await asyncio.sleep(2.0)
+                try:
+                    os.kill(terminal.pid, 0)
+                    logger.warning(f"[Terminal:{terminal_id[:8]}] Force killing with SIGKILL")
+                    os.kill(terminal.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             except ProcessLookupError:
                 pass
-        except ProcessLookupError:
-            pass
 
-        # 回收僵尸进程
+        # 6. 回收僵尸进程
         try:
             os.waitpid(terminal.pid, os.WNOHANG)
         except ChildProcessError:
             pass
 
-        logger.info(f"[Terminal:{terminal_id[:8]}] Closed")
+        logger.info(f"[Terminal:{terminal_id[:8]}] Closed (see_ya={see_ya_detected})")
 
     async def write(self, terminal_id: str, data: str) -> bool:
         """向终端写入数据"""
@@ -295,6 +337,10 @@ class TerminalManager:
         terminal = self.terminals.get(terminal_id)
         if terminal:
             terminal.websocket_count += 1
+            # 重连时清除断开时间，取消延迟清理
+            if terminal.last_disconnect_at:
+                terminal.last_disconnect_at = None
+                logger.info(f"[Terminal:{terminal_id[:8]}] Reconnected, cancelled delayed cleanup")
             logger.debug(f"[Terminal:{terminal_id[:8]}] WebSocket count: {terminal.websocket_count}")
 
     def decrement_websocket_count(self, terminal_id: str) -> int:
@@ -302,32 +348,44 @@ class TerminalManager:
         terminal = self.terminals.get(terminal_id)
         if terminal:
             terminal.websocket_count = max(0, terminal.websocket_count - 1)
-            logger.debug(f"[Terminal:{terminal_id[:8]}] WebSocket count: {terminal.websocket_count}")
+            # 当变成 0 连接时，记录断开时间（用于延迟清理）
+            if terminal.websocket_count == 0:
+                terminal.last_disconnect_at = datetime.now()
+                logger.info(f"[Terminal:{terminal_id[:8]}] All WebSockets disconnected, marked for delayed cleanup")
+            else:
+                logger.debug(f"[Terminal:{terminal_id[:8]}] WebSocket count: {terminal.websocket_count}")
             return terminal.websocket_count
         return 0
 
     async def _cleanup_loop(self):
-        """定期清理孤儿终端（每小时）"""
+        """定期清理孤儿终端（每分钟检查，空闲5分钟后清理）"""
+        CLEANUP_DELAY = 300  # 5分钟延迟
+        CHECK_INTERVAL = 60  # 每分钟检查一次
+
         while True:
             try:
-                await asyncio.sleep(3600)  # 每小时检查一次
+                await asyncio.sleep(CHECK_INTERVAL)
 
                 orphans = []
+                now = datetime.now()
+
                 for terminal_id, terminal in self.terminals.items():
                     # 检查进程是否还活着
                     try:
                         os.kill(terminal.pid, 0)
                     except ProcessLookupError:
+                        logger.info(f"[Terminal:{terminal_id[:8]}] Process dead, marking for cleanup")
                         orphans.append(terminal_id)
                         continue
 
-                    # 检查是否有 WebSocket 连接
-                    if terminal.websocket_count == 0:
-                        # 计算空闲时间（简化：没有 WebSocket 连接就认为是孤儿）
-                        orphans.append(terminal_id)
+                    # 检查是否无连接且超过延迟时间
+                    if terminal.websocket_count == 0 and terminal.last_disconnect_at:
+                        idle_seconds = (now - terminal.last_disconnect_at).total_seconds()
+                        if idle_seconds >= CLEANUP_DELAY:
+                            logger.info(f"[Terminal:{terminal_id[:8]}] Idle for {idle_seconds:.0f}s, marking for cleanup")
+                            orphans.append(terminal_id)
 
                 for terminal_id in orphans:
-                    logger.info(f"[Terminal:{terminal_id[:8]}] Cleaning up orphan")
                     await self.close_terminal(terminal_id)
 
                 if orphans:
