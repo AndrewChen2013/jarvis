@@ -15,6 +15,25 @@
 
 set -e
 
+# 检查是否为 root 用户
+if [ "$EUID" -eq 0 ]; then
+    echo ""
+    echo -e "\033[0;31m╔════════════════════════════════════════════════════════════════╗\033[0m"
+    echo -e "\033[0;31m║  ERROR: Do not run as root!                                    ║\033[0m"
+    echo -e "\033[0;31m║                                                                ║\033[0m"
+    echo -e "\033[0;31m║  Claude Code does not allow --dangerously-skip-permissions    ║\033[0m"
+    echo -e "\033[0;31m║  with root/sudo privileges for security reasons.              ║\033[0m"
+    echo -e "\033[0;31m║                                                                ║\033[0m"
+    echo -e "\033[0;31m║  Solution: Create a non-root user to run claude-remote:       ║\033[0m"
+    echo -e "\033[0;31m║                                                                ║\033[0m"
+    echo -e "\033[0;31m║    useradd -m claude                                          ║\033[0m"
+    echo -e "\033[0;31m║    su - claude                                                ║\033[0m"
+    echo -e "\033[0;31m║    # Then install Claude Code and run this script             ║\033[0m"
+    echo -e "\033[0;31m╚════════════════════════════════════════════════════════════════╝\033[0m"
+    echo ""
+    exit 1
+fi
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
