@@ -2667,22 +2667,16 @@ class App {
    * 发送输入
    */
   sendInput() {
-    this.debugLog('sendInput called');
     const inputRow = document.getElementById('input-row');
     const inputEl = inputRow?.querySelector('.input-field');
-    if (!inputEl) {
-      this.debugLog('sendInput: input field not found');
-      return;
-    }
+    if (!inputEl) return;
 
-    this.debugLog('sendInput: value length=' + inputEl.value.length);
-
-    // 发送输入内容，然后发送回车
+    // 必须分开发送：先发内容，再单独发回车
+    // 合并发送会导致 PTY 处理异常
     if (inputEl.value) {
       this.sendMessage({ type: 'input', data: inputEl.value });
     }
-    // 发送回车（与虚拟键盘 Enter 按钮一致）
-    this.sendKey('enter');
+    this.sendMessage({ type: 'input', data: '\r' });
 
     // 清空输入框并重置高度
     inputEl.value = '';
