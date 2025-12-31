@@ -142,16 +142,38 @@ Claude 有 70% 的时间在输出。等待就是浪费。
 git clone https://github.com/AndrewChen2013/claude-remote.git
 cd claude-remote
 
-# 运行安装脚本
-chmod +x deploy/install.sh
-./deploy/install.sh
+# 运行管理脚本
+chmod +x deploy/manage.sh
+./deploy/manage.sh
 ```
 
-安装脚本会：
+**首次运行：** 脚本会自动：
 - 创建 Python 虚拟环境
 - 安装依赖
 - 生成随机 AUTH_TOKEN
 - 启动服务
+
+**后续运行：** 显示交互式菜单：
+
+```
+  1) 启动服务
+  2) 停止服务
+  3) 重启服务
+  4) 查看日志
+
+  5) 启用开机自启动
+  6) 禁用开机自启动
+
+  7) 重新安装依赖
+
+  0) 退出
+```
+
+**功能特性：**
+- 服务管理（启动/停止/重启）
+- 实时日志查看
+- 开机自启动（macOS LaunchAgent / Linux systemd）
+- 依赖安装与更新
 
 ### 访问
 

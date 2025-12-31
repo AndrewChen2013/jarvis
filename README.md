@@ -142,16 +142,38 @@ This project was developed using Claude Remote. After the core features were com
 git clone https://github.com/AndrewChen2013/claude-remote.git
 cd claude-remote
 
-# Run install script
-chmod +x deploy/install.sh
-./deploy/install.sh
+# Run management script
+chmod +x deploy/manage.sh
+./deploy/manage.sh
 ```
 
-The script will:
+**First Run:** The script will automatically:
 - Create Python virtual environment
 - Install dependencies
 - Generate a random AUTH_TOKEN
 - Start the service
+
+**Subsequent Runs:** Shows an interactive menu:
+
+```
+  1) Start service
+  2) Stop service
+  3) Restart service
+  4) View logs
+
+  5) Enable auto-start on boot
+  6) Disable auto-start on boot
+
+  7) Reinstall dependencies
+
+  0) Exit
+```
+
+**Features:**
+- Service management (start/stop/restart)
+- Real-time log viewing
+- Auto-start on boot (macOS LaunchAgent / Linux systemd)
+- Dependency installation and updates
 
 ### Access
 

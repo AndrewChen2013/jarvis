@@ -368,12 +368,19 @@ class FloatingButton {
     let targetSession = null;
 
     const previousId = this.app.sessionManager.previousId;
-    this.log(`onSingleClick: previousId=${previousId}`);
-    if (previousId && this.app.sessionManager.sessions.has(previousId)) {
+    const sessionsSize = this.app.sessionManager.sessions.size;
+    const activeId = this.app.sessionManager.activeId;
+    this.log(`onSingleClick: previousId=${previousId}, sessionsSize=${sessionsSize}, activeId=${activeId}`);
+
+    // 确保 previousId 不是当前活跃的 session
+    if (previousId && previousId !== activeId && this.app.sessionManager.sessions.has(previousId)) {
       targetSession = this.app.sessionManager.sessions.get(previousId);
       this.log(`onSingleClick: using previousId`);
     } else {
-      // 没有上一个，切换到最近活跃的后台 session
+      // previousId 无效或等于 activeId，切换到最近活跃的后台 session
+      if (previousId === activeId) {
+        this.log(`onSingleClick: previousId equals activeId, skipping`);
+      }
       const backgrounds = this.app.sessionManager.getBackgroundSessions();
       this.log(`onSingleClick: background sessions=${backgrounds.length}`);
       if (backgrounds.length > 0) {
@@ -383,12 +390,21 @@ class FloatingButton {
 
     if (targetSession) {
       this.log(`onSingleClick: switch to ${targetSession.id}`);
+      this.vibrate();
       // 使用 connectSession 确保 app 状态正确更新
       this.app.connectSession(targetSession.id, targetSession.name);
     } else {
-      this.log('onSingleClick: no target, show menu');
-      // 没有可切换的 session，展开菜单
-      this.showRadialMenu();
+      this.log('onSingleClick: no target, sessions.size=' + sessionsSize);
+      // 没有可切换的 session
+      if (sessionsSize === 0) {
+        // 没有后台 session，提示用户
+        if (this.app.showToast) {
+          this.app.showToast('没有后台会话');
+        }
+      } else {
+        // 有 session 但找不到目标，展开菜单
+        this.showRadialMenu();
+      }
     }
   }
 
@@ -730,7 +746,9 @@ class FloatingButton {
 
     const count = this.app.sessionManager.getBackgroundCount();
     const activeId = this.app.sessionManager.activeId;
-    this.log(`update: bgCount=${count}, activeId=${activeId}`);
+    const sessionsSize = this.app.sessionManager.sessions.size;
+    const previousId = this.app.sessionManager.previousId;
+    this.log(`update: bgCount=${count}, activeId=${activeId}, sessionsSize=${sessionsSize}, previousId=${previousId}`);
     const countEl = this.element.querySelector('.floating-btn-count');
 
     if (count > 0) {

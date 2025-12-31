@@ -127,17 +127,27 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-width: 180px;
 }
 
-.system-hostname {
-  font-size: 16px;
+.system-user-host {
+  font-size: 14px;
   font-weight: 600;
   color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-user-host .hostname {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
 }
 
 .system-ip {
-  font-size: 12px;
-  color: #888;
+  font-size: 11px;
+  color: #666;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
@@ -493,6 +503,16 @@ body {
 
 .pull-refresh.refreshing .pull-refresh-text {
   color: #4a9eff;
+}
+
+/* 大幅下拉 - 刷新页面模式 */
+.pull-refresh.reload-mode .pull-refresh-text {
+  color: #ff9500;
+}
+
+.pull-refresh.reload-mode .pull-refresh-spinner {
+  border-color: #ff9500;
+  border-top-color: transparent;
 }
 
 /* 会话列表下拉时的位移 */
@@ -1193,17 +1213,162 @@ body {
   margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
 }
 
 .claude-session-item:active {
   background-color: #4a9eff;
 }
 
+/* 活跃状态指示器 - 绿色小圆点 */
+.active-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: #22c55e;
+  border-radius: 50%;
+  margin-right: 8px;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.9);
+  }
+}
+
+/* Project 项目活跃状态 */
+.session-item.project-item.has-active {
+  border-color: #22c55e;
+}
+
+.session-item.project-item.has-active::before {
+  background-color: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
+/* Session 活跃状态 */
+.claude-session-item.is-active {
+  background-color: #1a2e1a;
+  border: 1px solid #22c55e;
+}
+
+/* Project 删除按钮 */
+.btn-project-delete {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 18px;
+  padding: 8px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.btn-project-delete:hover,
+.btn-project-delete:active {
+  color: #ef4444;
+}
+
+/* 确认弹窗 */
+.confirm-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.confirm-modal-content {
+  background-color: #252525;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+}
+
+.confirm-modal-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.confirm-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.confirm-modal-message {
+  font-size: 14px;
+  color: #999;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.confirm-modal-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.confirm-modal-buttons .btn {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-cancel {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+.btn-danger {
+  background-color: #ef4444;
+  color: #fff;
+}
+
+.btn-danger:active {
+  background-color: #dc2626;
+}
+
+/* Project 删除按钮位置 */
+.project-item .btn-project-delete {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+}
+
 .claude-session-name {
   font-size: 14px;
   font-weight: 500;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: #fff;
+}
+
+.claude-session-summary {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .claude-session-meta {
@@ -1223,6 +1388,120 @@ body {
   padding: 30px 20px;
   color: #666;
   font-size: 14px;
+}
+
+/* ========== 会话选择弹窗 ========== */
+.sessions-modal {
+  display: flex;
+  align-items: flex-end;
+}
+
+.sessions-modal .modal-content {
+  max-height: 70vh;
+}
+
+.sessions-modal .modal-header {
+  padding: 16px 20px;
+}
+
+.sessions-modal .modal-header h3 {
+  flex: 1;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-modal .modal-close {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.sessions-modal-list {
+  max-height: 45vh;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.sessions-modal-list .claude-session-item {
+  margin-bottom: 10px;
+}
+
+.sessions-modal-list .claude-session-item:last-child {
+  margin-bottom: 0;
+}
+
+.btn-new-in-modal {
+  width: 100%;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 会话项布局 - 信息 + 重命名按钮 */
+.sessions-modal-list .claude-session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.claude-session-info {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+/* Session 操作按钮（重命名、删除）统一样式 */
+.btn-session-rename,
+.btn-session-delete {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 18px;
+  padding: 8px;
+  cursor: pointer;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-session-rename:hover,
+.btn-session-rename:active {
+  color: #4a9eff;
+}
+
+.btn-session-delete:hover,
+.btn-session-delete:active {
+  color: #ef4444;
+}
+
+/* ========== 重命名对话框 ========== */
+.rename-modal .modal-content {
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.rename-input {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.rename-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.rename-actions .btn {
+  flex: 1;
 }
 
 
@@ -1448,8 +1727,8 @@ body {
   transform: scale(0.95);
 }
 
-/* 会话卡片 - 添加点击指示器 */
-.session-item::after {
+/* 会话卡片 - 添加点击指示器（project-item 不显示，因为有删除按钮） */
+.session-item:not(.project-item)::after {
   content: '›';
   position: absolute;
   right: 16px;
@@ -1460,7 +1739,7 @@ body {
   transition: color 0.2s;
 }
 
-.session-item:active::after {
+.session-item:not(.project-item):active::after {
   color: #4a9eff;
 }
 

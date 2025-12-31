@@ -48,6 +48,7 @@ const i18n = {
       'sessions.settings': '设置',
       'sessions.help': '帮助',
       'sessions.logout': '退出登录',
+      'sessions.card': '卡片',
       'sessions.help.title': '使用说明',
       'sessions.help.create': '创建新会话',
       'sessions.help.card': '点击进入终端',
@@ -59,7 +60,8 @@ const i18n = {
       'sessions.loading': '加载中...',
       'sessions.empty': '暂无会话',
       'sessions.pullToRefresh': '下拉刷新',
-      'sessions.releaseToRefresh': '释放刷新',
+      'sessions.releaseToRefresh': '释放刷新数据',
+      'sessions.releaseToReload': '释放刷新页面',
       'sessions.refreshing': '刷新中...',
 
       // 用量统计
@@ -212,6 +214,7 @@ const i18n = {
       'sessions.settings': 'Settings',
       'sessions.help': 'Help',
       'sessions.logout': 'Logout',
+      'sessions.card': 'Card',
       'sessions.help.title': 'Help',
       'sessions.help.create': 'Create new session',
       'sessions.help.card': 'Click to enter terminal',
@@ -223,7 +226,8 @@ const i18n = {
       'sessions.loading': 'Loading...',
       'sessions.empty': 'No sessions',
       'sessions.pullToRefresh': 'Pull to refresh',
-      'sessions.releaseToRefresh': 'Release to refresh',
+      'sessions.releaseToRefresh': 'Release to refresh data',
+      'sessions.releaseToReload': 'Release to reload page',
       'sessions.refreshing': 'Refreshing...',
 
       // Usage
@@ -376,6 +380,7 @@ const i18n = {
       'sessions.settings': '設定',
       'sessions.help': 'ヘルプ',
       'sessions.logout': 'ログアウト',
+      'sessions.card': 'カード',
       'sessions.help.title': '使い方',
       'sessions.help.create': '新規セッション作成',
       'sessions.help.card': 'クリックでターミナルへ',
@@ -387,7 +392,8 @@ const i18n = {
       'sessions.loading': '読み込み中...',
       'sessions.empty': 'セッションなし',
       'sessions.pullToRefresh': '下にスワイプして更新',
-      'sessions.releaseToRefresh': '離して更新',
+      'sessions.releaseToRefresh': '離してデータ更新',
+      'sessions.releaseToReload': '離してページ更新',
       'sessions.refreshing': '更新中...',
 
       // 使用量
@@ -540,6 +546,7 @@ const i18n = {
       'sessions.settings': '설정',
       'sessions.help': '도움말',
       'sessions.logout': '로그아웃',
+      'sessions.card': '카드',
       'sessions.help.title': '사용법',
       'sessions.help.create': '새 세션 만들기',
       'sessions.help.card': '클릭하여 터미널 열기',
@@ -551,7 +558,8 @@ const i18n = {
       'sessions.loading': '로딩 중...',
       'sessions.empty': '세션 없음',
       'sessions.pullToRefresh': '당겨서 새로고침',
-      'sessions.releaseToRefresh': '놓으면 새로고침',
+      'sessions.releaseToRefresh': '놓으면 데이터 새로고침',
+      'sessions.releaseToReload': '놓으면 페이지 새로고침',
       'sessions.refreshing': '새로고침 중...',
 
       // 사용량
@@ -704,6 +712,7 @@ const i18n = {
       'sessions.settings': 'Paramètres',
       'sessions.help': 'Aide',
       'sessions.logout': 'Déconnexion',
+      'sessions.card': 'Carte',
       'sessions.help.title': 'Aide',
       'sessions.help.create': 'Créer une session',
       'sessions.help.card': 'Cliquez pour ouvrir le terminal',
@@ -715,7 +724,8 @@ const i18n = {
       'sessions.loading': 'Chargement...',
       'sessions.empty': 'Aucune session',
       'sessions.pullToRefresh': 'Tirer pour actualiser',
-      'sessions.releaseToRefresh': 'Relâcher pour actualiser',
+      'sessions.releaseToRefresh': 'Relâcher pour actualiser données',
+      'sessions.releaseToReload': 'Relâcher pour recharger page',
       'sessions.refreshing': 'Actualisation...',
 
       // Utilisation
@@ -868,6 +878,7 @@ const i18n = {
       'sessions.settings': 'Einstellungen',
       'sessions.help': 'Hilfe',
       'sessions.logout': 'Abmelden',
+      'sessions.card': 'Karte',
       'sessions.help.title': 'Hilfe',
       'sessions.help.create': 'Neue Sitzung erstellen',
       'sessions.help.card': 'Klicken für Terminal',
@@ -879,7 +890,8 @@ const i18n = {
       'sessions.loading': 'Laden...',
       'sessions.empty': 'Keine Sitzungen',
       'sessions.pullToRefresh': 'Zum Aktualisieren ziehen',
-      'sessions.releaseToRefresh': 'Loslassen zum Aktualisieren',
+      'sessions.releaseToRefresh': 'Loslassen für Daten-Update',
+      'sessions.releaseToReload': 'Loslassen für Seiten-Reload',
       'sessions.refreshing': 'Aktualisiere...',
 
       // Nutzung
@@ -1032,6 +1044,7 @@ const i18n = {
       'sessions.settings': 'Configuración',
       'sessions.help': 'Ayuda',
       'sessions.logout': 'Cerrar sesión',
+      'sessions.card': 'Tarjeta',
       'sessions.help.title': 'Ayuda',
       'sessions.help.create': 'Crear nueva sesión',
       'sessions.help.card': 'Clic para abrir terminal',
@@ -1043,7 +1056,8 @@ const i18n = {
       'sessions.loading': 'Cargando...',
       'sessions.empty': 'Sin sesiones',
       'sessions.pullToRefresh': 'Desliza para actualizar',
-      'sessions.releaseToRefresh': 'Suelta para actualizar',
+      'sessions.releaseToRefresh': 'Suelta para actualizar datos',
+      'sessions.releaseToReload': 'Suelta para recargar página',
       'sessions.refreshing': 'Actualizando...',
 
       // Uso
@@ -1196,6 +1210,7 @@ const i18n = {
       'sessions.settings': 'Настройки',
       'sessions.help': 'Помощь',
       'sessions.logout': 'Выйти',
+      'sessions.card': 'Карточка',
       'sessions.help.title': 'Помощь',
       'sessions.help.create': 'Создать сессию',
       'sessions.help.card': 'Нажмите для терминала',
@@ -1207,7 +1222,8 @@ const i18n = {
       'sessions.loading': 'Загрузка...',
       'sessions.empty': 'Нет сессий',
       'sessions.pullToRefresh': 'Потяните для обновления',
-      'sessions.releaseToRefresh': 'Отпустите для обновления',
+      'sessions.releaseToRefresh': 'Отпустите для обновления данных',
+      'sessions.releaseToReload': 'Отпустите для перезагрузки',
       'sessions.refreshing': 'Обновление...',
 
       // Использование
@@ -1360,6 +1376,7 @@ const i18n = {
       'sessions.settings': 'Configurações',
       'sessions.help': 'Ajuda',
       'sessions.logout': 'Sair',
+      'sessions.card': 'Cartão',
       'sessions.help.title': 'Ajuda',
       'sessions.help.create': 'Criar nova sessão',
       'sessions.help.card': 'Clique para abrir terminal',
@@ -1371,7 +1388,8 @@ const i18n = {
       'sessions.loading': 'Carregando...',
       'sessions.empty': 'Sem sessões',
       'sessions.pullToRefresh': 'Puxe para atualizar',
-      'sessions.releaseToRefresh': 'Solte para atualizar',
+      'sessions.releaseToRefresh': 'Solte para atualizar dados',
+      'sessions.releaseToReload': 'Solte para recarregar página',
       'sessions.refreshing': 'Atualizando...',
 
       // Uso

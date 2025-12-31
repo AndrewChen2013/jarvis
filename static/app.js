@@ -44,8 +44,9 @@ class App {
       startY: 0,
       pulling: false,
       refreshing: false,
-      threshold: 80,  // 触发刷新的阈值
-      maxPull: 120    // 最大下拉距离
+      dataThreshold: 80,    // 刷新数据阈值
+      reloadThreshold: 160, // 刷新页面阈值
+      maxPull: 200          // 最大下拉距离
     };
 
     this.init();
@@ -72,20 +73,31 @@ class App {
 
     // 监听页面可见性变化（iOS Safari 挂起/恢复）
     document.addEventListener('visibilitychange', () => {
+      const now = new Date().toISOString().substr(11, 12);
       if (document.hidden) {
-        this.debugLog('page hidden');
+        this.debugLog(`[${now}] page hidden`);
       } else {
-        this.debugLog('page visible');
-        // 检查连接状态
-        if (this.currentSession && this.ws) {
-          this.debugLog('connection state=' + this.ws.readyState);
+        this.debugLog(`[${now}] page visible`);
+        // 详细记录当前状态
+        this.debugLog(`[${now}] visibility check: currentSession=${!!this.currentSession}, shouldReconnect=${this.shouldReconnect}, isConnecting=${this.isConnecting}`);
+        if (this.ws) {
+          const stateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+          this.debugLog(`[${now}] ws.readyState=${this.ws.readyState} (${stateNames[this.ws.readyState]})`);
+        } else {
+          this.debugLog(`[${now}] ws=null`);
         }
-        // 如果连接已断开且应该重连
+
+        // 如果连接已断开或正在关闭，尝试重连
         if (this.currentSession && this.shouldReconnect && !this.isConnecting) {
-          if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-            this.debugLog('page visible, reconnecting');
+          // 扩展检查：CLOSING(2) 和 CLOSED(3) 都应该重连
+          if (!this.ws || this.ws.readyState >= WebSocket.CLOSING) {
+            this.debugLog(`[${now}] page visible, triggering reconnect`);
             this.attemptReconnect();
+          } else {
+            this.debugLog(`[${now}] ws still open/connecting, no reconnect needed`);
           }
+        } else {
+          this.debugLog(`[${now}] reconnect conditions not met`);
         }
       }
     });
@@ -147,14 +159,19 @@ class App {
         pullRefresh.style.transform = `translateY(${pullDistance}px)`;
         sessionsList.style.transform = `translateY(${pullDistance}px)`;
 
-        // 更新状态
-        if (pullDistance >= this.pullRefresh.threshold) {
+        // 更新状态 - 两段式提示
+        const textEl = pullRefresh.querySelector('.pull-refresh-text');
+        if (pullDistance >= this.pullRefresh.reloadThreshold) {
+          // 大幅下拉 - 刷新页面
+          pullRefresh.classList.add('pulling', 'reload-mode');
+          if (textEl) textEl.textContent = '⟳ ' + this.t('sessions.releaseToReload', '释放刷新页面');
+        } else if (pullDistance >= this.pullRefresh.dataThreshold) {
+          // 常规下拉 - 刷新数据
           pullRefresh.classList.add('pulling');
-          const textEl = pullRefresh.querySelector('.pull-refresh-text');
-          if (textEl) textEl.textContent = this.t('sessions.releaseToRefresh', '释放刷新');
+          pullRefresh.classList.remove('reload-mode');
+          if (textEl) textEl.textContent = '↻ ' + this.t('sessions.releaseToRefresh', '释放刷新数据');
         } else {
-          pullRefresh.classList.remove('pulling');
-          const textEl = pullRefresh.querySelector('.pull-refresh-text');
+          pullRefresh.classList.remove('pulling', 'reload-mode');
           if (textEl) textEl.textContent = this.t('sessions.pullToRefresh', '下拉刷新');
         }
       }
@@ -167,14 +184,32 @@ class App {
       const deltaY = currentY - startY;
       const pullDistance = Math.min(deltaY * 0.5, this.pullRefresh.maxPull);
 
-      if (pullDistance >= this.pullRefresh.threshold && !this.pullRefresh.refreshing) {
-        // 触发刷新 - 立即执行，不等待
+      if (pullDistance >= this.pullRefresh.reloadThreshold && !this.pullRefresh.refreshing) {
+        // 大幅下拉 - 刷新整个页面
         location.reload();
+      } else if (pullDistance >= this.pullRefresh.dataThreshold && !this.pullRefresh.refreshing) {
+        // 常规下拉 - 只刷新数据
+        this.pullRefresh.refreshing = true;
+        const textEl = pullRefresh.querySelector('.pull-refresh-text');
+        if (textEl) textEl.textContent = this.t('sessions.refreshing', '刷新中...');
+
+        try {
+          await this.loadSessions();
+          await this.loadSystemInfo();
+        } catch (e) {
+          console.error('Refresh data error:', e);
+        }
+
+        // 恢复位置
+        pullRefresh.style.transform = '';
+        sessionsList.style.transform = '';
+        pullRefresh.classList.remove('pulling', 'reload-mode');
+        this.pullRefresh.refreshing = false;
       } else {
         // 未达到阈值，恢复位置
         pullRefresh.style.transform = '';
         sessionsList.style.transform = '';
-        pullRefresh.classList.remove('pulling');
+        pullRefresh.classList.remove('pulling', 'reload-mode');
       }
 
       startY = 0;
@@ -698,8 +733,10 @@ class App {
 
       if (response.ok) {
         const data = await response.json();
+        const usernameEl = document.getElementById('system-username');
         const hostnameEl = document.getElementById('system-hostname');
         const ipEl = document.getElementById('system-ip');
+        if (usernameEl) usernameEl.textContent = data.username || '--';
         if (hostnameEl) hostnameEl.textContent = data.hostname || '--';
         if (ipEl) ipEl.textContent = data.ip || '--';
         // 保存用户主目录用于路径简化
@@ -1004,7 +1041,7 @@ class App {
     container.innerHTML = `<div class="loading">${this.t('sessions.loading')}</div>`;
 
     try {
-      const response = await fetch('/api/claude/working-dirs', {
+      const response = await fetch('/api/projects', {
         headers: {
           'Authorization': `Bearer ${this.token}`
         }
@@ -1015,23 +1052,25 @@ class App {
         return;
       }
 
-      if (!response.ok) throw new Error('Failed to load working dirs');
+      if (!response.ok) throw new Error('Failed to load projects');
 
-      const data = await response.json();
-      const dirs = data.working_dirs || [];
+      const projects = await response.json();
 
-      if (dirs.length === 0) {
+      if (projects.length === 0) {
         container.innerHTML = `<div class="no-sessions">${this.t('create.noHistory')}</div>`;
         return;
       }
 
       container.innerHTML = '';
-      dirs.forEach(dir => {
+      projects.forEach(project => {
         const item = document.createElement('div');
         item.className = 'workdir-item';
-        item.textContent = dir;
+        item.innerHTML = `
+          <div class="workdir-name">${project.working_dir}</div>
+          <div class="workdir-meta">${project.session_count} ${this.t('create.sessions', 'sessions')}</div>
+        `;
         item.addEventListener('click', () => {
-          this.selectWorkDir(dir);
+          this.selectWorkDir(project.working_dir);
         });
         container.appendChild(item);
       });
@@ -1112,16 +1151,15 @@ class App {
     container.innerHTML = `<div class="loading">${this.t('sessions.loading')}</div>`;
 
     try {
-      const response = await fetch(`/api/claude/sessions?working_dir=${encodeURIComponent(workDir)}`, {
+      const response = await fetch(`/api/projects/sessions?working_dir=${encodeURIComponent(workDir)}`, {
         headers: {
           'Authorization': `Bearer ${this.token}`
         }
       });
 
-      if (!response.ok) throw new Error('Failed to load Claude sessions');
+      if (!response.ok) throw new Error('Failed to load sessions');
 
-      const data = await response.json();
-      const sessions = data.sessions || [];
+      const sessions = await response.json();
 
       if (sessions.length === 0) {
         container.innerHTML = `<div class="no-sessions">${this.t('create.noClaude')}</div>`;
@@ -1133,19 +1171,20 @@ class App {
         const item = document.createElement('div');
         item.className = 'claude-session-item';
         item.innerHTML = `
-          <div class="claude-session-name">${this.escapeHtml(session.name || this.t('create.unnamed'))}</div>
+          <div class="claude-session-name">${this.escapeHtml(session.display_name || this.t('create.unnamed'))}</div>
           <div class="claude-session-meta">
             <span class="claude-session-id">${session.session_id.substring(0, 8)}...</span>
             <span>${this.formatTime(session.updated_at)}</span>
           </div>
         `;
         item.addEventListener('click', () => {
-          this.createSession(workDir, session.session_id);
+          // 直接连接终端，使用 session 的真实 working_dir（而非项目目录）
+          this.connectTerminal(session.working_dir, session.session_id, session.display_name);
         });
         container.appendChild(item);
       });
     } catch (error) {
-      console.error('Load Claude sessions error:', error);
+      console.error('Load sessions error:', error);
       container.innerHTML = `<div class="no-sessions">${this.t('sessions.loadFailed')}</div>`;
     }
   }
@@ -1153,39 +1192,62 @@ class App {
   // ==================== 会话管理 ====================
 
   /**
-   * 加载会话列表
+   * 获取当前活跃的连接
    */
-  async loadSessions() {
+  async fetchActiveSessions() {
     try {
-      const response = await fetch('/api/sessions', {
+      const response = await fetch('/api/active-sessions', {
         headers: {
           'Authorization': `Bearer ${this.token}`
         }
       });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (error) {
+      console.error('Fetch active sessions error:', error);
+    }
+    return { sessions: [], working_dirs: [] };
+  }
 
-      if (response.status === 401) {
+  /**
+   * 加载项目列表（新版 - 从 Claude Projects）
+   */
+  async loadSessions() {
+    try {
+      // 并行获取项目列表和活跃连接
+      const [projectsResponse, activeSessions] = await Promise.all([
+        fetch('/api/projects', {
+          headers: {
+            'Authorization': `Bearer ${this.token}`
+          }
+        }),
+        this.fetchActiveSessions()
+      ]);
+
+      if (projectsResponse.status === 401) {
         this.handleUnauthorized();
         return;
       }
 
-      if (!response.ok) throw new Error('Failed to load sessions');
+      if (!projectsResponse.ok) throw new Error('Failed to load projects');
 
-      const sessions = await response.json();
-      this.renderSessions(sessions);
+      const projects = await projectsResponse.json();
+      this.renderProjects(projects, activeSessions);
     } catch (error) {
-      console.error('Load sessions error:', error);
+      console.error('Load projects error:', error);
       this.showError(this.t('error.loadSessions'));
     }
   }
 
   /**
-   * 渲染会话列表
+   * 渲染项目列表（新版）
    */
-  renderSessions(sessions) {
+  renderProjects(projects, activeSessions = { sessions: [], working_dirs: [] }) {
     const container = document.getElementById('sessions-list');
     container.innerHTML = '';
 
-    if (sessions.length === 0) {
+    if (projects.length === 0) {
       container.innerHTML = `
         <div class="empty">
           <div class="empty-icon">📱</div>
@@ -1196,67 +1258,444 @@ class App {
       return;
     }
 
-    sessions.forEach(session => {
+    const activeWorkDirs = new Set(activeSessions.working_dirs || []);
+
+    projects.forEach(project => {
       const item = document.createElement('div');
+      const isActive = activeWorkDirs.has(project.working_dir);
+      item.className = `session-item project-item${isActive ? ' has-active' : ''}`;
 
-      // 检查是否在 SessionManager 中运行
-      const isRunning = this.sessionManager.isSessionOpen(session.id);
-      item.className = `session-item status-${session.status}${isRunning ? ' running' : ''}`;
+      // 显示工作目录名称
+      const displayName = this.getLastPathComponent(project.working_dir);
+      const shortPath = this.shortenPath(project.working_dir);
 
-      // 显示名称，如果没有则显示工作目录的最后一级
-      const displayName = session.name || this.getLastPathComponent(session.working_dir);
-
-      // 简化工作目录显示
-      const shortPath = this.shortenPath(session.working_dir);
-
-      // 描述（如果有）
-      const descHtml = session.description
-        ? `<div class="session-desc">${this.escapeHtml(session.description)}</div>`
-        : '';
-
-      // 运行中标记
-      const runningBadge = isRunning ? `<span class="session-running-badge">${this.t('session.running')}</span>` : '';
+      // 活跃状态指示器
+      const activeIndicator = isActive ? '<span class="active-indicator"></span>' : '';
 
       item.innerHTML = `
-        <div class="session-name">${this.escapeHtml(displayName)}${runningBadge}</div>
-        ${descHtml}
+        <button class="btn-project-delete" title="${this.t('common.delete', 'Delete')}">✕</button>
+        <div class="session-name">${activeIndicator}${this.escapeHtml(displayName)}</div>
         <div class="session-workdir">${this.escapeHtml(shortPath)}</div>
         <div class="session-footer">
           <div class="session-meta">
-            <span class="session-status ${session.status}">${this.getStatusText(session.status)}</span>
-            <span class="session-time">${this.formatTime(session.last_active)}</span>
-          </div>
-          <div class="session-actions">
-            <button class="btn-rename" data-id="${session.id}">${this.t('session.rename')}</button>
-            <button class="btn-delete" data-id="${session.id}">${this.t('session.delete')}</button>
+            <span class="session-status">${project.session_count} ${this.t('create.sessions', 'sessions')}</span>
+            <span class="session-time">${project.last_updated ? this.formatTime(project.last_updated) : ''}</span>
           </div>
         </div>
       `;
 
-      // 点击卡片连接
+      // 点击删除按钮
+      item.querySelector('.btn-project-delete').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showConfirmDialog(
+          this.t('projects.deleteTitle', 'Delete Project'),
+          `Delete "${displayName}"?\n\nThis will delete all ${project.session_count} sessions. This action cannot be undone.`,
+          () => {
+            this.deleteProject(project.working_dir, () => {
+              this.loadSessions(); // 刷新列表
+            });
+          }
+        );
+      });
+
+      // 点击项目展开会话列表
       item.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        // 如果点击的是按钮，不触发连接
-        if (e.target.classList.contains('btn-delete') || e.target.classList.contains('btn-rename')) return;
-        this.debugLog('card clicked: ' + session.id);
-        this.connectSession(session.id, displayName);
-      });
-
-      // 重命名按钮
-      item.querySelector('.btn-rename').addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.renameSession(session.id, displayName);
-      });
-
-      // 删除按钮
-      item.querySelector('.btn-delete').addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.deleteSession(session.id);
+        this.showProjectSessions(project.working_dir);
       });
 
       container.appendChild(item);
     });
+  }
+
+  /**
+   * 显示项目下的会话列表
+   */
+  async showProjectSessions(workDir) {
+    try {
+      // 并行获取会话列表和活跃连接
+      const [sessionsResponse, activeSessions] = await Promise.all([
+        fetch(`/api/projects/sessions?working_dir=${encodeURIComponent(workDir)}`, {
+          headers: {
+            'Authorization': `Bearer ${this.token}`
+          }
+        }),
+        this.fetchActiveSessions()
+      ]);
+
+      if (!sessionsResponse.ok) throw new Error('Failed to load sessions');
+
+      const sessions = await sessionsResponse.json();
+
+      // 显示会话选择弹窗
+      this.showSessionsModal(workDir, sessions, activeSessions);
+    } catch (error) {
+      console.error('Load project sessions error:', error);
+      this.showError(this.t('sessions.loadFailed'));
+    }
+  }
+
+  /**
+   * 显示会话选择弹窗
+   */
+  showSessionsModal(workDir, sessions, activeSessions = { sessions: [], working_dirs: [] }) {
+    // 创建弹窗
+    const modal = document.createElement('div');
+    modal.className = 'modal sessions-modal active';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>${this.getLastPathComponent(workDir)}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="sessions-modal-list"></div>
+          <button class="btn btn-primary btn-new-in-modal">${this.t('create.newSession', 'New Session')}</button>
+        </div>
+      </div>
+    `;
+
+    const list = modal.querySelector('.sessions-modal-list');
+    const activeSessionIds = new Set(activeSessions.sessions || []);
+
+    sessions.forEach(session => {
+      const isActive = activeSessionIds.has(session.session_id);
+      const item = document.createElement('div');
+      item.className = `claude-session-item${isActive ? ' is-active' : ''}`;
+
+      // 显示名称：自定义名称 + Claude 摘要（如果有自定义名称）
+      const customName = session.custom_name;
+      const claudeSummary = session.summary;
+      let nameHtml = '';
+
+      // 活跃状态指示器
+      const activeIndicator = isActive ? '<span class="active-indicator"></span>' : '';
+
+      if (customName) {
+        // 有自定义名称：显示自定义名称，下方显示 Claude 摘要
+        nameHtml = `
+          <div class="claude-session-name">${activeIndicator}${this.escapeHtml(customName)}</div>
+          ${claudeSummary ? `<div class="claude-session-summary">${this.escapeHtml(claudeSummary)}</div>` : ''}
+        `;
+      } else if (claudeSummary) {
+        // 只有 Claude 摘要
+        nameHtml = `<div class="claude-session-name">${activeIndicator}${this.escapeHtml(claudeSummary)}</div>`;
+      } else {
+        // 都没有，显示 session ID
+        nameHtml = `<div class="claude-session-name">${activeIndicator}${session.session_id.substring(0, 8)}...</div>`;
+      }
+
+      item.innerHTML = `
+        <div class="claude-session-info">
+          ${nameHtml}
+          <div class="claude-session-meta">
+            <span class="claude-session-id">${session.session_id.substring(0, 8)}...</span>
+            <span>${this.formatTime(session.updated_at)}</span>
+          </div>
+        </div>
+        <button class="btn-session-rename" title="${this.t('common.rename', 'Rename')}">✎</button>
+        <button class="btn-session-delete" title="${this.t('common.delete', 'Delete')}">✕</button>
+      `;
+
+      // 点击会话信息区域进入终端
+      item.querySelector('.claude-session-info').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        // 用自定义名称或摘要作为显示名
+        const displayName = customName || claudeSummary || session.session_id.substring(0, 8);
+        // 使用 session 的真实 working_dir（而非项目目录 workDir）
+        this.connectTerminal(session.working_dir, session.session_id, displayName);
+      });
+
+      // 点击重命名按钮
+      item.querySelector('.btn-session-rename').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showRenameDialog(session.session_id, session.custom_name || '', (newName) => {
+          // 更新显示
+          session.custom_name = newName;
+          const nameEl = item.querySelector('.claude-session-name');
+          nameEl.textContent = newName;
+          // 添加或更新摘要显示
+          let summaryEl = item.querySelector('.claude-session-summary');
+          if (claudeSummary && !summaryEl) {
+            summaryEl = document.createElement('div');
+            summaryEl.className = 'claude-session-summary';
+            summaryEl.textContent = claudeSummary;
+            nameEl.after(summaryEl);
+          }
+        });
+      });
+
+      // 点击删除按钮
+      item.querySelector('.btn-session-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sessionName = customName || claudeSummary || session.session_id.substring(0, 8);
+        this.showConfirmDialog(
+          this.t('sessions.deleteTitle', 'Delete Session'),
+          `Delete "${sessionName}"?\n\nThis action cannot be undone.`,
+          () => {
+            this.deleteSession(session.session_id, session.working_dir, () => {
+              // 从列表中移除
+              item.remove();
+              // 如果列表为空，关闭弹窗
+              if (list.children.length === 0) {
+                document.body.removeChild(modal);
+                this.loadSessions(); // 刷新项目列表
+              }
+            });
+          }
+        );
+      });
+
+      list.appendChild(item);
+    });
+
+    // 新建按钮
+    modal.querySelector('.btn-new-in-modal').addEventListener('click', () => {
+      document.body.removeChild(modal);
+      this.connectTerminal(workDir, null, this.t('create.newSession', 'New Session'));
+    });
+
+    // 关闭按钮
+    modal.querySelector('.modal-close').addEventListener('click', () => {
+      document.body.removeChild(modal);
+    });
+
+    // 点击背景关闭
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    document.body.appendChild(modal);
+  }
+
+  /**
+   * 显示重命名对话框
+   */
+  showRenameDialog(sessionId, currentName, onSuccess) {
+    const dialog = document.createElement('div');
+    dialog.className = 'modal rename-modal active';
+    dialog.innerHTML = `
+      <div class="modal-content modal-small">
+        <div class="modal-header">
+          <h3>${this.t('common.rename', 'Rename')}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="text" class="form-input rename-input" value="${this.escapeHtml(currentName || '')}" placeholder="${this.t('sessions.namePlaceholder', 'Enter session name')}">
+          <div class="rename-actions">
+            <button class="btn btn-secondary btn-cancel">${this.t('common.cancel', 'Cancel')}</button>
+            <button class="btn btn-primary btn-save">${this.t('common.save', 'Save')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const input = dialog.querySelector('.rename-input');
+    const saveBtn = dialog.querySelector('.btn-save');
+    const cancelBtn = dialog.querySelector('.btn-cancel');
+    const closeBtn = dialog.querySelector('.modal-close');
+
+    const closeDialog = () => {
+      document.body.removeChild(dialog);
+    };
+
+    const saveRename = async () => {
+      const newName = input.value.trim();
+      if (!newName) {
+        input.focus();
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = this.t('common.saving', 'Saving...');
+
+      try {
+        const response = await fetch(`/api/projects/session/${sessionId}/name`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.token}`
+          },
+          body: JSON.stringify({ name: newName })
+        });
+
+        if (response.ok) {
+          closeDialog();
+          if (onSuccess) onSuccess(newName);
+        } else {
+          const data = await response.json();
+          alert(data.detail || this.t('error.saveFailed', 'Save failed'));
+        }
+      } catch (error) {
+        console.error('Rename error:', error);
+        alert(this.t('error.network', 'Network error'));
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = this.t('common.save', 'Save');
+      }
+    };
+
+    saveBtn.addEventListener('click', saveRename);
+    cancelBtn.addEventListener('click', closeDialog);
+    closeBtn.addEventListener('click', closeDialog);
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveRename();
+      } else if (e.key === 'Escape') {
+        closeDialog();
+      }
+    });
+
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) {
+        closeDialog();
+      }
+    });
+
+    document.body.appendChild(dialog);
+    input.focus();
+    input.select();
+  }
+
+  /**
+   * 显示确认删除弹窗
+   */
+  showConfirmDialog(title, message, onConfirm) {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-modal';
+    // 支持换行：将 \n 转换为 <br>
+    const formattedMessage = this.escapeHtml(message).replace(/\n/g, '<br>');
+    dialog.innerHTML = `
+      <div class="confirm-modal-content">
+        <div class="confirm-modal-icon">⚠️</div>
+        <div class="confirm-modal-title">${this.escapeHtml(title)}</div>
+        <div class="confirm-modal-message">${formattedMessage}</div>
+        <div class="confirm-modal-buttons">
+          <button class="btn btn-cancel">${this.t('common.cancel', 'Cancel')}</button>
+          <button class="btn btn-danger">${this.t('common.delete', 'Delete')}</button>
+        </div>
+      </div>
+    `;
+
+    const closeDialog = () => {
+      document.body.removeChild(dialog);
+    };
+
+    dialog.querySelector('.btn-cancel').addEventListener('click', closeDialog);
+    dialog.querySelector('.btn-danger').addEventListener('click', () => {
+      closeDialog();
+      onConfirm();
+    });
+
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) {
+        closeDialog();
+      }
+    });
+
+    document.body.appendChild(dialog);
+  }
+
+  /**
+   * 删除 Session
+   */
+  async deleteSession(sessionId, workingDir, onSuccess) {
+    try {
+      const response = await fetch(
+        `/api/projects/session/${sessionId}?working_dir=${encodeURIComponent(workingDir)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${this.token}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        this.showToast(this.t('sessions.deleted', 'Session deleted'));
+        if (onSuccess) onSuccess();
+      } else {
+        const data = await response.json();
+        alert(data.detail || this.t('error.deleteFailed', 'Delete failed'));
+      }
+    } catch (error) {
+      console.error('Delete session error:', error);
+      alert(this.t('error.network', 'Network error'));
+    }
+  }
+
+  /**
+   * 删除 Project
+   */
+  async deleteProject(workingDir, onSuccess) {
+    try {
+      const response = await fetch(
+        `/api/projects?working_dir=${encodeURIComponent(workingDir)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${this.token}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        this.showToast(this.t('projects.deleted', 'Project deleted'));
+        if (onSuccess) onSuccess();
+      } else {
+        const data = await response.json();
+        alert(data.detail || this.t('error.deleteFailed', 'Delete failed'));
+      }
+    } catch (error) {
+      console.error('Delete project error:', error);
+      alert(this.t('error.network', 'Network error'));
+    }
+  }
+
+  /**
+   * 显示 Toast 提示
+   */
+  showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      z-index: 3000;
+      animation: fadeIn 0.3s, fadeOut 0.3s 2s forwards;
+    `;
+
+    // Add animation styles if not already present
+    if (!document.getElementById('toast-styles')) {
+      const style = document.createElement('style');
+      style.id = 'toast-styles';
+      style.textContent = `
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+      `;
+      document.head.appendChild(style);
+    }
+
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      if (toast.parentNode) {
+        document.body.removeChild(toast);
+      }
+    }, 2500);
   }
 
   /**
@@ -1280,38 +1719,65 @@ class App {
   }
 
   /**
-   * 创建会话
+   * 连接终端（新版 - 直接使用 Claude session）
+   * @param {string} workDir - 工作目录
+   * @param {string} sessionId - Claude session_id（null 表示新建）
+   * @param {string} sessionName - 显示名称
+   */
+  connectTerminal(workDir, sessionId, sessionName) {
+    this.closeCreateModal();
+
+    // 保存当前工作目录和会话信息
+    this.currentWorkDir = workDir;
+    this.currentSession = sessionId || `new-${Date.now()}`;
+    this.currentSessionName = sessionName || this.getLastPathComponent(workDir);
+    this.currentClaudeSessionId = sessionId;
+
+    this.debugLog(`connectTerminal: session=${this.currentSession}, claudeSessionId=${sessionId}`);
+
+    // 清除旧的全局 terminal 引用（每个 session 有自己的 terminal）
+    this.terminal = null;
+
+    // 注册到 SessionManager（支持多 session 后台运行）
+    const session = this.sessionManager.openSession(this.currentSession, this.currentSessionName);
+    this.debugLog(`connectTerminal: session registered, sessions.size=${this.sessionManager.sessions.size}`);
+
+    // 显示终端视图
+    this.showView('terminal');
+
+    // 清空主容器中的旧内容（除了 session 容器）
+    const terminalOutput = document.getElementById('terminal-output');
+    if (terminalOutput) {
+      // 移除非 session-container 的子元素（如连接状态显示）
+      Array.from(terminalOutput.children).forEach(child => {
+        if (!child.classList.contains('terminal-session-container')) {
+          child.remove();
+        }
+      });
+    }
+
+    this.initTerminal();
+
+    // 连接 WebSocket
+    this.connectWebSocket(workDir, sessionId);
+  }
+
+  /**
+   * 创建新会话（点击"新建会话"按钮）
+   */
+  createNewSession(workDir) {
+    // 新建会话：sessionId 为 null
+    this.connectTerminal(workDir, null, this.t('create.newSession', 'New Session'));
+  }
+
+  /**
+   * 旧版创建会话（兼容）
+   * @deprecated 使用 connectTerminal 代替
    */
   async createSession(workDir, claudeSessionId) {
-    try {
-      const response = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: JSON.stringify({
-          working_dir: workDir,
-          claude_session_id: claudeSessionId,
-          name: null  // 让 Claude 自动命名
-        })
-      });
-
-      if (response.status === 401) {
-        this.handleUnauthorized();
-        return;
-      }
-
-      if (!response.ok) throw new Error('Failed to create session');
-
-      const session = await response.json();
-      this.closeCreateModal();
-      const sessionName = session.name || this.getLastPathComponent(workDir);
-      this.connectSession(session.id, sessionName);
-    } catch (error) {
-      console.error('Create session error:', error);
-      this.showError(this.t('create.failed'));
-    }
+    // 转发到新方法
+    const sessionName = claudeSessionId ? null : this.t('create.newSession', 'New Session');
+    this.connectTerminal(workDir, claudeSessionId, sessionName);
   }
 
   /**
@@ -1781,14 +2247,28 @@ class App {
       this.ws = null;
     }
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${this.currentSession}?token=${this.token}`;
+    // 构建新的 WebSocket URL
+    let wsUrl;
+    if (this.currentWorkDir) {
+      const params = new URLSearchParams({
+        working_dir: this.currentWorkDir,
+        token: this.token
+      });
+      if (this.currentClaudeSessionId) {
+        params.append('session_id', this.currentClaudeSessionId);
+      }
+      wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
+    } else {
+      // 兼容旧版
+      wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${this.currentSession}?token=${this.token}`;
+    }
 
     // 直接在点击事件中创建 WebSocket（不使用任何延迟）
     try {
       this.ws = new WebSocket(wsUrl);
       this.debugLog('manual retry: WebSocket created, state=' + this.ws.readyState);
       this.isConnecting = true;
-      this.setupWebSocketHandlers(this.currentSession);
+      this.bindWebSocketEvents();
     } catch (e) {
       this.debugLog('manual retry: failed ' + e.message);
       this.updateConnectStatus('failed', e.message);
@@ -1800,18 +2280,22 @@ class App {
    */
   initTerminal() {
     this.debugLog('initTerminal start');
-    console.log('initTerminal called, terminal exists:', !!this.terminal);
-
-    // 如果终端已存在，不重复初始化
-    if (this.terminal) {
-      console.log('Terminal already exists, skipping init');
-      this.flushOutputQueue();
-      return;
-    }
 
     // 获取当前 session
     const session = this.currentSession ? this.sessionManager.sessions.get(this.currentSession) : null;
     this.debugLog(`initTerminal: session=${session ? session.id : 'null'}`);
+
+    // 检查当前 session 是否已有终端（而不是检查全局 this.terminal）
+    if (session && session.terminal) {
+      this.debugLog('initTerminal: session already has terminal, reuse it');
+      this.terminal = session.terminal;
+      // 确保容器显示
+      if (session.container) {
+        session.container.style.display = 'block';
+      }
+      this.flushOutputQueue();
+      return;
+    }
 
     // 获取或创建 session 专属容器
     let container;
@@ -1888,12 +2372,52 @@ class App {
    *
    * 详细记录见: ~/.claude/skills/claude-remote-info/skill.md
    */
-  connect(sessionId) {
-    this.debugLog('connect() 开始');
+  /**
+   * 连接 WebSocket（新版）
+   */
+  connectWebSocket(workDir, sessionId) {
+    this.debugLog('connectWebSocket() 开始');
     this.reconnectAttempts = 0;
 
+    // 构建新的 WebSocket URL
+    const params = new URLSearchParams({
+      working_dir: workDir,
+      token: this.token
+    });
+    if (sessionId) {
+      params.append('session_id', sessionId);
+    }
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
+    this.debugLog('WebSocket URL: ' + wsUrl.substring(0, 80));
+
+    // 使用通用连接逻辑
+    this._doConnect(wsUrl);
+  }
+
+  /**
+   * 旧版连接方法（兼容）
+   * @deprecated
+   */
+  connect(sessionId) {
+    this.debugLog('connect() 开始 (legacy)');
+    this.reconnectAttempts = 0;
+
+    // 如果有 currentWorkDir，使用新端点
+    if (this.currentWorkDir) {
+      this.connectWebSocket(this.currentWorkDir, this.currentClaudeSessionId);
+      return;
+    }
+
+    // 否则使用旧端点（兼容）
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${sessionId}?token=${this.token}`;
     this.debugLog('WebSocket URL: ' + wsUrl.substring(0, 60));
+    this._doConnect(wsUrl);
+  }
+
+  /**
+   * 实际的 WebSocket 连接逻辑
+   */
+  _doConnect(wsUrl) {
 
     // ====== iOS 26 Safari Workaround: 二次连接法 ======
     // 第一次连接：可能会卡在 CONNECTING，但能激活网络栈
@@ -1918,7 +2442,7 @@ class App {
           this.ws = new WebSocket(wsUrl);
           this.debugLog('2nd create ok, state=' + this.ws.readyState);
           // 重新绑定事件到新的 WebSocket 实例
-          this.bindWebSocketEvents(sessionId);
+          this.bindWebSocketEvents();
         } catch (e) {
           this.debugLog('2nd create failed: ' + e.message);
           this.isConnecting = false;
@@ -1932,14 +2456,16 @@ class App {
     // ====== End iOS 26 Workaround ======
 
     // 绑定事件到第一个 WebSocket 实例
-    this.bindWebSocketEvents(sessionId);
+    this.bindWebSocketEvents();
   }
 
   /**
    * 绑定 WebSocket 事件
    */
-  bindWebSocketEvents(sessionId) {
+  bindWebSocketEvents() {
     if (!this.ws) return;
+
+    const sessionId = this.currentSession;
 
     // 设置接收二进制数据
     this.ws.binaryType = 'arraybuffer';
@@ -1957,9 +2483,8 @@ class App {
         session.status = 'connected';
       }
 
-      // 连接成功后再切换视图
-      this.debugLog('Connection success, switch to terminal view');
-      this.showTerminalView();
+      // 更新连接状态（终端已在 connectTerminal 中创建，不需要再调用 showTerminalView）
+      this.debugLog('Connection success');
       this.updateConnectStatus('connected', '');
 
       // 更新悬浮按钮
@@ -1994,7 +2519,26 @@ class App {
     };
 
     this.ws.onclose = (event) => {
-      this.debugLog('onclose code=' + event.code);
+      const now = new Date().toISOString().substr(11, 12);
+      const codeNames = {
+        1000: 'Normal Closure',
+        1001: 'Going Away',
+        1002: 'Protocol Error',
+        1003: 'Unsupported Data',
+        1005: 'No Status Received',
+        1006: 'Abnormal Closure',
+        1007: 'Invalid Payload',
+        1008: 'Policy Violation',
+        1009: 'Message Too Big',
+        1010: 'Missing Extension',
+        1011: 'Internal Error',
+        1012: 'Service Restart',
+        1013: 'Try Again Later',
+        1015: 'TLS Handshake'
+      };
+      this.debugLog(`[${now}] onclose code=${event.code} (${codeNames[event.code] || 'Unknown'}), reason="${event.reason}"`);
+      this.debugLog(`[${now}] onclose state: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}`);
+
       this.isConnecting = false;
       this.updateConnectStatus('disconnected', `${this.t('status.code')}: ${event.code}`);
       this.updateStatus(this.t('status.disconnected'), false);
@@ -2006,18 +2550,21 @@ class App {
 
       // 1008 = Invalid token，需要重新登录
       if (event.code === 1008) {
-        this.debugLog('Token invalid, redirect to login');
+        this.debugLog(`[${now}] Token invalid, redirect to login`);
         this.handleUnauthorized();
         return;
       }
 
+      // 扩展重连条件：除了主动关闭(1000)和认证失败(1008)外都尝试重连
       if (this.shouldReconnect && this.currentSession) {
-        if (event.code === 1001 || event.code === 1006) {
-          this.debugLog('Triggering auto reconnect');
+        if (event.code !== 1000) {
+          this.debugLog(`[${now}] Triggering auto reconnect for code ${event.code}`);
           this.attemptReconnect();
+        } else {
+          this.debugLog(`[${now}] Normal closure, no auto reconnect`);
         }
       } else {
-        this.debugLog('No reconnect: shouldReconnect=' + this.shouldReconnect);
+        this.debugLog(`[${now}] No reconnect: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}`);
       }
     };
 
@@ -2052,18 +2599,15 @@ class App {
 
         case 'connected':
           this.debugLog('received connected message');
-          this.updateConnectStatus('connected', this.t('status.waitingInit'));
+          this.updateConnectStatus('connected', '');
           this.updateStatus(this.t('status.connected'), true);
-          // 延迟初始化 xterm.js，避免与 DOM 操作冲突
-          setTimeout(() => {
-            this.debugLog('start initializing terminal');
-            this.initTerminal();
-            this.debugLog('terminal init done, waiting for resize');
+          // 终端已在 connectTerminal 中创建，只需 resize
+          if (this.terminal) {
+            this.debugLog('terminal already exists, just resize');
             setTimeout(() => {
-              this.debugLog('call resizeTerminal');
               this.resizeTerminal();
-            }, 200);
-          }, 500);
+            }, 100);
+          }
           break;
 
         case 'output':
@@ -2225,6 +2769,8 @@ class App {
       // 输入/确认
       'tab': '\t',
       'enter': '\r',
+      // 编辑
+      'backspace': '\x7f',
       // 组合键
       'ctrl-o': '\x0f',      // 切换详细输出模式
       'ctrl-b': '\x02',      // 后台运行
@@ -2263,39 +2809,44 @@ class App {
    * 尝试重连
    */
   attemptReconnect() {
-    this.debugLog('attemptReconnect called');
+    const now = new Date().toISOString().substr(11, 12);
+    this.debugLog(`[${now}] attemptReconnect called`);
 
     // 检查连接锁
     if (this.isConnecting) {
-      this.debugLog('connecting (locked), skip reconnect');
+      this.debugLog(`[${now}] connecting (locked), skip reconnect`);
       return;
     }
 
     // 清理之前的重连定时器
     if (this.reconnectTimeout) {
+      this.debugLog(`[${now}] clearing previous reconnect timer`);
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.debugLog('max reconnect attempts reached');
+      this.debugLog(`[${now}] max reconnect attempts (${this.maxReconnectAttempts}) reached, giving up`);
       this.updateStatus(this.t('reconnect.failed'), false);
       return;
     }
 
     this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
+    // 首次重连延迟 500ms，后续指数退避
+    const delay = this.reconnectAttempts === 1 ? 500 : Math.min(1000 * Math.pow(2, this.reconnectAttempts - 2), 10000);
 
-    this.debugLog(`reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}, in ${delay}ms`);
+    this.debugLog(`[${now}] reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}, delay=${delay}ms`);
     this.updateStatus(`${this.t('reconnect.trying')} (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`, false);
 
     this.reconnectTimeout = setTimeout(() => {
+      const execNow = new Date().toISOString().substr(11, 12);
+      this.debugLog(`[${execNow}] reconnect timer fired`);
       if (this.shouldReconnect && this.currentSession && !this.isConnecting) {
-        this.debugLog('execute reconnect');
+        this.debugLog(`[${execNow}] execute reconnect to session ${this.currentSession.substring(0, 8)}`);
         this.isConnecting = true;  // 设置连接锁
         this.connect(this.currentSession);
       } else {
-        this.debugLog('cancel reconnect: shouldReconnect=' + this.shouldReconnect + ', isConnecting=' + this.isConnecting);
+        this.debugLog(`[${execNow}] cancel reconnect: shouldReconnect=${this.shouldReconnect}, currentSession=${!!this.currentSession}, isConnecting=${this.isConnecting}`);
       }
     }, delay);
   }
@@ -2336,55 +2887,6 @@ class App {
         cols: adjustedCols
       });
     }, 50);
-  }
-
-  /**
-   * 重命名会话
-   */
-  async renameSession(sessionId, currentName) {
-    const newName = prompt(this.t('prompt.rename'), currentName);
-    if (!newName || newName === currentName) return;
-
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: JSON.stringify({ name: newName })
-      });
-
-      if (!response.ok) throw new Error('Failed to rename session');
-
-      this.loadSessions();
-    } catch (error) {
-      console.error('Rename session error:', error);
-      this.showError(this.t('error.renameFailed'));
-    }
-  }
-
-  /**
-   * 删除会话
-   */
-  async deleteSession(sessionId) {
-    if (!confirm(this.t('confirm.delete'))) return;
-
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to delete session');
-
-      this.loadSessions();
-    } catch (error) {
-      console.error('Delete session error:', error);
-      this.showError(this.t('error.deleteFailed'));
-    }
   }
 
   /**
@@ -2487,6 +2989,10 @@ class App {
     if (viewName === 'sessions') {
       this.loadSessions();
       this.loadUsageSummary();
+      // 更新悬浮按钮状态
+      if (this.floatingButton) {
+        this.floatingButton.update();
+      }
     }
   }
 

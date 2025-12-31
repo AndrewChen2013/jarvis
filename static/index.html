@@ -58,7 +58,7 @@
     <header class="header">
       <div class="header-title" onclick="window.app && window.app.toggleDebugPanel()">
         <div class="system-info">
-          <span id="system-hostname" class="system-hostname">--</span>
+          <span class="system-user-host"><span id="system-username">--</span>@<span id="system-hostname" class="hostname">--</span></span>
           <span id="system-ip" class="system-ip">--</span>
         </div>
       </div>
@@ -80,7 +80,7 @@
         </div>
         <div class="help-list">
           <div class="help-item"><span class="help-key">+</span><span data-i18n="sessions.help.create">创建新会话</span></div>
-          <div class="help-item"><span class="help-key" data-i18n="session.card">卡片</span><span data-i18n="sessions.help.card">点击进入终端</span></div>
+          <div class="help-item"><span class="help-key" data-i18n="sessions.card">卡片</span><span data-i18n="sessions.help.card">点击进入终端</span></div>
           <div class="help-item"><span class="help-key" data-i18n="common.rename">重命名</span><span data-i18n="sessions.help.rename">修改会话名称</span></div>
           <div class="help-item"><span class="help-key" data-i18n="common.delete">删除</span><span data-i18n="sessions.help.delete">删除会话记录</span></div>
           <div class="help-item"><span class="help-key">⚙</span><span data-i18n="sessions.help.password">修改访问密码</span></div>
@@ -346,6 +346,7 @@
         <button class="key-btn key-danger" data-key="escape">ESC</button>
         <button class="key-btn key-nav" data-key="top">⤒</button>
         <button class="key-btn key-nav" data-key="bottom">⤓</button>
+        <button class="key-btn key-edit" data-key="backspace">⌫</button>
         <button class="key-btn key-action" data-key="enter">↵</button>
         <button class="key-btn key-more" id="more-keys-btn">⋯</button>
       </div>

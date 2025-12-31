@@ -424,8 +424,66 @@ show_menu() {
     echo ""
 }
 
+# Print usage
+print_usage() {
+    echo ""
+    echo "Usage: $0 [command]"
+    echo ""
+    echo "Commands:"
+    echo "  start       Start the service"
+    echo "  stop        Stop the service"
+    echo "  restart     Restart the service"
+    echo "  status      Show service status"
+    echo "  logs        View logs (tail -f)"
+    echo "  enable      Enable autostart on boot"
+    echo "  disable     Disable autostart on boot"
+    echo "  install     Install/reinstall dependencies"
+    echo ""
+    echo "If no command is provided, interactive menu will be shown."
+    echo ""
+}
+
 # 主逻辑
 main() {
+    # Handle command line arguments
+    if [ $# -gt 0 ]; then
+        case "$1" in
+            start)
+                start_service
+                ;;
+            stop)
+                stop_service
+                ;;
+            restart)
+                restart_service
+                ;;
+            status)
+                check_status
+                ;;
+            logs)
+                view_logs
+                ;;
+            enable)
+                enable_autostart
+                ;;
+            disable)
+                disable_autostart
+                ;;
+            install)
+                install_deps
+                ;;
+            -h|--help|help)
+                print_usage
+                ;;
+            *)
+                print_error "Unknown command: $1"
+                print_usage
+                exit 1
+                ;;
+        esac
+        exit 0
+    fi
+
     # 检查是否首次安装
     if [ ! -d "$PROJECT_ROOT/venv" ] || [ ! -f "$PROJECT_ROOT/.env" ]; then
         full_install

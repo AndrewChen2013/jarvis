@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Claude Remote - 主应用入口
+
+简化后的架构：
+- 直接使用 Claude 的 ~/.claude/projects/ 作为数据源
+- 只提供附加命名能力
+- 简化的终端管理
+"""
 from fastapi import FastAPI, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -21,45 +29,18 @@ import os
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.db.sqlite import SQLiteDB
-from app.services.session_manager import SessionManager
-from app.api.websocket import ConnectionManager
-from app.api import sessions
-
-
-# 全局变量
-db: SQLiteDB = None
-session_manager: SessionManager = None
-connection_manager: ConnectionManager = None
+from app.services.terminal_manager import terminal_manager
+from app.api import auth, projects, system
+from app.api.terminal import handle_terminal_websocket
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global db, session_manager, connection_manager
-
     logger.info("Application starting...")
 
-    # 连接数据库
-    db = SQLiteDB("data/sessions.db")
-    await db.connect()
-
-    # 从数据库加载 AUTH_TOKEN，如果没有则使用 .env 中的值并保存到数据库
-    db_token = await db.get_config("AUTH_TOKEN")
-    if db_token:
-        settings.AUTH_TOKEN = db_token
-        logger.info("AUTH_TOKEN loaded from database")
-    else:
-        # 首次启动，将 .env 中的 token 保存到数据库
-        await db.set_config("AUTH_TOKEN", settings.AUTH_TOKEN)
-        logger.info("AUTH_TOKEN saved to database from .env")
-
-    # 创建 session manager
-    session_manager = SessionManager(db)
-    await session_manager.start()
-
-    # 创建 connection manager
-    connection_manager = ConnectionManager(session_manager)
+    # 启动终端管理器
+    await terminal_manager.start()
 
     logger.info(f"Application started successfully")
     logger.info(f"Auth token: {settings.AUTH_TOKEN}")
@@ -68,13 +49,7 @@ async def lifespan(app: FastAPI):
 
     # 清理
     logger.info("Application shutting down...")
-
-    if session_manager:
-        await session_manager.stop()
-
-    if db:
-        await db.disconnect()
-
+    await terminal_manager.stop()
     logger.info("Application stopped")
 
 
@@ -87,14 +62,16 @@ app = FastAPI(
 # CORS 配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应该限制
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # 注册路由
-app.include_router(sessions.router)
+app.include_router(auth.router)
+app.include_router(projects.router)
+app.include_router(system.router)
 
 # 挂载静态文件
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -112,13 +89,10 @@ async def root():
 async def health():
     """健康检查"""
     try:
-        # 获取活跃会话数
-        active_count = len(session_manager.active_processes) if session_manager else 0
-
+        stats = terminal_manager.get_stats()
         return {
             "status": "healthy",
-            "database": "connected",
-            "active_sessions": active_count
+            "active_terminals": stats["active_terminals"]
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
@@ -128,14 +102,39 @@ async def health():
         }
 
 
+@app.websocket("/ws/terminal")
+async def websocket_terminal(
+    websocket: WebSocket,
+    working_dir: str = Query(...),
+    session_id: str = Query(default=None),
+    token: str = Query(...)
+):
+    """终端 WebSocket 端点
+
+    Args:
+        working_dir: 工作目录（必填）
+        session_id: Claude session_id（可选，None 表示新建会话）
+        token: 认证 token
+    """
+    await handle_terminal_websocket(
+        websocket=websocket,
+        working_dir=working_dir,
+        session_id=session_id,
+        token=token
+    )
+
+
+# 兼容旧的 WebSocket 端点（逐步废弃）
 @app.websocket("/ws/{session_id}")
-async def websocket_endpoint(
+async def websocket_legacy(
     websocket: WebSocket,
     session_id: str,
     token: str = Query(...)
 ):
-    """WebSocket 端点"""
-    await connection_manager.connect(websocket, session_id, token)
+    """旧版 WebSocket 端点（兼容）"""
+    # 这个端点需要前端配合更新后移除
+    logger.warning(f"Legacy WebSocket endpoint used: {session_id}")
+    await websocket.close(code=1008, reason="Please use /ws/terminal endpoint")
 
 
 if __name__ == "__main__":
