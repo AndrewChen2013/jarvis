@@ -2476,6 +2476,12 @@ class App {
       this.shouldReconnect = true;
       this.reconnectAttempts = 0;
 
+      // 清理重连计时器，避免重复连接
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout);
+        this.reconnectTimeout = null;
+      }
+
       // 保存 ws 到 SessionManager
       const session = this.sessionManager.sessions.get(sessionId);
       if (session) {
@@ -2671,16 +2677,23 @@ class App {
     const inputEl = inputRow?.querySelector('.input-field');
     if (!inputEl) return;
 
-    // 必须分开发送：先发内容，再单独发回车
-    // 合并发送会导致 PTY 处理异常
-    if (inputEl.value) {
-      this.sendMessage({ type: 'input', data: inputEl.value });
-    }
-    this.sendMessage({ type: 'input', data: '\r' });
+    const content = inputEl.value;
 
-    // 清空输入框并重置高度
+    // 清空输入框并重置高度（立即清空，避免重复发送）
     inputEl.value = '';
     inputEl.style.height = 'auto';
+
+    // 必须分开发送：先发内容，再单独发回车
+    // 加延迟避免时序问题
+    if (content) {
+      this.sendMessage({ type: 'input', data: content });
+      // 延迟 100ms 再发送回车，避免时序问题
+      setTimeout(() => {
+        this.sendMessage({ type: 'input', data: '\r' });
+      }, 100);
+    } else {
+      this.sendMessage({ type: 'input', data: '\r' });
+    }
   }
 
   /**
