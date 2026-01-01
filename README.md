@@ -235,10 +235,11 @@ Enter your AUTH_TOKEN (shown during installation or in `.env` file).
 <img src="screenshots/terminal.png" width="300" alt="Terminal">
 
 Full terminal experience on mobile:
-- **Virtual keys**: Tab, ↑↓, Ctrl+C, ESC, and more
-- **Slash commands**: /resume, /clear, /help, /compact
+- **Virtual keys**: Tab, ↑↓, ESC, Backspace, and more
+- **Combo keys**: ^L (clear), ^O (verbose), ^B (background), ESC×2 (rollback), ⇧Tab (mode)
+- **Slash commands**: /resume, /clear, /help, /compact, /memory
 - **Touch scroll**: Smooth scrolling with momentum
-- **Font size**: Adjustable for your preference
+- **Font size**: A+/A- buttons, each session remembers its own size
 
 ### Voice Input
 
@@ -262,6 +263,75 @@ Full terminal experience on mobile:
 
 ---
 
+## Features
+
+### 📱 Mobile-Optimized Experience
+
+- **Touch Scroll** — Smooth momentum scrolling, feels like a native app
+- **Virtual Keyboard** — Terminal shortcuts without switching input methods
+- **Font Scaling** — A+/A- buttons, each session remembers its size
+- **Pull to Refresh** — Light pull refreshes data, heavy pull reloads page
+- **Keyboard Adaptation** — Toolbar stays visible when soft keyboard opens
+
+### 🔀 Multi-Session Management
+
+- **Background Sessions** — Switch sessions without disconnecting, Claude keeps running
+- **Floating Switch Button** — Quick jump between active sessions
+- **Minimize to Background** — Leave temporarily, resume anytime
+- **Rename Sessions** — Give sessions memorable names
+- **Delete Sessions** — Clean up old history
+
+### ⌨️ Shortcuts
+
+**Common Keys**
+
+| Key | Function |
+|-----|----------|
+| TAB | Auto-complete |
+| ↑ ↓ | Command history |
+| ESC | Stop current operation |
+| ⤒ ⤓ | Scroll to top/bottom (hold for continuous) |
+
+**Combo Keys**
+
+| Key | Function |
+|-----|----------|
+| ^L | Clear screen |
+| ^O | Verbose output |
+| ^B | Background task |
+| ESC×2 | Rollback last action |
+| ⇧Tab | Switch mode |
+
+**Slash Commands**
+
+| Command | Function |
+|---------|----------|
+| /resume | Resume session |
+| /clear | Clear conversation |
+| /compact | Compact context |
+| /memory | View memory |
+| /help | Help info |
+
+### 📊 Usage Monitoring
+
+- **Real-time Usage** — View 5-hour and 7-day cycle utilization
+- **Sonnet Quota** — Separate display for Sonnet model usage
+- **Context Info** — Token consumption, remaining space, distance to compact
+- **Account Info** — Shows plan type and connection status
+
+### 🌐 Multi-Language Support
+
+- Chinese / English switch anytime
+- Settings auto-saved
+
+### 🔐 Secure Access
+
+- **Token Auth** — Random access token generated on first run
+- **Change Password** — Update access token anytime
+- **Remote Access** — Cloudflare Tunnel for secure exposure
+
+---
+
 ## Configuration
 
 Edit `.env` file:
@@ -269,15 +339,9 @@ Edit `.env` file:
 ```bash
 # Authentication (required)
 AUTH_TOKEN=your-secret-token
-
-# Session limits
-MAX_ACTIVE_SESSIONS=10        # Max concurrent sessions
-SESSION_IDLE_TIMEOUT=7200     # Auto-sleep after 2 hours idle
-
-# Resource limits
-MAX_PROCESS_MEMORY_MB=2048    # Memory limit per session
-MAX_PROCESS_CPU_PERCENT=80    # CPU limit per session
 ```
+
+> The AUTH_TOKEN is auto-generated on first run. You can change it anytime in Settings.
 
 ---
 
