@@ -464,8 +464,8 @@ class App {
 
       if (response.ok) {
         // token 有效，显示会话列表
+        // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
         this.showView('sessions');
-        this.loadSessions();
         this.loadSystemInfo();
         this.loadAccountInfo();
         this.loadUsageSummary();
@@ -478,8 +478,8 @@ class App {
     } catch (error) {
       console.error('Auth check error:', error);
       // 网络错误，尝试使用缓存的 token
+      // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
       this.showView('sessions');
-      this.loadSessions();
     }
   }
 
@@ -518,8 +518,8 @@ class App {
         tokenInput.value = '';
 
         // 显示会话列表
+        // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
         this.showView('sessions');
-        this.loadSessions();
         this.loadSystemInfo();
         this.loadAccountInfo();
         this.loadUsageSummary();
