@@ -429,8 +429,18 @@ const AppWebSocket = {
     if (sessionId) {
       params.append('session_id', sessionId);
     }
+
+    // 获取终端大小并添加到 URL（让后端在连接时检查是否需要 resize）
+    if (this.terminal) {
+      const size = this.terminal.getSize();
+      const adjustedCols = Math.max(size.cols - 3, 20);
+      params.append('rows', size.rows);
+      params.append('cols', adjustedCols);
+      this.debugLog(`connectWebSocket: sending size ${size.rows}x${adjustedCols}`);
+    }
+
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
-    this.debugLog('WebSocket URL: ' + wsUrl.substring(0, 80));
+    this.debugLog('WebSocket URL: ' + wsUrl.substring(0, 100));
 
     // 使用通用连接逻辑
     this._doConnect(wsUrl);
@@ -596,9 +606,8 @@ const AppWebSocket = {
         this.loadContextInfo();
       }
 
-      // 标记需要在收到第一波消息后 resize
-      // 不在这里立即 resize，避免在历史内容到达前触发
-      this.pendingResize = true;
+      // 注意：不再需要前端触发 resize
+      // 后端在连接时已根据 URL 参数中的 rows/cols 检查并处理
     };
 
     this.ws.onmessage = (event) => {
@@ -744,16 +753,7 @@ const AppWebSocket = {
               } catch (writeError) {
                 console.error('Terminal write error:', writeError);
               }
-
-              // 收到第一波消息后触发 resize
-              if (this.pendingResize) {
-                this.pendingResize = false;
-                this.debugLog('First output received, schedule resize');
-                // 延迟 resize，让内容先渲染稳定
-                setTimeout(() => {
-                  this.applyFontSizeAndResize();
-                }, 1000);
-              }
+              // 注意：不再需要前端触发 resize，后端在连接时已处理
             } else {
               // 终端未就绪，放入队列
               console.log('Terminal not ready, queuing output');
@@ -1151,6 +1151,8 @@ const AppWebSocket = {
   resizeTerminal() {
     if (!this.terminal) return;
 
+    this.debugLog(`resizeTerminal called, lastSize=${JSON.stringify(this.lastTerminalSize)}`);
+
     // 先让终端适配容器
     this.terminal.fit();
 
@@ -1161,18 +1163,20 @@ const AppWebSocket = {
       const adjustedCols = Math.max(size.cols - 3, 20);
       const newRows = size.rows;
 
+      this.debugLog(`resizeTerminal: new=${newRows}x${adjustedCols}, last=${JSON.stringify(this.lastTerminalSize)}`);
+
       // 只在大小变化时才发送 resize
       if (this.lastTerminalSize &&
           this.lastTerminalSize.rows === newRows &&
           this.lastTerminalSize.cols === adjustedCols) {
-        console.log('Terminal size unchanged, skip resize');
+        this.debugLog('resizeTerminal: size unchanged, SKIP');
         return;
       }
 
       // 记录当前大小
       this.lastTerminalSize = { rows: newRows, cols: adjustedCols };
 
-      console.log('Terminal resized to:', newRows, 'x', adjustedCols, '(original:', size.cols, ')');
+      this.debugLog(`resizeTerminal: SEND resize ${newRows}x${adjustedCols}`);
       this.sendMessage({
         type: 'resize',
         rows: newRows,

@@ -320,14 +320,49 @@ class TerminalManager:
             logger.error(f"[Terminal:{terminal_id[:8]}] Write error: {e}")
             return False
 
-    async def resize(self, terminal_id: str, rows: int, cols: int):
-        """调整终端大小"""
+    def get_winsize(self, terminal_id: str) -> tuple:
+        """获取终端当前窗口大小
+
+        Returns:
+            (rows, cols) 或 (0, 0) 如果获取失败
+        """
         terminal = self.terminals.get(terminal_id)
         if not terminal:
-            return
+            return (0, 0)
+
+        return self._get_winsize(terminal.master_fd)
+
+    def _get_winsize(self, fd: int) -> tuple:
+        """从 PTY 获取窗口大小"""
+        try:
+            # TIOCGWINSZ 返回 4 个 unsigned short: rows, cols, xpixel, ypixel
+            result = fcntl.ioctl(fd, termios.TIOCGWINSZ, b'\x00' * 8)
+            rows, cols, _, _ = struct.unpack('HHHH', result)
+            return (rows, cols)
+        except OSError:
+            return (0, 0)
+
+    async def resize(self, terminal_id: str, rows: int, cols: int) -> bool:
+        """调整终端大小（仅在大小变化时）
+
+        Returns:
+            True 如果执行了 resize，False 如果大小相同或失败
+        """
+        terminal = self.terminals.get(terminal_id)
+        if not terminal:
+            return False
+
+        # 获取当前大小
+        current_rows, current_cols = self._get_winsize(terminal.master_fd)
+
+        # 只在大小变化时才 resize
+        if current_rows == rows and current_cols == cols:
+            logger.debug(f"[Terminal:{terminal_id[:8]}] Size unchanged ({rows}x{cols}), skip resize")
+            return False
 
         self._set_winsize(terminal.master_fd, rows, cols)
-        logger.debug(f"[Terminal:{terminal_id[:8]}] Resized to {rows}x{cols}")
+        logger.info(f"[Terminal:{terminal_id[:8]}] Resized from {current_rows}x{current_cols} to {rows}x{cols}")
+        return True
 
     def _set_winsize(self, fd: int, rows: int, cols: int):
         """设置终端窗口大小"""
@@ -400,8 +435,8 @@ class TerminalManager:
         return 0
 
     async def _cleanup_loop(self):
-        """定期清理孤儿终端（每分钟检查，空闲5分钟后清理）"""
-        CLEANUP_DELAY = 300  # 5分钟延迟
+        """定期清理孤儿终端（每分钟检查，空闲24小时后清理）"""
+        CLEANUP_DELAY = 86400  # 24小时延迟
         CHECK_INTERVAL = 60  # 每分钟检查一次
 
         while True:

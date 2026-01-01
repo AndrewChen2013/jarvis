@@ -107,7 +107,9 @@ async def websocket_terminal(
     websocket: WebSocket,
     working_dir: str = Query(...),
     session_id: str = Query(default=None),
-    token: str = Query(...)
+    token: str = Query(...),
+    rows: int = Query(default=None),
+    cols: int = Query(default=None)
 ):
     """终端 WebSocket 端点
 
@@ -115,12 +117,16 @@ async def websocket_terminal(
         working_dir: 工作目录（必填）
         session_id: Claude session_id（可选，None 表示新建会话）
         token: 认证 token
+        rows: 前端期望的终端行数（可选）
+        cols: 前端期望的终端列数（可选）
     """
     await handle_terminal_websocket(
         websocket=websocket,
         working_dir=working_dir,
         session_id=session_id,
-        token=token
+        token=token,
+        rows=rows,
+        cols=cols
     )
 
 

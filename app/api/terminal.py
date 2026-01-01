@@ -31,7 +31,9 @@ async def handle_terminal_websocket(
     websocket: WebSocket,
     working_dir: str,
     session_id: str = None,
-    token: str = None
+    token: str = None,
+    rows: int = None,
+    cols: int = None
 ):
     """处理终端 WebSocket 连接
 
@@ -40,6 +42,8 @@ async def handle_terminal_websocket(
         working_dir: 工作目录
         session_id: Claude session_id（None 表示新建）
         token: 认证 token
+        rows: 前端期望的行数
+        cols: 前端期望的列数
     """
     # 验证 token
     if token != settings.AUTH_TOKEN:
@@ -138,6 +142,12 @@ async def handle_terminal_websocket(
                     "data": chunk
                 })
                 await asyncio.sleep(0.005)
+
+        # 检查是否需要 resize（前端传了 rows/cols 参数时）
+        if rows and cols and rows > 0 and cols > 0:
+            resized = await terminal_manager.resize(terminal_id, rows, cols)
+            if resized:
+                logger.info(f"[Terminal:{terminal_id[:8]}] Initial resize to {rows}x{cols}")
 
         # 消息处理循环
         while True:
