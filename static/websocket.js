@@ -563,8 +563,11 @@ const AppWebSocket = {
         this.loadContextInfo();
       }
 
-      // 应用字体大小并发送 resize 命令（适配当前设备）
-      this.applyFontSizeAndResize();
+      // 延迟应用字体大小和 resize，让历史内容先到达并渲染
+      // 避免在内容未稳定时 resize 导致历史丢失
+      setTimeout(() => {
+        this.applyFontSizeAndResize();
+      }, 1500);
     };
 
     this.ws.onmessage = (event) => {
