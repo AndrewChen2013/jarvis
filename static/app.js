@@ -236,6 +236,8 @@ class App {
 
       if (pullDistance >= this.pullRefresh.reloadThreshold && !this.pullRefresh.refreshing) {
         // 大幅下拉 - 刷新整个页面
+        // 设置标志位，避免页面卸载时的请求取消触发错误弹窗
+        window._isPageReloading = true;
         location.reload();
       } else if (pullDistance >= this.pullRefresh.dataThreshold && !this.pullRefresh.refreshing) {
         // 常规下拉 - 只刷新数据

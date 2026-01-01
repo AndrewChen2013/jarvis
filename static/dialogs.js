@@ -102,6 +102,7 @@ const AppDialogs = {
    * 显示错误
    */
   showError(message) {
+    this.debugLog('[showError] message=' + message + ', stack=' + new Error().stack);
     alert(message);
   },
 

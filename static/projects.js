@@ -232,6 +232,7 @@ const AppProjects = {
    * 加载项目列表（新版 - 从 Claude Projects）
    */
   async loadSessions() {
+    this.debugLog('[loadSessions] called, token=' + (this.token ? 'yes' : 'no'));
     try {
       // 并行获取项目列表和活跃连接
       const [projectsResponse, activeSessions] = await Promise.all([
@@ -254,9 +255,20 @@ const AppProjects = {
       }
 
       const projects = await projectsResponse.json();
+      this.debugLog('[loadSessions] success, projects=' + projects.length);
       this.renderProjects(projects, activeSessions);
     } catch (error) {
-      console.error('[loadSessions] error:', error);
+      this.debugLog('[loadSessions] error: ' + error.name + ' ' + error.message);
+      // 页面正在刷新时，忽略所有错误
+      if (window._isPageReloading) {
+        this.debugLog('[loadSessions] Page reloading, ignoring error');
+        return;
+      }
+      // 忽略 AbortError（页面刷新时请求被取消）
+      if (error.name === 'AbortError') {
+        this.debugLog('[loadSessions] Request aborted, ignoring');
+        return;
+      }
       // 只有在 sessions 视图激活时才显示错误弹窗
       const sessionsView = document.getElementById('sessions-view');
       if (sessionsView && sessionsView.classList.contains('active')) {
@@ -365,7 +377,10 @@ const AppProjects = {
       this.showSessionsModal(workDir, sessions, activeSessions);
     } catch (error) {
       console.error('Load project sessions error:', error);
-      this.showError(this.t('sessions.loadFailed'));
+      // 页面正在刷新时，忽略错误
+      if (!window._isPageReloading) {
+        this.showError(this.t('sessions.loadFailed'));
+      }
     } finally {
       this.isLoadingProjectSessions = false;
     }
