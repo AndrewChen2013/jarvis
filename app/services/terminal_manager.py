@@ -105,13 +105,17 @@ class TerminalManager:
     async def create_terminal(
         self,
         working_dir: str,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        rows: int = 40,
+        cols: int = 120
     ) -> Terminal:
         """创建新终端
 
         Args:
             working_dir: 工作目录
             session_id: Claude session_id（None 表示新建会话）
+            rows: 终端行数（默认 40）
+            cols: 终端列数（默认 120）
 
         Returns:
             Terminal 实例
@@ -147,8 +151,9 @@ class TerminalManager:
             flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
             fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
-            # 设置初始窗口大小
-            self._set_winsize(master_fd, 40, 120)
+            # 设置初始窗口大小（使用传入的 rows/cols）
+            self._set_winsize(master_fd, rows, cols)
+            logger.debug(f"[Terminal] Initial size: {rows}x{cols}")
 
             # 使用 session_id 或生成临时 ID 作为 terminal_id
             terminal_id = session_id or f"new-{pid}"

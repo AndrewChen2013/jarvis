@@ -101,10 +101,8 @@ const AppWebSocket = {
       });
     }
 
+    // initTerminal 会在 fit 完成后调用 connectWebSocket
     this.initTerminal();
-
-    // 连接 WebSocket
-    this.connectWebSocket(workDir, sessionId);
   },
 
   /**
@@ -362,6 +360,9 @@ const AppWebSocket = {
         session.container.style.display = 'block';
       }
       this.flushOutputQueue();
+      // 复用 terminal 时，terminal 已经 fit 过了，直接连接
+      this.debugLog('initTerminal: reuse terminal, connect WebSocket');
+      this.connectWebSocket(this.currentWorkDir, this.currentClaudeSessionId);
       return;
     }
 
@@ -391,9 +392,12 @@ const AppWebSocket = {
       console.log('Creating new Terminal instance...');
       this.debugLog('initTerminal: create Terminal instance');
       this.terminal = new Terminal(container, () => {
-        // 终端就绪后，刷新队列中的输出
+        // 终端就绪后（fit 完成后）
         console.log('Terminal ready callback, flushing queue...');
         this.flushOutputQueue();
+        // fit 完成后再建立 WebSocket 连接，确保发送准确的 size
+        this.debugLog('onReady: fit done, connect WebSocket with accurate size');
+        this.connectWebSocket(this.currentWorkDir, this.currentClaudeSessionId);
       });
       console.log('Terminal created successfully');
       this.debugLog('initTerminal: Terminal created');
@@ -455,12 +459,15 @@ const AppWebSocket = {
     }
 
     // 获取终端大小并添加到 URL（让后端在连接时检查是否需要 resize）
+    this.debugLog(`connectWebSocket: this.terminal=${this.terminal ? 'exists' : 'NULL'}`);
     if (this.terminal) {
       const size = this.terminal.getSize();
-      const adjustedCols = Math.max(size.cols - 3, 20);
+      const adjustedCols = Math.max(size.cols - 0, 20);
       params.append('rows', size.rows);
       params.append('cols', adjustedCols);
       this.debugLog(`connectWebSocket: sending size ${size.rows}x${adjustedCols}`);
+    } else {
+      this.debugLog('connectWebSocket: WARNING - no terminal, cannot send size!');
     }
 
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
@@ -1188,7 +1195,7 @@ const AppWebSocket = {
     setTimeout(() => {
       const size = this.terminal.getSize();
       // 减少列数，让内容显示更宽松
-      const adjustedCols = Math.max(size.cols - 3, 20);
+      const adjustedCols = Math.max(size.cols - 0, 20);
       const newRows = size.rows;
 
       this.debugLog(`resizeTerminal: new=${newRows}x${adjustedCols}, last=${JSON.stringify(this.lastTerminalSize)}`);

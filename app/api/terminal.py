@@ -96,12 +96,25 @@ async def handle_terminal_websocket(
         terminal = await terminal_manager.get_terminal(terminal_id)
 
         if not terminal:
-            # 创建新终端
+            # 创建新终端（使用前端传来的 size）
+            actual_rows = rows or 40
+            actual_cols = cols or 120
+            logger.info(f"[Terminal] Creating new PTY with size {actual_rows}x{actual_cols} (rows={rows}, cols={cols})")
             terminal = await terminal_manager.create_terminal(
                 working_dir=working_dir,
-                session_id=session_id
+                session_id=session_id,
+                rows=actual_rows,
+                cols=actual_cols
             )
             terminal_id = terminal.terminal_id
+        else:
+            # 复用现有终端，先 resize（在发送历史之前）
+            if rows and cols and rows > 0 and cols > 0:
+                resized = await terminal_manager.resize(terminal_id, rows, cols)
+                if resized:
+                    logger.info(f"[Terminal:{terminal_id[:8]}] Resize before history to {rows}x{cols}")
+                    # 给一点时间让 SIGWINCH 处理
+                    await asyncio.sleep(0.1)
 
         # 增加 WebSocket 计数
         terminal_manager.increment_websocket_count(terminal_id)
@@ -158,6 +171,7 @@ async def handle_terminal_websocket(
 
         # 发送历史输出
         history = terminal.get_output_history()
+        logger.info(f"[Terminal:{terminal_id[:8]}] History size: {len(history) if history else 0} bytes")
         if history:
             text = history.decode('utf-8', errors='replace')
             chunk_size = 8192
@@ -168,12 +182,7 @@ async def handle_terminal_websocket(
                     "data": chunk
                 })
                 await asyncio.sleep(0.005)
-
-        # 检查是否需要 resize（前端传了 rows/cols 参数时）
-        if rows and cols and rows > 0 and cols > 0:
-            resized = await terminal_manager.resize(terminal_id, rows, cols)
-            if resized:
-                logger.info(f"[Terminal:{terminal_id[:8]}] Initial resize to {rows}x{cols}")
+            logger.info(f"[Terminal:{terminal_id[:8]}] Sent {len(text)} bytes of history")
 
         # 消息处理循环
         while True:
