@@ -263,6 +263,7 @@ const AppProjects = {
    */
   renderProjects(projects, activeSessions = { sessions: [], working_dirs: [] }) {
     const container = document.getElementById('sessions-list');
+    if (!container) return;  // 页面刷新时可能不存在
     container.innerHTML = '';
 
     if (projects.length === 0) {

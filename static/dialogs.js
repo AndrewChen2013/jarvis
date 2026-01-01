@@ -306,34 +306,22 @@ const AppDialogs = {
   },
 
   /**
-   * 切换 Context 信息条显示
+   * 刷新 Context 信息（点击时发送 /context 命令）
    */
-  toggleContextInfo(event) {
-    if (event) event.stopPropagation();
-
-    const contextBar = document.getElementById('context-bar');
-    if (!contextBar) return;
-
-    const isVisible = contextBar.classList.contains('visible');
-
-    if (isVisible) {
-      contextBar.classList.remove('visible');
-    } else {
-      // 显示并刷新数据
-      contextBar.classList.add('visible');
-      this.refreshContextInfo();
-
-      // 发送 /context 命令到终端刷新数据
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'input', data: '/context\n' }));
-      }
+  async refreshContextInfo() {
+    // 发送 /context 命令到终端刷新数据
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'input', data: '/context\n' }));
     }
+
+    // 延迟一点再读取，等待命令输出写入文件
+    setTimeout(() => this.loadContextInfo(), 1500);
   },
 
   /**
-   * 刷新 Context 信息
+   * 加载 Context 信息
    */
-  async refreshContextInfo() {
+  async loadContextInfo() {
     try {
       const response = await fetch('/api/context', {
         headers: { 'Authorization': `Bearer ${this.token}` }
@@ -355,19 +343,26 @@ const AppDialogs = {
       if (ctxUsed) {
         const usedK = Math.round(data.tokens_used / 1000);
         const maxK = Math.round(data.tokens_max / 1000);
-        ctxUsed.textContent = `${usedK}k/${maxK}k (${data.percentage}%)`;
+        const usedLabel = this.t('context.used', 'Used');
+        ctxUsed.textContent = `${usedLabel} ${data.percentage}%`;
       }
 
       if (ctxFree && categories.free_space) {
         const freeK = Math.round(categories.free_space.tokens / 1000);
-        ctxFree.textContent = `${freeK}k free`;
+        const freeLabel = this.t('context.free', 'Free');
+        ctxFree.textContent = `${freeLabel} ${freeK}k`;
       }
 
       if (ctxBuffer && categories.autocompact_buffer) {
         const bufferK = Math.round(categories.autocompact_buffer.tokens / 1000);
         const freeK = categories.free_space ? Math.round(categories.free_space.tokens / 1000) : 0;
         const untilCompact = freeK - bufferK;
-        ctxBuffer.textContent = untilCompact > 0 ? `${untilCompact}k 后压缩` : '即将压缩';
+        if (untilCompact > 0) {
+          const untilLabel = this.t('context.untilCompact', 'until compact');
+          ctxBuffer.textContent = `${untilCompact}k ${untilLabel}`;
+        } else {
+          ctxBuffer.textContent = this.t('context.compactSoon', 'Compact soon');
+        }
       }
     } catch (e) {
       console.error('Failed to refresh context info:', e);

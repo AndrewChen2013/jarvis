@@ -291,50 +291,56 @@ async def get_context(_: str = Depends(verify_token)):
     """获取当前 session 的 context 使用情况
 
     从 Claude 的 session 文件中读取最近一次 /context 命令的输出。
+    优先查找当前 session，如果没有则查找最近有 /context 输出的文件。
     """
     try:
-        claude_dir = Path.home() / ".claude"
-        debug_latest = claude_dir / "debug" / "latest"
-
-        # 获取当前 session ID
-        if not debug_latest.exists():
-            return {"available": False, "reason": "No active session"}
-
         import os
-        session_id = os.path.basename(os.readlink(debug_latest)).replace(".txt", "")
-
-        # 查找 session 文件（搜索所有项目目录）
-        projects_dir = claude_dir / "projects"
-        session_file = None
-
-        if projects_dir.exists():
-            for project_dir in projects_dir.iterdir():
-                if project_dir.is_dir() and not project_dir.name.startswith('.'):
-                    candidate = project_dir / f"{session_id}.jsonl"
-                    if candidate.exists():
-                        session_file = candidate
-                        break
-
-        if not session_file:
-            return {"available": False, "reason": "Session file not found", "session_id": session_id}
-
-        # 读取并解析 /context 输出
-        context_data = None
         import re
 
-        with open(session_file) as f:
-            for line in f:
-                try:
-                    d = json.loads(line)
-                    content = d.get("message", {}).get("content", "")
-                    if "<local-command-stdout>" in content and "Context Usage" in content:
-                        # 提取 markdown 内容
-                        match = re.search(r"<local-command-stdout>(.*?)</local-command-stdout>", content, re.DOTALL)
-                        if match:
-                            md = match.group(1)
-                            context_data = _parse_context_markdown(md)
-                except:
-                    pass
+        claude_dir = Path.home() / ".claude"
+        projects_dir = claude_dir / "projects"
+
+        if not projects_dir.exists():
+            return {"available": False, "reason": "Projects directory not found"}
+
+        # 收集所有 session 文件，按修改时间排序
+        session_files = []
+        for project_dir in projects_dir.iterdir():
+            if project_dir.is_dir() and not project_dir.name.startswith('.'):
+                for f in project_dir.glob("*.jsonl"):
+                    # 排除 agent 文件，只看主 session 文件
+                    if not f.name.startswith("agent-"):
+                        session_files.append(f)
+
+        if not session_files:
+            return {"available": False, "reason": "No session files found"}
+
+        # 按修改时间倒序排列，优先查找最新的
+        session_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+
+        # 查找包含 /context 输出的文件
+        context_data = None
+        for session_file in session_files[:10]:  # 只检查最近 10 个文件
+            try:
+                with open(session_file) as f:
+                    for line in f:
+                        try:
+                            d = json.loads(line)
+                            content = d.get("message", {}).get("content", "")
+                            if "<local-command-stdout>" in content and "Context Usage" in content:
+                                match = re.search(r"<local-command-stdout>(.*?)</local-command-stdout>", content, re.DOTALL)
+                                if match:
+                                    md = match.group(1)
+                                    parsed = _parse_context_markdown(md)
+                                    if parsed and parsed.get("tokens_used", 0) > 0:
+                                        context_data = parsed
+                                        # 继续读取同一文件的后续 /context 输出（取最新的）
+                        except:
+                            pass
+                if context_data:
+                    break  # 找到了就停止
+            except:
+                pass
 
         if not context_data:
             return {"available": False, "reason": "No /context output found"}

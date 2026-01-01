@@ -121,6 +121,12 @@ const i18n = {
       'terminal.keys.slash': '斜杠命令',
       'terminal.send': '发送',
 
+      // Context 信息
+      'context.used': '已用',
+      'context.free': '剩余',
+      'context.untilCompact': '后压缩',
+      'context.compactSoon': '即将压缩',
+
       // 连接状态
       'status.connecting': '连接中...',
       'status.connected': '已连接',
@@ -290,6 +296,12 @@ const i18n = {
       'terminal.keys.mode': 'Mode',
       'terminal.keys.slash': 'Slash commands',
       'terminal.send': 'Send',
+
+      // Context info
+      'context.used': 'Used',
+      'context.free': 'Free',
+      'context.untilCompact': 'until compact',
+      'context.compactSoon': 'Compact soon',
 
       // Connection status
       'status.connecting': 'Connecting...',

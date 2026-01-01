@@ -557,6 +557,11 @@ const AppWebSocket = {
       if (this.floatingButton) {
         this.floatingButton.update();
       }
+
+      // 加载 Context 信息
+      if (this.loadContextInfo) {
+        this.loadContextInfo();
+      }
     };
 
     this.ws.onmessage = (event) => {

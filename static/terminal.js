@@ -39,11 +39,11 @@ class Terminal {
   calcDefaultFontSize() {
     const width = window.innerWidth;
     if (width < 430) {
-      return 12;  // iPhone
+      return 13;  // iPhone
     } else if (width < 820) {
-      return 14;  // iPad mini / 大手机横屏
+      return 15;  // iPad mini / 大手机横屏
     } else {
-      return 16;  // iPad / 桌面
+      return 17;  // iPad / 桌面
     }
   }
 
