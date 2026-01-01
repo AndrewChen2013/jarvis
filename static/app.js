@@ -394,6 +394,10 @@ class App {
         btn.addEventListener('click', () => {
           console.log('Key pressed:', key);
           this.sendKey(key);
+          // 如果按钮在展开面板内，自动收起面板
+          if (btn.closest('#more-keys-panel')) {
+            this.closeMoreKeysPanel();
+          }
         });
       }
     });
