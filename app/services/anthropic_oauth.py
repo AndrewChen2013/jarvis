@@ -16,8 +16,11 @@
 Anthropic OAuth API 服务
 
 调用 Anthropic OAuth API 获取实时用量和用户资料。
+支持从 macOS Keychain 或 .credentials.json 文件读取 OAuth token。
 """
 import json
+import subprocess
+import sys
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -31,12 +34,13 @@ class AnthropicOAuthService:
     """Anthropic OAuth API 服务"""
 
     CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
+    KEYCHAIN_SERVICE = "Claude Code-credentials"
     API_BASE = "https://api.anthropic.com"
 
     # API Headers
     HEADERS = {
         "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "claude-code/2.0.32",
+        "User-Agent": "claude-code/2.0.76",
         "Accept": "application/json"
     }
 
@@ -44,30 +48,101 @@ class AnthropicOAuthService:
         self._token_cache: Optional[str] = None
         self._token_expires_at: Optional[int] = None
 
-    def _get_token(self) -> Optional[str]:
-        """获取 OAuth token"""
-        # 检查缓存
-        if self._token_cache and self._token_expires_at:
-            if datetime.now().timestamp() * 1000 < self._token_expires_at:
-                return self._token_cache
+    def _read_from_keychain(self) -> Optional[Dict[str, Any]]:
+        """从 macOS Keychain 读取 credentials
 
-        # 读取 credentials 文件
+        Returns:
+            credentials dict 或 None
+        """
+        if sys.platform != "darwin":
+            return None
+
+        try:
+            result = subprocess.run(
+                ["security", "find-generic-password", "-s", self.KEYCHAIN_SERVICE, "-w"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode != 0:
+                logger.debug(f"Keychain read failed: {result.stderr}")
+                return None
+
+            creds = json.loads(result.stdout.strip())
+            logger.debug("Successfully read credentials from Keychain")
+            return creds
+
+        except subprocess.TimeoutExpired:
+            logger.warning("Keychain read timed out")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Keychain credentials: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to read from Keychain: {e}")
+            return None
+
+    def _read_from_file(self) -> Optional[Dict[str, Any]]:
+        """从 .credentials.json 文件读取 credentials
+
+        Returns:
+            credentials dict 或 None
+        """
         try:
             if not self.CREDENTIALS_PATH.exists():
-                logger.warning("Claude credentials file not found")
+                logger.debug("Credentials file not found")
                 return None
 
             with open(self.CREDENTIALS_PATH) as f:
                 creds = json.load(f)
 
-            oauth = creds.get("claudeAiOauth", {})
-            self._token_cache = oauth.get("accessToken")
-            self._token_expires_at = oauth.get("expiresAt")
+            logger.debug("Successfully read credentials from file")
+            return creds
 
-            return self._token_cache
         except Exception as e:
-            logger.error(f"Failed to read Claude credentials: {e}")
+            logger.error(f"Failed to read credentials file: {e}")
             return None
+
+    def _get_credentials(self) -> Optional[Dict[str, Any]]:
+        """获取 credentials（优先 Keychain，fallback 到文件）
+
+        每次调用都重新读取，确保获取最新的 credentials。
+        credentials 文件很小，读取开销可忽略。
+
+        Returns:
+            credentials dict 或 None
+        """
+        # macOS: 先尝试 Keychain
+        if sys.platform == "darwin":
+            creds = self._read_from_keychain()
+            if creds:
+                return creds
+
+        # Fallback 到文件（Linux 或 macOS Keychain 失败时）
+        creds = self._read_from_file()
+        if creds:
+            return creds
+
+        logger.warning("No credentials found (tried Keychain and file)")
+        return None
+
+    def _get_token(self) -> Optional[str]:
+        """获取 OAuth token"""
+        # 检查 token 缓存
+        if self._token_cache and self._token_expires_at:
+            if datetime.now().timestamp() * 1000 < self._token_expires_at:
+                return self._token_cache
+
+        creds = self._get_credentials()
+        if not creds:
+            return None
+
+        oauth = creds.get("claudeAiOauth", {})
+        self._token_cache = oauth.get("accessToken")
+        self._token_expires_at = oauth.get("expiresAt")
+
+        return self._token_cache
 
     def _request(self, endpoint: str) -> Optional[Dict[str, Any]]:
         """发送 API 请求"""
@@ -133,11 +208,9 @@ class AnthropicOAuthService:
     def get_credentials_info(self) -> Optional[Dict[str, Any]]:
         """获取本地 credentials 信息（不含敏感 token）"""
         try:
-            if not self.CREDENTIALS_PATH.exists():
+            creds = self._get_credentials()
+            if not creds:
                 return None
-
-            with open(self.CREDENTIALS_PATH) as f:
-                creds = json.load(f)
 
             oauth = creds.get("claudeAiOauth", {})
             return {
@@ -149,6 +222,11 @@ class AnthropicOAuthService:
         except Exception as e:
             logger.error(f"Failed to read credentials info: {e}")
             return None
+
+    def clear_cache(self):
+        """清除 token 缓存，强制重新获取 token"""
+        self._token_cache = None
+        self._token_expires_at = None
 
 
 # 全局实例
