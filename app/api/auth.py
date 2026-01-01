@@ -15,6 +15,7 @@
 """
 认证相关 API
 """
+import hmac
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import Optional
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def verify_token(authorization: Optional[str] = Header(None)):
-    """验证 token"""
+    """验证 token（使用恒定时间比较防止时序攻击）"""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
 
@@ -34,7 +35,7 @@ def verify_token(authorization: Optional[str] = Header(None)):
     if authorization.startswith("Bearer "):
         token = authorization[7:]
 
-    if token != settings.AUTH_TOKEN:
+    if not hmac.compare_digest(token, settings.AUTH_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     return token
@@ -57,7 +58,7 @@ async def change_password(
     _: str = Depends(verify_token)
 ):
     """修改密码"""
-    if request.old_password != settings.AUTH_TOKEN:
+    if not hmac.compare_digest(request.old_password, settings.AUTH_TOKEN):
         raise HTTPException(status_code=400, detail="旧密码错误")
 
     if len(request.new_password) < 6:

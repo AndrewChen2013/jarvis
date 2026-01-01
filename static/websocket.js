@@ -421,10 +421,9 @@ const AppWebSocket = {
     // 设置连接锁
     this.isConnecting = true;
 
-    // 构建新的 WebSocket URL
+    // 构建新的 WebSocket URL（不包含 token，token 通过消息认证）
     const params = new URLSearchParams({
-      working_dir: workDir,
-      token: this.token
+      working_dir: workDir
     });
     if (sessionId) {
       params.append('session_id', sessionId);
@@ -440,7 +439,7 @@ const AppWebSocket = {
     }
 
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
-    this.debugLog('WebSocket URL: ' + wsUrl.substring(0, 100));
+    this.debugLog('WebSocket URL: ' + wsUrl);
 
     // 使用通用连接逻辑
     this._doConnect(wsUrl);
@@ -470,9 +469,9 @@ const AppWebSocket = {
     }
     this.isConnecting = true;
 
-    // 否则使用旧端点（兼容）
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${sessionId}?token=${this.token}`;
-    this.debugLog('WebSocket URL: ' + wsUrl.substring(0, 60));
+    // 否则使用旧端点（兼容）- 注意：旧端点已废弃，后端会拒绝连接
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${sessionId}`;
+    this.debugLog('WebSocket URL (legacy): ' + wsUrl);
     this._doConnect(wsUrl);
   },
 
@@ -572,6 +571,10 @@ const AppWebSocket = {
       this.isConnecting = false;
       this.shouldReconnect = true;
       this.reconnectAttempts = 0;
+
+      // 立即发送认证消息（必须是连接后的第一条消息）
+      this.debugLog('Sending auth message');
+      this.sendMessage({ type: 'auth', token: this.token });
 
       // 清理重连计时器，避免重复连接
       if (this.reconnectTimeout) {

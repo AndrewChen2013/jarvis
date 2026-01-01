@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api", tags=["system"])
 
 
 @router.get("/system/info")
-async def get_system_info():
+async def get_system_info(_: str = Depends(verify_token)):
     """获取系统信息（IP、主机名、用户主目录）"""
     try:
         hostname = socket.gethostname()

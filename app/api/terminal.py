@@ -31,7 +31,6 @@ async def handle_terminal_websocket(
     websocket: WebSocket,
     working_dir: str,
     session_id: str = None,
-    token: str = None,
     rows: int = None,
     cols: int = None
 ):
@@ -41,17 +40,44 @@ async def handle_terminal_websocket(
         websocket: WebSocket 连接
         working_dir: 工作目录
         session_id: Claude session_id（None 表示新建）
-        token: 认证 token
         rows: 前端期望的行数
         cols: 前端期望的列数
     """
-    # 验证 token
-    if token != settings.AUTH_TOKEN:
-        await websocket.close(code=1008, reason="Invalid token")
-        logger.warning("Invalid token attempt")
-        return
+    import hmac
 
     await websocket.accept()
+
+    # 等待认证消息（连接后第一条消息必须是 auth）
+    try:
+        auth_message = await asyncio.wait_for(websocket.receive(), timeout=10.0)
+
+        data = None
+        if "bytes" in auth_message:
+            data = msgpack.unpackb(auth_message["bytes"], raw=False)
+        elif "text" in auth_message:
+            data = json.loads(auth_message["text"])
+
+        if not data or data.get("type") != "auth":
+            await websocket.close(code=1008, reason="First message must be auth")
+            logger.warning("WebSocket: first message not auth")
+            return
+
+        token = data.get("token", "")
+        if not hmac.compare_digest(token, settings.AUTH_TOKEN):
+            await websocket.close(code=1008, reason="Invalid token")
+            logger.warning("WebSocket: invalid token")
+            return
+
+        logger.debug("WebSocket: auth successful")
+
+    except asyncio.TimeoutError:
+        await websocket.close(code=1008, reason="Auth timeout")
+        logger.warning("WebSocket: auth timeout")
+        return
+    except Exception as e:
+        await websocket.close(code=1008, reason="Auth failed")
+        logger.warning(f"WebSocket: auth error: {e}")
+        return
 
     terminal = None
     output_callback = None
