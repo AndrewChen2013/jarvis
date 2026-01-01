@@ -138,6 +138,23 @@ const AppDialogs = {
   },
 
   /**
+   * 切换 Context 面板显示
+   */
+  toggleContextPanel() {
+    const bar = document.getElementById('context-bar');
+    const btn = document.getElementById('context-toggle');
+    if (bar && btn) {
+      const isCollapsed = bar.classList.toggle('collapsed');
+      btn.classList.toggle('expanded', !isCollapsed);
+
+      // 展开时加载数据
+      if (!isCollapsed) {
+        this.loadContextInfo();
+      }
+    }
+  },
+
+  /**
    * 切换会话列表帮助面板
    */
   toggleSessionsHelpPanel(event) {
@@ -301,71 +318,122 @@ const AppDialogs = {
    */
   updateStatus(text, connected) {
     const status = document.getElementById('connection-status');
-    status.textContent = text;
-    status.className = 'connection-status ' + (connected ? 'connected' : 'disconnected');
+    if (status) {
+      status.textContent = text;
+      status.className = 'connection-status ' + (connected ? 'connected' : 'disconnected');
+    }
+
+    // 更新连接状态点
+    const dot = document.getElementById('connection-dot');
+    if (dot) {
+      dot.className = 'connection-dot ' + (connected ? 'connected' : 'disconnected');
+    }
   },
 
   /**
    * 刷新 Context 信息（点击时发送 /context 命令）
    */
   async refreshContextInfo() {
-    // 发送 /context 命令到终端刷新数据
+    // 发送 /context 命令到终端
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'input', data: '/context\n' }));
+      this.ws.send(JSON.stringify({ type: 'input', data: '/context' }));
+      this.ws.send(JSON.stringify({ type: 'input', data: '\r' }));
     }
 
-    // 延迟一点再读取，等待命令输出写入文件
-    setTimeout(() => this.loadContextInfo(), 1500);
+    // 延迟读取，等待命令输出保存
+    setTimeout(() => this.loadContextInfo(), 2000);
   },
 
   /**
    * 加载 Context 信息
+   * 统一使用 /api/projects/session/{session_id} 获取当前 session 的 context 信息
    */
   async loadContextInfo() {
+    // 需要有当前 session ID
+    if (!window.app || !window.app.currentClaudeSessionId) {
+      return;
+    }
+
     try {
-      const response = await fetch('/api/context', {
+      const sessionId = window.app.currentClaudeSessionId;
+      const response = await fetch(`/api/projects/session/${sessionId}`, {
         headers: { 'Authorization': `Bearer ${this.token}` }
       });
 
       if (!response.ok) return;
 
-      const result = await response.json();
-      if (!result.available || !result.data) return;
+      const data = await response.json();
 
-      const data = result.data;
-      const categories = data.categories || {};
+      // 计算显示值 - 参照 Claude /context 格式
+      const usedK = Math.round((data.context_used || 0) / 1000);
+      const maxK = Math.round((data.context_max || 200000) / 1000);
+      const freeK = Math.round((data.context_free || 0) / 1000);
+      const untilCompact = Math.round((data.context_until_compact || 0) / 1000);
+      const percentage = data.context_percentage || 0;
+      const totalTokens = data.total_tokens || 0;
 
-      // 更新显示
-      const ctxUsed = document.getElementById('ctx-used');
-      const ctxFree = document.getElementById('ctx-free');
-      const ctxBuffer = document.getElementById('ctx-buffer');
+      // 更新悬浮条显示 - 方案 A：详细信息卡片
+      const ctxBar = document.getElementById('context-bar');
+      if (ctxBar) {
+        // 从 categories 提取详细信息
+        const categories = data.context_categories || {};
+        const sysPrompt = categories['System prompt'];
+        const sysTools = categories['System tools'];
+        const messages = categories['Messages'];
+        const freeSpace = categories['Free space'];
+        const autocompact = categories['Autocompact buffer'];
 
-      if (ctxUsed) {
-        const usedK = Math.round(data.tokens_used / 1000);
-        const maxK = Math.round(data.tokens_max / 1000);
-        const usedLabel = this.t('context.used', 'Used');
-        ctxUsed.textContent = `${usedLabel} ${data.percentage}%`;
-      }
+        // 第一行：主指标
+        const line1 = `<div class="ctx-header">${usedK}k / ${maxK}k <span class="ctx-pct">(${percentage}%)</span></div>`;
 
-      if (ctxFree && categories.free_space) {
-        const freeK = Math.round(categories.free_space.tokens / 1000);
-        const freeLabel = this.t('context.free', 'Free');
-        ctxFree.textContent = `${freeLabel} ${freeK}k`;
-      }
+        // 分隔线
+        const divider = '<div class="ctx-divider"></div>';
 
-      if (ctxBuffer && categories.autocompact_buffer) {
-        const bufferK = Math.round(categories.autocompact_buffer.tokens / 1000);
-        const freeK = categories.free_space ? Math.round(categories.free_space.tokens / 1000) : 0;
-        const untilCompact = freeK - bufferK;
-        if (untilCompact > 0) {
-          const untilLabel = this.t('context.untilCompact', 'until compact');
-          ctxBuffer.textContent = `${untilCompact}k ${untilLabel}`;
+        // 详细分类行
+        let detailLines = '';
+
+        // 如果有 categories 数据，显示详细信息
+        if (sysPrompt || sysTools || messages) {
+          if (sysPrompt) {
+            detailLines += `<div class="ctx-row"><span class="ctx-icon">⛁</span><span class="ctx-label">Sys</span><span class="ctx-value">${(sysPrompt.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${sysPrompt.percentage.toFixed(1)}%</span></div>`;
+          }
+          if (sysTools) {
+            detailLines += `<div class="ctx-row"><span class="ctx-icon">⛁</span><span class="ctx-label">Tool</span><span class="ctx-value">${(sysTools.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${sysTools.percentage.toFixed(1)}%</span></div>`;
+          }
+          if (messages) {
+            detailLines += `<div class="ctx-row ctx-msg"><span class="ctx-icon">⛁</span><span class="ctx-label">Msg</span><span class="ctx-value">${(messages.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${messages.percentage.toFixed(1)}%</span></div>`;
+          }
+          if (freeSpace) {
+            detailLines += `<div class="ctx-row ctx-free-row"><span class="ctx-icon">⛶</span><span class="ctx-label">Free</span><span class="ctx-value">${(freeSpace.tokens / 1000).toFixed(0)}k</span><span class="ctx-percent">${freeSpace.percentage.toFixed(1)}%</span></div>`;
+          }
+          if (autocompact) {
+            detailLines += `<div class="ctx-row ctx-compact-row"><span class="ctx-icon">⛝</span><span class="ctx-label">Comp</span><span class="ctx-value">${(autocompact.tokens / 1000).toFixed(0)}k</span><span class="ctx-percent">${autocompact.percentage.toFixed(1)}%</span></div>`;
+          }
         } else {
-          ctxBuffer.textContent = this.t('context.compactSoon', 'Compact soon');
+          // Fallback：没有 categories 时用基础数据
+          const freePct = maxK > 0 ? ((freeK / maxK) * 100).toFixed(1) : '0.0';
+          const compactPct = maxK > 0 ? ((untilCompact / maxK) * 100).toFixed(1) : '0.0';
+          detailLines += `<div class="ctx-row ctx-free-row"><span class="ctx-icon">⛶</span><span class="ctx-label">Free</span><span class="ctx-value">${freeK}k</span><span class="ctx-percent">${freePct}%</span></div>`;
+          detailLines += `<div class="ctx-row ctx-compact-row"><span class="ctx-icon">⛝</span><span class="ctx-label">Comp</span><span class="ctx-value">${untilCompact > 0 ? untilCompact + 'k' : 'soon'}</span><span class="ctx-percent">${compactPct}%</span></div>`;
         }
+
+        // Skills 显示
+        const skills = data.context_skills || [];
+        let skillsHtml = '';
+        if (skills.length > 0) {
+          skillsHtml = '<div class="ctx-divider"></div><div class="ctx-skills-title">Skills</div>';
+          for (const skill of skills) {
+            const tokenStr = skill.tokens >= 1000
+              ? (skill.tokens / 1000).toFixed(1) + 'k'
+              : skill.tokens.toString();
+            skillsHtml += `<div class="ctx-skill-row"><span class="ctx-skill-icon">└</span><span class="ctx-skill-name">${skill.name}</span><span class="ctx-skill-tokens">${tokenStr}</span></div>`;
+          }
+        }
+
+        ctxBar.innerHTML = `${line1}${divider}${detailLines}${skillsHtml}`;
       }
     } catch (e) {
-      console.error('Failed to refresh context info:', e);
+      console.error('Failed to load context info:', e);
     }
   }
 };

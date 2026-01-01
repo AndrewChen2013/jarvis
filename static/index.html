@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Claude Remote</title>
-  <link rel="stylesheet" href="/static/styles.css?v=6">
+  <link rel="stylesheet" href="/static/styles.css?v=23">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -86,8 +86,16 @@
           <div class="help-item"><span class="help-key">⚙</span><span data-i18n="sessions.help.password">修改访问密码</span></div>
           <div class="help-item"><span class="help-key">⏻</span><span data-i18n="sessions.help.logout">退出登录</span></div>
         </div>
+        <div class="help-section-title" data-i18n="sessions.help.contextTitle">Context 图标说明</div>
+        <div class="help-list help-list-icons">
+          <div class="help-item"><span class="help-key help-key-purple">⛁</span><span data-i18n="sessions.help.ctxUsed">已用 / 最大容量 (百分比)</span></div>
+          <div class="help-item"><span class="help-key help-key-gray">⛶</span><span data-i18n="sessions.help.ctxFree">剩余可用空间</span></div>
+          <div class="help-item"><span class="help-key help-key-gray">⛝</span><span data-i18n="sessions.help.ctxCompact">距离自动压缩</span></div>
+          <div class="help-item"><span class="help-key help-key-green">⚡</span><span data-i18n="sessions.help.ctxTotal">会话总消耗 tokens</span></div>
+        </div>
         <div class="help-tips">
           <div class="help-tip">💡 <span data-i18n="sessions.help.tip">点击左上角可查看调试日志</span></div>
+          <div class="help-tip">💡 <span data-i18n="sessions.help.tipContext">运行 /context 后显示详细信息</span></div>
         </div>
       </div>
     </div>
@@ -270,27 +278,28 @@
   <div id="terminal-view" class="view">
     <!-- 工具栏 -->
     <header class="toolbar">
-      <button id="minimize-btn" class="btn-minimize" data-i18n-title="terminal.minimize" title="收起">⌄</button>
-      <button id="back-btn" class="btn-back" data-i18n-title="terminal.close" title="关闭">←</button>
+      <button id="back-btn" class="btn-toolbar" data-i18n-title="terminal.close" title="关闭">←</button>
+      <button id="minimize-btn" class="btn-toolbar" data-i18n-title="terminal.minimize" title="收起">⌄</button>
       <div class="toolbar-center" onclick="window.app && window.app.toggleDebugPanel()">
+        <span id="connection-dot" class="connection-dot"></span>
         <span id="terminal-title" class="terminal-title">终端</span>
+        <span id="connection-status" class="connection-status"></span>
       </div>
       <div class="toolbar-right">
         <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel(event)">?</button>
       </div>
     </header>
 
-    <!-- 悬浮字体控制 -->
+    <!-- 悬浮字体控制 + Context 按钮 -->
     <div class="font-controls-float">
       <button id="font-decrease" class="btn-font">A-</button>
       <button id="font-increase" class="btn-font">A+</button>
+      <button id="context-toggle" class="btn-font btn-context" title="Context Info">⛁</button>
     </div>
 
-    <!-- Context 信息悬浮条 -->
-    <div id="context-bar" class="context-bar" onclick="window.app && window.app.refreshContextInfo()">
-      <span class="context-item context-used"><span id="ctx-used">--</span><span class="icon">⛁</span></span>
-      <span class="context-item context-free"><span id="ctx-free">--</span><span class="icon">⛶</span></span>
-      <span class="context-item context-buffer"><span id="ctx-buffer">--</span><span class="icon">⛝</span></span>
+    <!-- Context 信息悬浮条（默认收起） -->
+    <div id="context-bar" class="context-bar collapsed" onclick="window.app && window.app.refreshContextInfo()">
+      <!-- 内容由 JS 动态生成 -->
     </div>
 
     <!-- 帮助面板 -->
@@ -300,6 +309,12 @@
           <span data-i18n="terminal.help.title">按键说明</span>
           <button onclick="window.app && window.app.toggleHelpPanel(event)">✕</button>
         </div>
+        <div class="help-section-title" data-i18n="terminal.help.toolbarTitle">工具栏</div>
+        <div class="help-list help-list-toolbar">
+          <div class="help-item"><span class="help-key help-key-toolbar">←</span><span data-i18n="terminal.help.back">关闭终端，返回列表</span></div>
+          <div class="help-item"><span class="help-key help-key-toolbar">⌄</span><span data-i18n="terminal.help.minimizeDesc">收起到后台运行</span></div>
+        </div>
+        <div class="help-section-title" data-i18n="terminal.help.keysTitle">快捷键</div>
         <div class="help-color-legend">
           <span class="legend-item legend-nav" data-i18n="terminal.help.nav">导航</span>
           <span class="legend-item legend-danger" data-i18n="terminal.help.danger">中断</span>
@@ -387,17 +402,17 @@
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
-  <script src="/static/terminal.js?v=5"></script>
+  <script src="/static/terminal.js?v=6"></script>
   <script src="/static/session-manager.js?v=3"></script>
   <script src="/static/floating-button.js"></script>
   <script src="/static/i18n.js?v=4"></script>
   <!-- App 模块 -->
   <script src="/static/utils.js?v=3"></script>
   <script src="/static/debug.js?v=3"></script>
-  <script src="/static/dialogs.js?v=4"></script>
+  <script src="/static/dialogs.js?v=19"></script>
   <script src="/static/settings.js?v=3"></script>
-  <script src="/static/projects.js?v=4"></script>
-  <script src="/static/websocket.js?v=12"></script>
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/projects.js?v=14"></script>
+  <script src="/static/websocket.js?v=13"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>

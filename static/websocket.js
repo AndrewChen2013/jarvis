@@ -562,6 +562,9 @@ const AppWebSocket = {
       if (this.loadContextInfo) {
         this.loadContextInfo();
       }
+
+      // 应用字体大小并发送 resize 命令（适配当前设备）
+      this.applyFontSizeAndResize();
     };
 
     this.ws.onmessage = (event) => {
@@ -1070,9 +1073,29 @@ const AppWebSocket = {
     const newSize = Math.max(10, Math.min(24, currentSize + delta));
 
     this.terminal.setFontSize(newSize);
+    // 保存到 localStorage
+    this.terminal.saveFontSize(newSize);
 
     // 调整后重新计算大小
     setTimeout(() => this.resizeTerminal(), 100);
+  },
+
+  /**
+   * 应用当前字体大小并发送 resize 命令
+   * 用于终端打开时自动适配当前设备
+   */
+  applyFontSizeAndResize() {
+    if (!this.terminal) return;
+
+    // 获取当前字体大小（已经从 localStorage 或设备默认值计算）
+    const fontSize = this.terminal.fontSize;
+    this.debugLog(`applyFontSizeAndResize: fontSize=${fontSize}`);
+
+    // 设置字体大小（触发终端重新适配）
+    this.terminal.setFontSize(fontSize);
+
+    // 延迟发送 resize 命令
+    setTimeout(() => this.resizeTerminal(), 200);
   },
 
   /**

@@ -34,9 +34,20 @@ class Terminal {
   }
 
   /**
-   * 根据屏幕宽度计算默认字体大小
+   * 获取默认字体大小
+   * 优先从 localStorage 读取，没有则根据屏幕宽度计算
    */
   calcDefaultFontSize() {
+    // 优先从 localStorage 读取
+    const saved = localStorage.getItem('terminal-font-size');
+    if (saved) {
+      const size = parseInt(saved, 10);
+      if (size >= 10 && size <= 24) {
+        return size;
+      }
+    }
+
+    // 根据屏幕宽度计算默认值
     const width = window.innerWidth;
     if (width < 430) {
       return 13;  // iPhone
@@ -45,6 +56,13 @@ class Terminal {
     } else {
       return 17;  // iPad / 桌面
     }
+  }
+
+  /**
+   * 保存字体大小到 localStorage
+   */
+  saveFontSize(size) {
+    localStorage.setItem('terminal-font-size', size.toString());
   }
 
   init() {

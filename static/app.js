@@ -399,6 +399,11 @@ class App {
       this.adjustFontSize(1);
     });
 
+    // Context 展开/收起按钮
+    document.getElementById('context-toggle').addEventListener('click', () => {
+      this.toggleContextPanel();
+    });
+
     // 返回按钮 - 关闭session
     document.getElementById('back-btn').addEventListener('click', () => {
       this.debugLog('back button clicked (close session)');

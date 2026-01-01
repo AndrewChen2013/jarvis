@@ -248,13 +248,20 @@ const AppProjects = {
         return;
       }
 
-      if (!projectsResponse.ok) throw new Error('Failed to load projects');
+      if (!projectsResponse.ok) {
+        console.error('[loadSessions] API error:', projectsResponse.status, projectsResponse.statusText);
+        throw new Error('Failed to load projects');
+      }
 
       const projects = await projectsResponse.json();
       this.renderProjects(projects, activeSessions);
     } catch (error) {
-      console.error('Load projects error:', error);
-      this.showError(this.t('error.loadSessions'));
+      console.error('[loadSessions] error:', error);
+      // 只有在 sessions 视图激活时才显示错误弹窗
+      const sessionsView = document.getElementById('sessions-view');
+      if (sessionsView && sessionsView.classList.contains('active')) {
+        this.showError(this.t('error.loadSessions'));
+      }
     }
   },
 
@@ -409,14 +416,59 @@ const AppProjects = {
       // 格式化 token 数量
       const tokenDisplay = session.total_tokens > 0 ? this.formatTokens(session.total_tokens) : '--';
 
+      // Context 信息显示 - 方案 A 风格
+      const usedK = Math.round((session.context_used || 0) / 1000);
+      const maxK = Math.round((session.context_max || 200000) / 1000);
+      const freeK = Math.round((session.context_free || 0) / 1000);
+      const untilK = Math.round((session.context_until_compact || 0) / 1000);
+      const pct = session.context_percentage || 0;
+
+      // 从 categories 提取详细信息
+      const categories = session.context_categories || {};
+      const sysPrompt = categories['System prompt'];
+      const sysTools = categories['System tools'];
+      const messages = categories['Messages'];
+
+      // 构建 context 详情 HTML - 方案 A 风格
+      let contextHtml = '';
+      if (session.context_used > 0) {
+        // 主指标行
+        const headerLine = `<div class="ctx-header">${usedK}k / ${maxK}k <span class="ctx-pct">(${pct}%)</span></div>`;
+
+        // 分类行：紧凑显示
+        let categoryLine = '';
+        const catParts = [];
+        if (sysPrompt) catParts.push(`<span class="ctx-sys">⛁Sys ${(sysPrompt.tokens / 1000).toFixed(1)}k</span>`);
+        if (sysTools) catParts.push(`<span class="ctx-tool">⛁Tool ${(sysTools.tokens / 1000).toFixed(1)}k</span>`);
+        if (messages) catParts.push(`<span class="ctx-msg">⛁Msg ${(messages.tokens / 1000).toFixed(1)}k</span>`);
+        if (catParts.length > 0) {
+          categoryLine = `<div class="ctx-cats">${catParts.join('')}</div>`;
+        }
+
+        // 空闲和压缩行 + token（和上面时间对齐）
+        const statusLine = `<div class="ctx-status">
+          <span class="ctx-free">⛶ Free ${freeK}k</span>
+          <span class="ctx-compact">⛝ ${untilK > 0 ? untilK + 'k' : 'soon'}</span>
+          <span class="ctx-tokens">⚡${tokenDisplay}</span>
+        </div>`;
+
+        contextHtml = `
+          <div class="claude-session-context">
+            ${headerLine}
+            ${categoryLine}
+            ${statusLine}
+          </div>
+        `;
+      }
+
       item.innerHTML = `
         <div class="claude-session-info">
           ${nameHtml}
           <div class="claude-session-meta">
             <span class="claude-session-id">${session.session_id.substring(0, 8)}...</span>
-            <span class="claude-session-tokens">${tokenDisplay}</span>
-            <span>${this.formatTime(session.updated_at)}</span>
+            <span class="claude-session-time">${this.formatTime(session.updated_at)}</span>
           </div>
+          ${contextHtml}
         </div>
         <button class="btn-session-rename" title="${this.t('common.rename', 'Rename')}">✎</button>
         <button class="btn-session-delete" title="${this.t('common.delete', 'Delete')}">✕</button>

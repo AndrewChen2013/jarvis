@@ -50,6 +50,16 @@ class SessionResponse(BaseModel):
     updated_at: str
     file_size: int
     total_tokens: int           # 总 token 消耗
+    # Context 信息 - 基础字段
+    context_used: int = 0         # 已用 token
+    context_max: int = 200000     # 最大 token
+    context_percentage: int = 0   # 使用百分比
+    context_free: int = 0         # 剩余空间
+    context_until_compact: int = 0  # 距离压缩
+    # Context 信息 - 完整数据（跟 Claude /context 输出一致）
+    context_model: str = ""       # 模型名称
+    context_categories: Optional[dict] = None   # {category: {tokens, percentage}}
+    context_skills: Optional[list] = None       # [{name, source, tokens}]
 
 
 class SetNameRequest(BaseModel):
@@ -100,7 +110,15 @@ async def list_sessions(
                 display_name=display_name,
                 updated_at=s.updated_at.isoformat(),
                 file_size=s.file_size,
-                total_tokens=s.total_tokens
+                total_tokens=s.total_tokens,
+                context_used=s.context_used,
+                context_max=s.context_max,
+                context_percentage=s.context_percentage,
+                context_free=s.context_free,
+                context_until_compact=s.context_until_compact,
+                context_model=s.context_model,
+                context_categories=s.context_categories,
+                context_skills=s.context_skills
             ))
 
         return result
@@ -112,12 +130,19 @@ async def list_sessions(
 @router.get("/projects/session/{session_id}", response_model=SessionResponse)
 async def get_session(
     session_id: str,
-    working_dir: str = Query(..., description="工作目录路径"),
+    working_dir: Optional[str] = Query(None, description="工作目录路径（可选，不传则自动搜索）"),
     _: str = Depends(verify_token)
 ):
-    """获取单个会话信息"""
+    """获取单个会话信息
+
+    如果不传 working_dir，会自动搜索所有项目目录找到对应的 session。
+    """
     try:
-        session = claude_projects.get_session(working_dir, session_id)
+        if working_dir:
+            session = claude_projects.get_session(working_dir, session_id)
+        else:
+            session = claude_projects.find_session_by_id(session_id)
+
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
 
@@ -133,7 +158,15 @@ async def get_session(
             display_name=display_name,
             updated_at=session.updated_at.isoformat(),
             file_size=session.file_size,
-            total_tokens=session.total_tokens
+            total_tokens=session.total_tokens,
+            context_used=session.context_used,
+            context_max=session.context_max,
+            context_percentage=session.context_percentage,
+            context_free=session.context_free,
+            context_until_compact=session.context_until_compact,
+            context_model=session.context_model,
+            context_categories=session.context_categories,
+            context_skills=session.context_skills
         )
     except HTTPException:
         raise
