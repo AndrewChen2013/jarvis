@@ -126,6 +126,35 @@ class App {
 
     // 初始化下拉刷新
     this.initPullRefresh();
+
+    // 初始化软键盘适配（防止工具栏被顶走）
+    this.initKeyboardHandler();
+  }
+
+  /**
+   * 初始化软键盘适配
+   * 软键盘弹出时，使用 visualViewport API 让工具栏固定在可视区域顶部
+   */
+  initKeyboardHandler() {
+    const toolbar = document.querySelector('#terminal-view .toolbar');
+    if (!toolbar) return;
+
+    // 使用 visualViewport API（iOS Safari 支持）
+    if (window.visualViewport) {
+      const updateToolbarPosition = () => {
+        // visualViewport.offsetTop 是可视区域相对于布局视口的偏移
+        // 当软键盘弹出时，页面会往上推，offsetTop 变成负值或视口变小
+        const offsetTop = window.visualViewport.offsetTop;
+        toolbar.style.transform = `translateY(${offsetTop}px)`;
+      };
+
+      window.visualViewport.addEventListener('resize', updateToolbarPosition);
+      window.visualViewport.addEventListener('scroll', updateToolbarPosition);
+
+      this.debugLog('initKeyboardHandler: visualViewport listener added');
+    } else {
+      this.debugLog('initKeyboardHandler: visualViewport not supported');
+    }
   }
 
   /**

@@ -812,9 +812,15 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
   background-color: #2a2a2a;
   border-bottom: 1px solid #3a3a3a;
-  flex-shrink: 0;
+  /* 固定在视口顶部，软键盘弹出时不会被推走 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
 }
 
 .session-info {
@@ -830,6 +836,8 @@ body {
   overflow: hidden;
   background-color: #1e1e1e;
   padding: 8px;
+  /* 给固定定位的工具栏留出空间 */
+  margin-top: calc(48px + env(safe-area-inset-top, 0px));
   /* 确保不会超出剩余空间 */
   min-height: 0;
   /* 为子容器的绝对定位提供参照 */

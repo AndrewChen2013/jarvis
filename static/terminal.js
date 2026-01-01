@@ -61,14 +61,16 @@ class Terminal {
       theme: {
         background: '#1e1e1e',
         foreground: '#d4d4d4',
-        cursor: 'transparent',      // 隐藏光标
-        cursorAccent: 'transparent',
+        cursor: '#1e1e1e',          // 光标颜色与背景相同，完全隐藏
+        cursorAccent: '#1e1e1e',
         selection: 'rgba(255, 255, 255, 0.3)',
       },
 
       // 性能优化
       scrollback: 500,        // 减少回滚行数
       cursorBlink: false,     // 禁用光标闪烁
+      cursorStyle: 'bar',     // 使用最细的光标样式
+      cursorWidth: 1,         // 最小宽度
       cursorInactiveStyle: 'none',  // 非活动时不显示光标
       disableStdin: true,     // 禁用内置输入（我们用自己的输入框）
 
@@ -121,6 +123,10 @@ class Terminal {
       this.log('Step 4e: setup touch scroll');
       this.setupTouchScroll();
 
+      // 禁用 xterm.js 内部的隐藏 textarea，防止点击终端时弹出软键盘
+      this.log('Step 4e2: disable xterm helper textarea');
+      this.disableHelperTextarea();
+
       if (this.onReady) {
         this.log('Step 4f: onReady');
         this.onReady();
@@ -139,6 +145,28 @@ class Terminal {
     }, 100);
 
     this.log('init sync done');
+  }
+
+  /**
+   * 禁用 xterm.js 内部的隐藏 textarea
+   * 防止点击终端时弹出 iOS 软键盘
+   */
+  disableHelperTextarea() {
+    const textarea = this.container.querySelector('.xterm-helper-textarea');
+    if (textarea) {
+      // 设置为只读，阻止软键盘弹出
+      textarea.setAttribute('readonly', 'readonly');
+      // 设置 inputmode 为 none，明确告诉浏览器不需要键盘
+      textarea.setAttribute('inputmode', 'none');
+      // 阻止获取焦点
+      textarea.addEventListener('focus', (e) => {
+        e.preventDefault();
+        textarea.blur();
+      }, { capture: true });
+      this.log('helper textarea disabled');
+    } else {
+      this.log('helper textarea not found');
+    }
   }
 
   /**
