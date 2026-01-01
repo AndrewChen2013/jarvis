@@ -37,6 +37,10 @@ class SessionInstance {
     this.shouldReconnect = false;
     this.reconnectAttempts = 0;
     this.reconnectTimeout = null;
+
+    // Context 数据缓存（每个 session 独立）
+    this.contextData = null;
+    this.contextLastUpdate = 0;
   }
 
   /**
@@ -44,6 +48,46 @@ class SessionInstance {
    */
   touch() {
     this.lastActive = Date.now();
+  }
+
+  /**
+   * 加载 context 数据并缓存
+   * @param {string} token - 认证 token
+   * @returns {Promise<object|null>} context 数据
+   */
+  async loadContext(token) {
+    if (!this.claudeSessionId) return null;
+
+    try {
+      const response = await fetch(`/api/projects/session/${this.claudeSessionId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        this.contextData = await response.json();
+        this.contextLastUpdate = Date.now();
+        return this.contextData;
+      }
+    } catch (e) {
+      console.error('Failed to load context:', e);
+    }
+    return null;
+  }
+
+  /**
+   * 获取缓存的 context 数据
+   * @returns {object|null}
+   */
+  getCachedContext() {
+    return this.contextData;
+  }
+
+  /**
+   * 检查 context 缓存是否过期（超过 30 秒）
+   * @returns {boolean}
+   */
+  isContextStale() {
+    return Date.now() - this.contextLastUpdate > 30000;
   }
 }
 

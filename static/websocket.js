@@ -193,6 +193,22 @@ const AppWebSocket = {
         }
       }
 
+      // 立即显示缓存的 context（无闪烁）
+      const cachedContext = session.getCachedContext();
+      if (cachedContext) {
+        this.renderContextBar(cachedContext);
+      }
+
+      // 异步刷新最新 context 数据（如果缓存过期）
+      if (session.isContextStale()) {
+        session.loadContext(this.token).then(data => {
+          // 确保仍是当前活跃 session
+          if (data && this.sessionManager.activeId === sessionId) {
+            this.renderContextBar(data);
+          }
+        });
+      }
+
       return;
     }
 

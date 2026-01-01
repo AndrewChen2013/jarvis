@@ -345,92 +345,94 @@ const AppDialogs = {
   },
 
   /**
+   * 渲染 Context Bar（纯渲染，不请求数据）
+   * @param {object} data - context 数据
+   */
+  renderContextBar(data) {
+    const ctxBar = document.getElementById('context-bar');
+    if (!ctxBar || !data) return;
+
+    // 计算显示值 - 参照 Claude /context 格式
+    const usedK = Math.round((data.context_used || 0) / 1000);
+    const maxK = Math.round((data.context_max || 200000) / 1000);
+    const freeK = Math.round((data.context_free || 0) / 1000);
+    const untilCompact = Math.round((data.context_until_compact || 0) / 1000);
+    const percentage = data.context_percentage || 0;
+
+    // 从 categories 提取详细信息
+    const categories = data.context_categories || {};
+    const sysPrompt = categories['System prompt'];
+    const sysTools = categories['System tools'];
+    const messages = categories['Messages'];
+    const freeSpace = categories['Free space'];
+    const autocompact = categories['Autocompact buffer'];
+
+    // 第一行：主指标
+    const line1 = `<div class="ctx-header">${usedK}k / ${maxK}k <span class="ctx-pct">(${percentage}%)</span></div>`;
+
+    // 分隔线
+    const divider = '<div class="ctx-divider"></div>';
+
+    // 详细分类行
+    let detailLines = '';
+
+    // 如果有 categories 数据，显示详细信息
+    if (sysPrompt || sysTools || messages) {
+      if (sysPrompt) {
+        detailLines += `<div class="ctx-row"><span class="ctx-icon">⛁</span><span class="ctx-label">Sys</span><span class="ctx-value">${(sysPrompt.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${sysPrompt.percentage.toFixed(1)}%</span></div>`;
+      }
+      if (sysTools) {
+        detailLines += `<div class="ctx-row"><span class="ctx-icon">⛁</span><span class="ctx-label">Tool</span><span class="ctx-value">${(sysTools.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${sysTools.percentage.toFixed(1)}%</span></div>`;
+      }
+      if (messages) {
+        detailLines += `<div class="ctx-row ctx-msg"><span class="ctx-icon">⛁</span><span class="ctx-label">Msg</span><span class="ctx-value">${(messages.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${messages.percentage.toFixed(1)}%</span></div>`;
+      }
+      if (freeSpace) {
+        detailLines += `<div class="ctx-row ctx-free-row"><span class="ctx-icon">⛶</span><span class="ctx-label">Free</span><span class="ctx-value">${(freeSpace.tokens / 1000).toFixed(0)}k</span><span class="ctx-percent">${freeSpace.percentage.toFixed(1)}%</span></div>`;
+      }
+      if (autocompact) {
+        detailLines += `<div class="ctx-row ctx-compact-row"><span class="ctx-icon">⛝</span><span class="ctx-label">Comp</span><span class="ctx-value">${(autocompact.tokens / 1000).toFixed(0)}k</span><span class="ctx-percent">${autocompact.percentage.toFixed(1)}%</span></div>`;
+      }
+    } else {
+      // Fallback：没有 categories 时用基础数据
+      const freePct = maxK > 0 ? ((freeK / maxK) * 100).toFixed(1) : '0.0';
+      const compactPct = maxK > 0 ? ((untilCompact / maxK) * 100).toFixed(1) : '0.0';
+      detailLines += `<div class="ctx-row ctx-free-row"><span class="ctx-icon">⛶</span><span class="ctx-label">Free</span><span class="ctx-value">${freeK}k</span><span class="ctx-percent">${freePct}%</span></div>`;
+      detailLines += `<div class="ctx-row ctx-compact-row"><span class="ctx-icon">⛝</span><span class="ctx-label">Comp</span><span class="ctx-value">${untilCompact > 0 ? untilCompact + 'k' : 'soon'}</span><span class="ctx-percent">${compactPct}%</span></div>`;
+    }
+
+    // Skills 显示
+    const skills = data.context_skills || [];
+    let skillsHtml = '';
+    if (skills.length > 0) {
+      skillsHtml = '<div class="ctx-divider"></div><div class="ctx-skills-title">Skills</div>';
+      for (const skill of skills) {
+        const tokenStr = skill.tokens >= 1000
+          ? (skill.tokens / 1000).toFixed(1) + 'k'
+          : skill.tokens.toString();
+        skillsHtml += `<div class="ctx-skill-row"><span class="ctx-skill-icon">└</span><span class="ctx-skill-name">${skill.name}</span><span class="ctx-skill-tokens">${tokenStr}</span></div>`;
+      }
+    }
+
+    ctxBar.innerHTML = `${line1}${divider}${detailLines}${skillsHtml}`;
+  },
+
+  /**
    * 加载 Context 信息
-   * 统一使用 /api/projects/session/{session_id} 获取当前 session 的 context 信息
+   * 使用当前 session 的 loadContext 方法加载并缓存数据
    */
   async loadContextInfo() {
-    // 需要有当前 session ID
-    if (!window.app || !window.app.currentClaudeSessionId) {
+    // 获取当前活跃的 session
+    const session = this.sessionManager?.getActive();
+    if (!session || !session.claudeSessionId) {
       return;
     }
 
     try {
-      const sessionId = window.app.currentClaudeSessionId;
-      const response = await fetch(`/api/projects/session/${sessionId}`, {
-        headers: { 'Authorization': `Bearer ${this.token}` }
-      });
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-
-      // 计算显示值 - 参照 Claude /context 格式
-      const usedK = Math.round((data.context_used || 0) / 1000);
-      const maxK = Math.round((data.context_max || 200000) / 1000);
-      const freeK = Math.round((data.context_free || 0) / 1000);
-      const untilCompact = Math.round((data.context_until_compact || 0) / 1000);
-      const percentage = data.context_percentage || 0;
-      const totalTokens = data.total_tokens || 0;
-
-      // 更新悬浮条显示 - 方案 A：详细信息卡片
-      const ctxBar = document.getElementById('context-bar');
-      if (ctxBar) {
-        // 从 categories 提取详细信息
-        const categories = data.context_categories || {};
-        const sysPrompt = categories['System prompt'];
-        const sysTools = categories['System tools'];
-        const messages = categories['Messages'];
-        const freeSpace = categories['Free space'];
-        const autocompact = categories['Autocompact buffer'];
-
-        // 第一行：主指标
-        const line1 = `<div class="ctx-header">${usedK}k / ${maxK}k <span class="ctx-pct">(${percentage}%)</span></div>`;
-
-        // 分隔线
-        const divider = '<div class="ctx-divider"></div>';
-
-        // 详细分类行
-        let detailLines = '';
-
-        // 如果有 categories 数据，显示详细信息
-        if (sysPrompt || sysTools || messages) {
-          if (sysPrompt) {
-            detailLines += `<div class="ctx-row"><span class="ctx-icon">⛁</span><span class="ctx-label">Sys</span><span class="ctx-value">${(sysPrompt.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${sysPrompt.percentage.toFixed(1)}%</span></div>`;
-          }
-          if (sysTools) {
-            detailLines += `<div class="ctx-row"><span class="ctx-icon">⛁</span><span class="ctx-label">Tool</span><span class="ctx-value">${(sysTools.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${sysTools.percentage.toFixed(1)}%</span></div>`;
-          }
-          if (messages) {
-            detailLines += `<div class="ctx-row ctx-msg"><span class="ctx-icon">⛁</span><span class="ctx-label">Msg</span><span class="ctx-value">${(messages.tokens / 1000).toFixed(1)}k</span><span class="ctx-percent">${messages.percentage.toFixed(1)}%</span></div>`;
-          }
-          if (freeSpace) {
-            detailLines += `<div class="ctx-row ctx-free-row"><span class="ctx-icon">⛶</span><span class="ctx-label">Free</span><span class="ctx-value">${(freeSpace.tokens / 1000).toFixed(0)}k</span><span class="ctx-percent">${freeSpace.percentage.toFixed(1)}%</span></div>`;
-          }
-          if (autocompact) {
-            detailLines += `<div class="ctx-row ctx-compact-row"><span class="ctx-icon">⛝</span><span class="ctx-label">Comp</span><span class="ctx-value">${(autocompact.tokens / 1000).toFixed(0)}k</span><span class="ctx-percent">${autocompact.percentage.toFixed(1)}%</span></div>`;
-          }
-        } else {
-          // Fallback：没有 categories 时用基础数据
-          const freePct = maxK > 0 ? ((freeK / maxK) * 100).toFixed(1) : '0.0';
-          const compactPct = maxK > 0 ? ((untilCompact / maxK) * 100).toFixed(1) : '0.0';
-          detailLines += `<div class="ctx-row ctx-free-row"><span class="ctx-icon">⛶</span><span class="ctx-label">Free</span><span class="ctx-value">${freeK}k</span><span class="ctx-percent">${freePct}%</span></div>`;
-          detailLines += `<div class="ctx-row ctx-compact-row"><span class="ctx-icon">⛝</span><span class="ctx-label">Comp</span><span class="ctx-value">${untilCompact > 0 ? untilCompact + 'k' : 'soon'}</span><span class="ctx-percent">${compactPct}%</span></div>`;
-        }
-
-        // Skills 显示
-        const skills = data.context_skills || [];
-        let skillsHtml = '';
-        if (skills.length > 0) {
-          skillsHtml = '<div class="ctx-divider"></div><div class="ctx-skills-title">Skills</div>';
-          for (const skill of skills) {
-            const tokenStr = skill.tokens >= 1000
-              ? (skill.tokens / 1000).toFixed(1) + 'k'
-              : skill.tokens.toString();
-            skillsHtml += `<div class="ctx-skill-row"><span class="ctx-skill-icon">└</span><span class="ctx-skill-name">${skill.name}</span><span class="ctx-skill-tokens">${tokenStr}</span></div>`;
-          }
-        }
-
-        ctxBar.innerHTML = `${line1}${divider}${detailLines}${skillsHtml}`;
+      // 使用 session 的 loadContext 方法（会自动缓存）
+      const data = await session.loadContext(this.token);
+      if (data) {
+        this.renderContextBar(data);
       }
     } catch (e) {
       console.error('Failed to load context info:', e);
