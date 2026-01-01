@@ -688,9 +688,18 @@ const AppWebSocket = {
           break;
 
         case 'connected':
-          this.debugLog('received connected message');
+          this.debugLog('received connected message, terminal_id=' + message.terminal_id);
           this.updateConnectStatus('connected', '');
           this.updateStatus(this.t('status.connected'), true);
+
+          // 同步前后端的 session ID（解决新建 session 时 ID 不一致的问题）
+          if (message.terminal_id && message.terminal_id !== this.currentSession) {
+            this.debugLog(`sync session ID: ${this.currentSession} -> ${message.terminal_id}`);
+            if (this.sessionManager.renameSession(this.currentSession, message.terminal_id)) {
+              this.currentSession = message.terminal_id;
+            }
+          }
+
           // 终端已在 connectTerminal 中创建，只需 resize
           if (this.terminal) {
             this.debugLog('terminal already exists, just resize');

@@ -109,6 +109,54 @@ class SessionManager {
   }
 
   /**
+   * 重命名 session（用于同步前后端 ID）
+   * @param {string} oldId - 旧 ID
+   * @param {string} newId - 新 ID
+   * @returns {boolean} - 是否成功
+   */
+  renameSession(oldId, newId) {
+    if (oldId === newId) {
+      return true; // 无需重命名
+    }
+
+    const session = this.sessions.get(oldId);
+    if (!session) {
+      this.log(`renameSession: session ${oldId} not found`);
+      return false;
+    }
+
+    if (this.sessions.has(newId)) {
+      this.log(`renameSession: target ${newId} already exists`);
+      return false;
+    }
+
+    this.log(`renameSession: ${oldId.substring(0, 8)} -> ${newId.substring(0, 8)}`);
+
+    // 更新 session 实例的 id
+    session.id = newId;
+
+    // 更新容器 ID
+    if (session.container) {
+      session.container.id = `terminal-container-${newId}`;
+    }
+
+    // 在 Map 中重新注册
+    this.sessions.delete(oldId);
+    this.sessions.set(newId, session);
+
+    // 更新 activeId 和 previousId
+    if (this.activeId === oldId) {
+      this.activeId = newId;
+    }
+    if (this.previousId === oldId) {
+      this.previousId = newId;
+    }
+
+    this.log(`renameSession: done, sessions.size=${this.sessions.size}`);
+    return true;
+  }
+
+  /**
    * 打开或切换到 session
    * @param {string} sessionId
    * @param {string} name
