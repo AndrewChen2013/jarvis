@@ -44,6 +44,9 @@ class SessionInstance {
 
     // Context bar 展开状态（每个 session 独立）
     this.contextBarExpanded = false;
+
+    // 字体大小（每个 session 独立，null 表示使用默认值）
+    this.fontSize = null;
   }
 
   /**
@@ -439,6 +442,12 @@ class SessionManager {
       this.log(`showSession: final confirm - ${expectedContainerId} is visible`);
     } else {
       this.log(`showSession: WARNING - target container ${expectedContainerId} not found in DOM!`);
+    }
+
+    // 恢复该 session 的字体大小
+    if (session.fontSize && session.terminal) {
+      this.log(`showSession: restoring fontSize ${session.fontSize}`);
+      session.terminal.setFontSize(session.fontSize);
     }
   }
 

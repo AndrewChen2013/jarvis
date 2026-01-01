@@ -1190,8 +1190,13 @@ const AppWebSocket = {
     const newSize = Math.max(10, Math.min(24, currentSize + delta));
 
     this.terminal.setFontSize(newSize);
-    // 保存到 localStorage
-    this.terminal.saveFontSize(newSize);
+
+    // 保存到当前 session（每个 session 独立的字体大小）
+    const session = this.sessionManager.getActive();
+    if (session) {
+      session.fontSize = newSize;
+      this.debugLog(`adjustFontSize: saved ${newSize} to session ${session.id.substring(0, 8)}`);
+    }
 
     // 调整后重新计算大小
     setTimeout(() => this.resizeTerminal(), 100);
