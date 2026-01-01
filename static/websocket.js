@@ -317,11 +317,17 @@ const AppWebSocket = {
     let wsUrl;
     if (this.currentWorkDir) {
       const params = new URLSearchParams({
-        working_dir: this.currentWorkDir,
-        token: this.token
+        working_dir: this.currentWorkDir
       });
       if (this.currentClaudeSessionId) {
         params.append('session_id', this.currentClaudeSessionId);
+      }
+      // 添加终端大小参数
+      if (this.terminal) {
+        const size = this.terminal.getSize();
+        params.append('rows', size.rows);
+        params.append('cols', Math.max(size.cols - 0, 20));
+        this.debugLog(`manual retry: sending size ${size.rows}x${size.cols}`);
       }
       wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
     } else {
@@ -774,7 +780,24 @@ const AppWebSocket = {
               this.currentSession = message.terminal_id;
             }
           }
-          // 注意：resize 已在 ws.onopen 中延迟执行，这里不再重复调用
+
+          // 10 秒后发送 resize，触发 Claude CLI 重绘（解决历史显示问题）
+          // 使用 force=true 强制发送，让后端判断是否需要 resize
+          if (this.delayedResizeTimer) {
+            clearTimeout(this.delayedResizeTimer);
+          }
+          this.delayedResizeTimer = setTimeout(() => {
+            this.debugLog('delayed resize: 10s passed, sending resize (force=true)');
+            this.resizeTerminal(true);  // force=true，让后端判断
+            // resize 后滚动到底部
+            setTimeout(() => {
+              if (this.terminal && this.terminal.xterm) {
+                this.terminal.xterm.scrollToBottom();
+                this.debugLog('delayed resize: scrolled to bottom');
+              }
+            }, 500);
+            this.delayedResizeTimer = null;
+          }, 10000);
           break;
 
         case 'output':
@@ -788,7 +811,6 @@ const AppWebSocket = {
               } catch (writeError) {
                 console.error('Terminal write error:', writeError);
               }
-              // 注意：不再需要前端触发 resize，后端在连接时已处理
             } else {
               // 终端未就绪，放入队列
               console.log('Terminal not ready, queuing output');
@@ -1059,11 +1081,18 @@ const AppWebSocket = {
 
     // 构建 WebSocket URL（使用 session 自己的参数）
     const params = new URLSearchParams({
-      working_dir: session.workDir,
-      token: this.token
+      working_dir: session.workDir
     });
     if (session.claudeSessionId) {
       params.append('session_id', session.claudeSessionId);
+    }
+    // 添加终端大小参数
+    const terminal = session.terminal || this.terminal;
+    if (terminal) {
+      const size = terminal.getSize();
+      params.append('rows', size.rows);
+      params.append('cols', Math.max(size.cols - 0, 20));
+      this.debugLog(`reconnectSession: sending size ${size.rows}x${size.cols}`);
     }
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
 
@@ -1181,12 +1210,12 @@ const AppWebSocket = {
 
   /**
    * 调整终端大小
-   * 只在大小实际变化时才发送 resize 命令到后端
+   * @param {boolean} force - 强制发送（跳过前端判断，让后端判断是否需要 resize）
    */
-  resizeTerminal() {
+  resizeTerminal(force = false) {
     if (!this.terminal) return;
 
-    this.debugLog(`resizeTerminal called, lastSize=${JSON.stringify(this.lastTerminalSize)}`);
+    this.debugLog(`resizeTerminal called, force=${force}, lastSize=${JSON.stringify(this.lastTerminalSize)}`);
 
     // 先让终端适配容器
     this.terminal.fit();
@@ -1200,18 +1229,18 @@ const AppWebSocket = {
 
       this.debugLog(`resizeTerminal: new=${newRows}x${adjustedCols}, last=${JSON.stringify(this.lastTerminalSize)}`);
 
-      // 只在大小变化时才发送 resize
-      if (this.lastTerminalSize &&
+      // 非强制模式：只在大小变化时才发送 resize
+      if (!force && this.lastTerminalSize &&
           this.lastTerminalSize.rows === newRows &&
           this.lastTerminalSize.cols === adjustedCols) {
-        this.debugLog('resizeTerminal: size unchanged, SKIP');
+        this.debugLog('resizeTerminal: size unchanged, SKIP (frontend check)');
         return;
       }
 
       // 记录当前大小
       this.lastTerminalSize = { rows: newRows, cols: adjustedCols };
 
-      this.debugLog(`resizeTerminal: SEND resize ${newRows}x${adjustedCols}`);
+      this.debugLog(`resizeTerminal: SEND resize ${newRows}x${adjustedCols} (force=${force})`);
       this.sendMessage({
         type: 'resize',
         rows: newRows,

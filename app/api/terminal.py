@@ -108,13 +108,8 @@ async def handle_terminal_websocket(
             )
             terminal_id = terminal.terminal_id
         else:
-            # 复用现有终端，先 resize（在发送历史之前）
-            if rows and cols and rows > 0 and cols > 0:
-                resized = await terminal_manager.resize(terminal_id, rows, cols)
-                if resized:
-                    logger.info(f"[Terminal:{terminal_id[:8]}] Resize before history to {rows}x{cols}")
-                    # 给一点时间让 SIGWINCH 处理
-                    await asyncio.sleep(0.1)
+            # 复用现有终端，不做 resize（让前端延迟 resize）
+            logger.info(f"[Terminal:{terminal_id[:8]}] Reusing existing PTY")
 
         # 增加 WebSocket 计数
         terminal_manager.increment_websocket_count(terminal_id)
@@ -171,7 +166,6 @@ async def handle_terminal_websocket(
 
         # 发送历史输出
         history = terminal.get_output_history()
-        logger.info(f"[Terminal:{terminal_id[:8]}] History size: {len(history) if history else 0} bytes")
         if history:
             text = history.decode('utf-8', errors='replace')
             chunk_size = 8192
@@ -241,7 +235,10 @@ async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict):
     elif msg_type == "resize":
         rows = data.get("rows", 40)
         cols = data.get("cols", 120)
-        await terminal_manager.resize(terminal.terminal_id, rows, cols)
+        logger.info(f"[Terminal:{terminal.terminal_id[:8]}] Resize request: {rows}x{cols}")
+        resized = await terminal_manager.resize(terminal.terminal_id, rows, cols)
+        if not resized:
+            logger.info(f"[Terminal:{terminal.terminal_id[:8]}] Resize skipped (size unchanged)")
 
     elif msg_type == "ping":
         await _send_message(websocket, {"type": "pong"})
