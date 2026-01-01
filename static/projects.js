@@ -340,6 +340,12 @@ const AppProjects = {
    * 显示项目下的会话列表
    */
   async showProjectSessions(workDir) {
+    // 防止重复点击
+    if (this.isLoadingProjectSessions) {
+      return;
+    }
+    this.isLoadingProjectSessions = true;
+
     try {
       // 并行获取会话列表和活跃连接
       const [sessionsResponse, activeSessions] = await Promise.all([
@@ -360,6 +366,8 @@ const AppProjects = {
     } catch (error) {
       console.error('Load project sessions error:', error);
       this.showError(this.t('sessions.loadFailed'));
+    } finally {
+      this.isLoadingProjectSessions = false;
     }
   },
 
