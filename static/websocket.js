@@ -36,6 +36,33 @@ const AppWebSocket = {
 
     this.debugLog(`connectTerminal: session=${this.currentSession}, claudeSessionId=${sessionId}`);
 
+    // 检查 session 是否已在 SessionManager 中且有活跃连接
+    const existingSession = this.sessionManager.sessions.get(this.currentSession);
+    if (existingSession && existingSession.ws && existingSession.ws.readyState === WebSocket.OPEN) {
+      this.debugLog(`connectTerminal: session already has active WebSocket, reuse it`);
+
+      // 恢复 app 层面的状态
+      this.ws = existingSession.ws;
+      this.terminal = existingSession.terminal;
+      this.shouldReconnect = existingSession.shouldReconnect;
+
+      // 切换到该 session
+      this.sessionManager.switchTo(this.currentSession);
+
+      // 显示终端视图
+      this.showView('terminal');
+
+      // 设置终端标题
+      const titleEl = document.getElementById('terminal-title');
+      if (titleEl && this.currentSessionName) {
+        titleEl.textContent = this.currentSessionName;
+      }
+
+      // 更新连接状态显示
+      this.updateConnectStatus('connected', '');
+      return;
+    }
+
     // 清除旧的全局 terminal 引用（每个 session 有自己的 terminal）
     this.terminal = null;
 
