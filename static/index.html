@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Claude Remote</title>
-  <link rel="stylesheet" href="/static/styles.css?v=26">
+  <link rel="stylesheet" href="/static/styles.css?v=29">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -286,10 +286,11 @@
       </div>
     </header>
 
-    <!-- 悬浮字体控制 + Context 按钮 -->
+    <!-- 悬浮字体控制 + 主题 + Context 按钮 -->
     <div class="font-controls-float">
       <button id="font-decrease" class="btn-font">A-</button>
       <button id="font-increase" class="btn-font">A+</button>
+      <button id="theme-toggle" class="btn-font btn-theme" title="Theme">◐</button>
       <button id="context-toggle" class="btn-font btn-context" title="Context Info">⛁</button>
     </div>
 
@@ -321,11 +322,14 @@
         <div class="help-section-title" data-i18n="terminal.help.floatTitle">悬浮按钮</div>
         <div class="help-list">
           <div class="help-item"><span class="help-key">A+A-</span><span data-i18n="terminal.help.fontSize">字体缩放</span></div>
-          <div class="help-item"><span class="help-key help-key-purple">⛁</span><span data-i18n="terminal.help.context">Context 信息</span></div>
+          <div class="help-item"><span class="help-key">◐</span><span data-i18n="terminal.help.theme">切换终端主题</span></div>
+          <div class="help-item"><span class="help-key help-key-purple">⛁</span><span data-i18n="terminal.help.context">Context 信息（点击刷新并滚底）</span></div>
+          <div class="help-item"><span class="help-key help-key-nav">❷</span><span data-i18n="terminal.help.switchSession">切换会话 / 长按选择</span></div>
         </div>
         <div class="help-tips">
           <div class="help-tip">💡 <span data-i18n="terminal.help.tip">点击 ⋯ 展开组合键和斜杠命令</span></div>
           <div class="help-tip">💡 <span data-i18n="terminal.help.tipDebug">点击标题查看调试日志</span></div>
+          <div class="help-tip">💡 <span data-i18n="terminal.help.tipFont">输出排版混乱？试试调整字体大小</span></div>
         </div>
       </div>
     </div>
@@ -393,17 +397,17 @@
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
-  <script src="/static/terminal.js?v=6"></script>
-  <script src="/static/session-manager.js?v=7"></script>
+  <script src="/static/terminal.js?v=12"></script>
+  <script src="/static/session-manager.js?v=8"></script>
   <script src="/static/floating-button.js"></script>
-  <script src="/static/i18n.js?v=6"></script>
+  <script src="/static/i18n.js?v=9"></script>
   <!-- App 模块 -->
   <script src="/static/utils.js?v=3"></script>
   <script src="/static/debug.js?v=3"></script>
   <script src="/static/dialogs.js?v=23"></script>
   <script src="/static/settings.js?v=3"></script>
-  <script src="/static/projects.js?v=20"></script>
-  <script src="/static/websocket.js?v=39"></script>
-  <script src="/static/app.js?v=9"></script>
+  <script src="/static/projects.js?v=21"></script>
+  <script src="/static/websocket.js?v=43"></script>
+  <script src="/static/app.js?v=10"></script>
 </body>
 </html>

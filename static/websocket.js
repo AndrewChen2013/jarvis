@@ -395,9 +395,9 @@ const AppWebSocket = {
     }
 
     try {
-      console.log('Creating new Terminal instance...');
-      this.debugLog('initTerminal: create Terminal instance');
-      this.terminal = new Terminal(container, () => {
+      console.log('Creating new TerminalWrapper instance...');
+      this.debugLog('initTerminal: create TerminalWrapper instance');
+      this.terminal = new TerminalWrapper(container, () => {
         // 终端就绪后（fit 完成后）
         console.log('Terminal ready callback, flushing queue...');
         this.flushOutputQueue();
@@ -412,6 +412,9 @@ const AppWebSocket = {
       if (session) {
         session.terminal = this.terminal;
         this.debugLog('initTerminal: save terminal to session');
+
+        // 加载或分配主题
+        this.loadOrAssignTheme(session);
       }
     } catch (error) {
       console.error('Terminal init error:', error);
@@ -987,11 +990,14 @@ const AppWebSocket = {
       'cmd-compact': '/compact',
     };
 
-    // 处理斜杠命令：先发命令，再发回车
+    // 处理斜杠命令：先发命令，再发回车，然后滚动到底部
     if (cmdMap[key]) {
-      // 方法1：直接连续发送两条消息
       this.sendMessage({ type: 'input', data: cmdMap[key] });
       this.sendMessage({ type: 'input', data: '\r' });
+      // 滚动到底部
+      if (this.terminal) {
+        this.terminal.scrollToBottom();
+      }
       return;
     }
 
@@ -1001,6 +1007,10 @@ const AppWebSocket = {
         type: 'input',
         data: sequence
       });
+      // 滚动到底部
+      if (this.terminal) {
+        this.terminal.scrollToBottom();
+      }
     }
   },
 
@@ -1200,6 +1210,123 @@ const AppWebSocket = {
 
     // 调整后重新计算大小
     setTimeout(() => this.resizeTerminal(), 100);
+  },
+
+  /**
+   * 切换终端主题
+   */
+  toggleTheme() {
+    this.debugLog(`toggleTheme: called, this.terminal=${this.terminal ? 'exists' : 'NULL'}`);
+    if (!this.terminal) {
+      this.debugLog('toggleTheme: terminal is null, return');
+      return;
+    }
+
+    this.debugLog(`toggleTheme: terminal.getNextTheme=${typeof this.terminal.getNextTheme}`);
+    if (typeof this.terminal.getNextTheme !== 'function') {
+      this.debugLog('toggleTheme: ERROR - getNextTheme is not a function!');
+      return;
+    }
+
+    // 获取下一个主题
+    const nextTheme = this.terminal.getNextTheme();
+    this.debugLog(`toggleTheme: nextTheme=${nextTheme}`);
+    this.terminal.setTheme(nextTheme);
+
+    // 保存到当前 session
+    const session = this.sessionManager.getActive();
+    if (session) {
+      session.theme = nextTheme;
+      this.debugLog(`toggleTheme: saved ${nextTheme} to session ${session.id.substring(0, 8)}`);
+
+      // 持久化到 localStorage
+      this.saveSessionTheme(session.claudeSessionId || session.id, nextTheme);
+    }
+
+    // 更新主题按钮显示（可选：显示当前主题颜色）
+    this.updateThemeButton(nextTheme);
+  },
+
+  /**
+   * 保存 session 主题到 localStorage
+   */
+  saveSessionTheme(sessionId, theme) {
+    try {
+      const themes = JSON.parse(localStorage.getItem('session-themes') || '{}');
+      themes[sessionId] = theme;
+      localStorage.setItem('session-themes', JSON.stringify(themes));
+    } catch (e) {
+      console.error('Failed to save session theme:', e);
+    }
+  },
+
+  /**
+   * 从 localStorage 加载 session 主题
+   */
+  loadSessionTheme(sessionId) {
+    try {
+      const themes = JSON.parse(localStorage.getItem('session-themes') || '{}');
+      return themes[sessionId] || null;
+    } catch (e) {
+      console.error('Failed to load session theme:', e);
+      return null;
+    }
+  },
+
+  /**
+   * 更新主题按钮显示
+   */
+  updateThemeButton(theme) {
+    const btn = document.getElementById('theme-toggle');
+    if (btn && typeof TERMINAL_THEMES !== 'undefined') {
+      const themeConfig = TERMINAL_THEMES[theme];
+      if (themeConfig) {
+        btn.style.color = themeConfig.foreground;
+        btn.style.backgroundColor = themeConfig.background;
+      }
+    }
+  },
+
+  /**
+   * 加载或自动分配主题
+   */
+  loadOrAssignTheme(session) {
+    if (!session || !session.terminal) return;
+
+    const sessionId = session.claudeSessionId || session.id;
+
+    // 1. 尝试从 localStorage 加载已保存的主题
+    const savedTheme = this.loadSessionTheme(sessionId);
+    if (savedTheme) {
+      session.theme = savedTheme;
+      session.terminal.setTheme(savedTheme);
+      this.updateThemeButton(savedTheme);
+      this.debugLog(`loadOrAssignTheme: loaded theme ${savedTheme} for ${sessionId.substring(0, 8)}`);
+      return;
+    }
+
+    // 2. 自动分配一个未被其他 session 使用的主题
+    const usedThemes = new Set();
+    for (const [id, s] of this.sessionManager.sessions) {
+      if (s.theme && id !== session.id) {
+        usedThemes.add(s.theme);
+      }
+    }
+
+    // 找到第一个未使用的主题
+    let assignedTheme = 'default';
+    for (const theme of THEME_ORDER) {
+      if (!usedThemes.has(theme)) {
+        assignedTheme = theme;
+        break;
+      }
+    }
+
+    session.theme = assignedTheme;
+    session.terminal.setTheme(assignedTheme);
+    this.saveSessionTheme(sessionId, assignedTheme);
+    this.updateThemeButton(assignedTheme);
+    this.debugLog(`loadOrAssignTheme: assigned theme ${assignedTheme} for ${sessionId.substring(0, 8)}`);
   },
 
   /**

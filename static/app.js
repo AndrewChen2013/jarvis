@@ -418,6 +418,12 @@ class App {
       this.adjustFontSize(1);
     });
 
+    // 主题切换按钮
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      this.debugLog('theme-toggle button clicked');
+      this.toggleTheme();
+    });
+
     // Context 展开/收起按钮
     document.getElementById('context-toggle').addEventListener('click', () => {
       this.toggleContextPanel();

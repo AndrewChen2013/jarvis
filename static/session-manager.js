@@ -47,6 +47,9 @@ class SessionInstance {
 
     // 字体大小（每个 session 独立，null 表示使用默认值）
     this.fontSize = null;
+
+    // 主题（每个 session 独立，null 表示使用默认值）
+    this.theme = null;
   }
 
   /**
@@ -448,6 +451,16 @@ class SessionManager {
     if (session.fontSize && session.terminal) {
       this.log(`showSession: restoring fontSize ${session.fontSize}`);
       session.terminal.setFontSize(session.fontSize);
+    }
+
+    // 恢复该 session 的主题
+    if (session.theme && session.terminal) {
+      this.log(`showSession: restoring theme ${session.theme}`);
+      session.terminal.setTheme(session.theme);
+      // 更新主题按钮
+      if (this.app && this.app.updateThemeButton) {
+        this.app.updateThemeButton(session.theme);
+      }
     }
   }
 

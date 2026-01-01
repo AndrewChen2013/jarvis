@@ -414,6 +414,12 @@ const AppProjects = {
       const item = document.createElement('div');
       item.className = `claude-session-item${isActive ? ' is-active' : ''}`;
 
+      // 获取保存的主题颜色
+      const savedTheme = this.loadSessionTheme(session.session_id);
+      if (savedTheme && typeof TERMINAL_THEMES !== 'undefined' && TERMINAL_THEMES[savedTheme]) {
+        item.style.borderLeftColor = TERMINAL_THEMES[savedTheme].foreground;
+      }
+
       // 显示名称：自定义名称 + Claude 摘要（如果有自定义名称）
       const customName = session.custom_name;
       const claudeSummary = session.summary;
@@ -733,6 +739,18 @@ const AppProjects = {
     // 转发到新方法
     const sessionName = claudeSessionId ? null : this.t('create.newSession', 'New Session');
     this.connectTerminal(workDir, claudeSessionId, sessionName);
+  },
+
+  /**
+   * 从 localStorage 加载 session 主题
+   */
+  loadSessionTheme(sessionId) {
+    try {
+      const themes = JSON.parse(localStorage.getItem('session-themes') || '{}');
+      return themes[sessionId] || null;
+    } catch (e) {
+      return null;
+    }
   }
 };
 

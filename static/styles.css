@@ -1338,6 +1338,7 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
+  border-left: 3px solid transparent;  /* 主题颜色指示器 */
 }
 
 .claude-session-item:active {
@@ -1922,7 +1923,7 @@ body {
 /* Context 信息悬浮条 - 方案 A 详细卡片 */
 .context-bar {
   position: fixed;
-  top: 160px;
+  top: 195px;
   right: 8px;
   display: flex;
   flex-direction: column;
@@ -2377,7 +2378,7 @@ body {
   margin-top: 14px;
 }
 
-.help-content > .help-section-title:first-of-type {
+.help-header + .help-section-title {
   margin-top: 4px;
   padding-top: 0;
   border-top: none;

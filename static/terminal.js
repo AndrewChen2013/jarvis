@@ -20,12 +20,38 @@
  * - 禁用内置键盘输入，使用悬浮按钮
  * - 移动端性能优化配置
  */
+
+/**
+ * 预设终端主题 - 用于区分多个 session
+ */
+const TERMINAL_THEMES = {
+  default: { background: '#1e1e1e', foreground: '#d4d4d4', name: 'Default' },
+  blue:    { background: '#0d1b2a', foreground: '#7ec8e3', name: 'Blue' },
+  green:   { background: '#0d2818', foreground: '#7ddf64', name: 'Green' },
+  purple:  { background: '#2d1b4e', foreground: '#d4a5ff', name: 'Purple' },
+  orange:  { background: '#2a1a0a', foreground: '#ffb347', name: 'Orange' },
+  cyan:    { background: '#0a2a2a', foreground: '#5ce1e6', name: 'Cyan' },
+  red:     { background: '#2a0a0a', foreground: '#ff6b6b', name: 'Red' },
+  gold:    { background: '#1a1a0a', foreground: '#ffd700', name: 'Gold' },
+  rose:    { background: '#2a0a1a', foreground: '#ff69b4', name: 'Rose' },
+  ocean:   { background: '#001f3f', foreground: '#39cccc', name: 'Ocean' },
+  slate:   { background: '#1a1a2a', foreground: '#a8b4c4', name: 'Slate' },
+  wine:    { background: '#1a0a10', foreground: '#c97878', name: 'Wine' },
+  forest:  { background: '#0a1a10', foreground: '#6b8e6b', name: 'Forest' },
+  navy:    { background: '#0a0a1a', foreground: '#6688cc', name: 'Navy' },
+  cocoa:   { background: '#1a1410', foreground: '#c4a882', name: 'Cocoa' },
+};
+
+// 主题顺序（用于循环切换和自动分配）
+const THEME_ORDER = ['default', 'blue', 'green', 'purple', 'orange', 'cyan', 'red', 'gold', 'rose', 'ocean', 'slate', 'wine', 'forest', 'navy', 'cocoa'];
+
 class Terminal {
   constructor(container, onReady) {
     this.container = container;
     this.xterm = null;
     this.fitAddon = null;
     this.fontSize = this.calcDefaultFontSize();  // 根据屏幕宽度自动计算
+    this.currentTheme = 'default';  // 当前主题
     this.isReady = false;
     this.onReady = onReady;
     this.pendingWrites = [];  // 等待写入的数据队列
@@ -358,6 +384,39 @@ class Terminal {
   }
 
   /**
+   * 设置终端主题
+   * @param {string} themeName - 主题名称（default, blue, green, purple, orange, cyan）
+   */
+  setTheme(themeName) {
+    const theme = TERMINAL_THEMES[themeName];
+    if (!theme) {
+      console.warn('[Terminal] Unknown theme:', themeName);
+      return;
+    }
+
+    this.currentTheme = themeName;
+    if (this.xterm) {
+      this.xterm.options.theme = {
+        background: theme.background,
+        foreground: theme.foreground,
+        cursor: theme.background,        // 保持光标隐藏
+        cursorAccent: theme.background,
+        selection: 'rgba(255, 255, 255, 0.3)',
+      };
+    }
+  }
+
+  /**
+   * 获取下一个主题（循环切换）
+   * @returns {string} 下一个主题名称
+   */
+  getNextTheme() {
+    const currentIndex = THEME_ORDER.indexOf(this.currentTheme);
+    const nextIndex = (currentIndex + 1) % THEME_ORDER.length;
+    return THEME_ORDER[nextIndex];
+  }
+
+  /**
    * 获取终端大小（行列数）
    */
   getSize() {
@@ -408,3 +467,9 @@ class Terminal {
     }
   }
 }
+
+// 导出到 window
+// 使用 TerminalWrapper 避免与 xterm.js 的 window.Terminal 冲突
+window.TerminalWrapper = Terminal;
+window.TERMINAL_THEMES = TERMINAL_THEMES;
+window.THEME_ORDER = THEME_ORDER;
