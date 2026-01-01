@@ -781,23 +781,30 @@ const AppWebSocket = {
             }
           }
 
-          // 10 秒后发送 resize，触发 Claude CLI 重绘（解决历史显示问题）
-          // 使用 force=true 强制发送，让后端判断是否需要 resize
-          if (this.delayedResizeTimer) {
-            clearTimeout(this.delayedResizeTimer);
+          // 2 秒后强制 xterm.js 重绘，修复历史渲染问题
+          // 历史数据包含清屏序列，可能导致 xterm.js 渲染异常
+          // 通过临时改变字体大小触发完整重绘
+          if (this.delayedFitTimer) {
+            clearTimeout(this.delayedFitTimer);
           }
-          this.delayedResizeTimer = setTimeout(() => {
-            this.debugLog('delayed resize: 10s passed, sending resize (force=true)');
-            this.resizeTerminal(true);  // force=true，让后端判断
-            // resize 后滚动到底部
-            setTimeout(() => {
-              if (this.terminal && this.terminal.xterm) {
-                this.terminal.xterm.scrollToBottom();
-                this.debugLog('delayed resize: scrolled to bottom');
-              }
-            }, 500);
-            this.delayedResizeTimer = null;
-          }, 10000);
+          this.delayedFitTimer = setTimeout(() => {
+            this.debugLog('delayed refresh: 2s passed, triggering full redraw');
+            if (this.terminal && this.terminal.xterm) {
+              // 临时改变字体大小再改回来，强制 xterm.js 完整重绘
+              const currentSize = this.terminal.fontSize;
+              this.terminal.xterm.options.fontSize = currentSize + 1;
+              this.terminal.fit();
+              setTimeout(() => {
+                if (this.terminal && this.terminal.xterm) {
+                  this.terminal.xterm.options.fontSize = currentSize;
+                  this.terminal.fit();
+                  this.terminal.xterm.scrollToBottom();
+                  this.debugLog('delayed refresh: scrolled to bottom');
+                }
+              }, 50);
+            }
+            this.delayedFitTimer = null;
+          }, 2000);
           break;
 
         case 'output':
