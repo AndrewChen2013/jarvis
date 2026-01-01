@@ -569,11 +569,9 @@ const AppWebSocket = {
         this.loadContextInfo();
       }
 
-      // 延迟应用字体大小和 resize，让历史内容先到达并渲染
-      // 避免在内容未稳定时 resize 导致历史丢失
-      setTimeout(() => {
-        this.applyFontSizeAndResize();
-      }, 1500);
+      // 标记需要在收到第一波消息后 resize
+      // 不在这里立即 resize，避免在历史内容到达前触发
+      this.pendingResize = true;
     };
 
     this.ws.onmessage = (event) => {
@@ -718,6 +716,16 @@ const AppWebSocket = {
                 targetTerminal.write(message.data);
               } catch (writeError) {
                 console.error('Terminal write error:', writeError);
+              }
+
+              // 收到第一波消息后触发 resize
+              if (this.pendingResize) {
+                this.pendingResize = false;
+                this.debugLog('First output received, schedule resize');
+                // 延迟 resize，让内容先渲染稳定
+                setTimeout(() => {
+                  this.applyFontSizeAndResize();
+                }, 1000);
               }
             } else {
               // 终端未就绪，放入队列
@@ -1111,6 +1119,7 @@ const AppWebSocket = {
 
   /**
    * 调整终端大小
+   * 只在大小实际变化时才发送 resize 命令到后端
    */
   resizeTerminal() {
     if (!this.terminal) return;
@@ -1123,10 +1132,23 @@ const AppWebSocket = {
       const size = this.terminal.getSize();
       // 减少列数，让内容显示更宽松
       const adjustedCols = Math.max(size.cols - 3, 20);
-      console.log('Terminal resized to:', size.rows, 'x', adjustedCols, '(original:', size.cols, ')');
+      const newRows = size.rows;
+
+      // 只在大小变化时才发送 resize
+      if (this.lastTerminalSize &&
+          this.lastTerminalSize.rows === newRows &&
+          this.lastTerminalSize.cols === adjustedCols) {
+        console.log('Terminal size unchanged, skip resize');
+        return;
+      }
+
+      // 记录当前大小
+      this.lastTerminalSize = { rows: newRows, cols: adjustedCols };
+
+      console.log('Terminal resized to:', newRows, 'x', adjustedCols, '(original:', size.cols, ')');
       this.sendMessage({
         type: 'resize',
-        rows: size.rows,
+        rows: newRows,
         cols: adjustedCols
       });
     }, 50);

@@ -133,23 +133,36 @@ class App {
 
   /**
    * 初始化软键盘适配
-   * 软键盘弹出时，使用 visualViewport API 让工具栏固定在可视区域顶部
+   * 软键盘弹出时，使用 visualViewport API 让工具栏和相关按钮固定在可视区域
    */
   initKeyboardHandler() {
     const toolbar = document.querySelector('#terminal-view .toolbar');
+    const fontControls = document.querySelector('.font-controls-float');
     if (!toolbar) return;
 
     // 使用 visualViewport API（iOS Safari 支持）
     if (window.visualViewport) {
-      const updateToolbarPosition = () => {
+      const updatePositions = () => {
         // visualViewport.offsetTop 是可视区域相对于布局视口的偏移
         // 当软键盘弹出时，页面会往上推，offsetTop 变成负值或视口变小
         const offsetTop = window.visualViewport.offsetTop;
+
+        // 工具栏
         toolbar.style.transform = `translateY(${offsetTop}px)`;
+
+        // 字体控制按钮
+        if (fontControls) {
+          fontControls.style.transform = `translateY(${offsetTop}px)`;
+        }
+
+        // 悬浮按钮
+        if (this.floatingButton && this.floatingButton.element) {
+          this.floatingButton.element.style.transform = `translateY(${offsetTop}px)`;
+        }
       };
 
-      window.visualViewport.addEventListener('resize', updateToolbarPosition);
-      window.visualViewport.addEventListener('scroll', updateToolbarPosition);
+      window.visualViewport.addEventListener('resize', updatePositions);
+      window.visualViewport.addEventListener('scroll', updatePositions);
 
       this.debugLog('initKeyboardHandler: visualViewport listener added');
     } else {
