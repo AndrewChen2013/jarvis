@@ -699,14 +699,7 @@ const AppWebSocket = {
               this.currentSession = message.terminal_id;
             }
           }
-
-          // 终端已在 connectTerminal 中创建，只需 resize
-          if (this.terminal) {
-            this.debugLog('terminal already exists, just resize');
-            setTimeout(() => {
-              this.resizeTerminal();
-            }, 100);
-          }
+          // 注意：resize 已在 ws.onopen 中延迟执行，这里不再重复调用
           break;
 
         case 'output':
