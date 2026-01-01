@@ -193,6 +193,9 @@ const AppWebSocket = {
         }
       }
 
+      // 恢复 context bar 展开状态
+      this.restoreContextBarState(session);
+
       // 立即显示缓存的 context（无闪烁）
       const cachedContext = session.getCachedContext();
       if (cachedContext) {

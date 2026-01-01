@@ -147,10 +147,36 @@ const AppDialogs = {
       const isCollapsed = bar.classList.toggle('collapsed');
       btn.classList.toggle('expanded', !isCollapsed);
 
+      // 保存展开状态到当前 session
+      const session = this.sessionManager?.getActive();
+      if (session) {
+        session.contextBarExpanded = !isCollapsed;
+      }
+
       // 展开时加载数据
       if (!isCollapsed) {
         this.loadContextInfo();
       }
+    }
+  },
+
+  /**
+   * 恢复 Context Bar 的展开状态（切换 session 时调用）
+   * @param {SessionInstance} session - 目标 session
+   */
+  restoreContextBarState(session) {
+    const bar = document.getElementById('context-bar');
+    const btn = document.getElementById('context-toggle');
+    if (!bar || !btn) return;
+
+    const isExpanded = session?.contextBarExpanded || false;
+
+    if (isExpanded) {
+      bar.classList.remove('collapsed');
+      btn.classList.add('expanded');
+    } else {
+      bar.classList.add('collapsed');
+      btn.classList.remove('expanded');
     }
   },
 

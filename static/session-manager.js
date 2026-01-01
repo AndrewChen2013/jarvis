@@ -41,6 +41,9 @@ class SessionInstance {
     // Context 数据缓存（每个 session 独立）
     this.contextData = null;
     this.contextLastUpdate = 0;
+
+    // Context bar 展开状态（每个 session 独立）
+    this.contextBarExpanded = false;
   }
 
   /**
