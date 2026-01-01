@@ -151,6 +151,9 @@ const AppDialogs = {
       const session = this.sessionManager?.getActive();
       if (session) {
         session.contextBarExpanded = !isCollapsed;
+        this.debugLog(`toggleContextPanel: session=${session.id?.substring(0,8)}, expanded=${!isCollapsed}`);
+      } else {
+        this.debugLog('toggleContextPanel: no active session');
       }
 
       // 展开时加载数据
@@ -167,9 +170,13 @@ const AppDialogs = {
   restoreContextBarState(session) {
     const bar = document.getElementById('context-bar');
     const btn = document.getElementById('context-toggle');
-    if (!bar || !btn) return;
+    if (!bar || !btn) {
+      this.debugLog('restoreContextBarState: bar or btn not found');
+      return;
+    }
 
     const isExpanded = session?.contextBarExpanded || false;
+    this.debugLog(`restoreContextBarState: session=${session?.id?.substring(0,8)}, isExpanded=${isExpanded}`);
 
     if (isExpanded) {
       bar.classList.remove('collapsed');

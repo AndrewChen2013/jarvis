@@ -58,6 +58,9 @@ const AppWebSocket = {
         titleEl.textContent = this.currentSessionName;
       }
 
+      // 恢复 context bar 状态
+      this.restoreContextBarState(existingSession);
+
       // 更新连接状态显示
       this.updateConnectStatus('connected', '');
       return;
@@ -83,6 +86,9 @@ const AppWebSocket = {
     if (titleEl && this.currentSessionName) {
       titleEl.textContent = this.currentSessionName;
     }
+
+    // 恢复 context bar 状态（新建 session 默认收起）
+    this.restoreContextBarState(session);
 
     // 清空主容器中的旧内容（除了 session 容器）
     const terminalOutput = document.getElementById('terminal-output');
