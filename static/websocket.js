@@ -51,6 +51,12 @@ const AppWebSocket = {
     // 显示终端视图
     this.showView('terminal');
 
+    // 设置终端标题为会话名称
+    const titleEl = document.getElementById('terminal-title');
+    if (titleEl && this.currentSessionName) {
+      titleEl.textContent = this.currentSessionName;
+    }
+
     // 清空主容器中的旧内容（除了 session 容器）
     const terminalOutput = document.getElementById('terminal-output');
     if (terminalOutput) {
