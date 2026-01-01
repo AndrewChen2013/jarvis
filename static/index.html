@@ -272,10 +272,15 @@
     <header class="toolbar">
       <button id="minimize-btn" class="btn-minimize" data-i18n-title="terminal.minimize" title="收起">⌄</button>
       <button id="back-btn" class="btn-back" data-i18n-title="terminal.close" title="关闭">←</button>
-      <div class="toolbar-center" onclick="window.app && window.app.toggleDebugPanel()">
-        <span id="connection-dot" class="connection-dot"></span>
-        <span id="terminal-title" class="terminal-title" data-i18n="terminal.title">终端</span>
-        <span id="connection-status" class="connection-status"></span>
+      <div class="toolbar-center">
+        <span id="context-icon" class="context-icon" onclick="window.app && window.app.toggleContextInfo(event)">⛁</span>
+        <span id="terminal-title" class="terminal-title" onclick="window.app && window.app.toggleDebugPanel()">终端</span>
+      </div>
+      <!-- Context 信息条 -->
+      <div id="context-bar" class="context-bar">
+        <span class="context-item context-used"><span class="icon">⛁</span> <span id="ctx-used">--</span></span>
+        <span class="context-item context-free"><span class="icon">⛶</span> <span id="ctx-free">--</span></span>
+        <span class="context-item context-buffer"><span class="icon">⛝</span> <span id="ctx-buffer">--</span></span>
       </div>
       <div class="toolbar-right">
         <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel(event)">?</button>

@@ -303,6 +303,75 @@ const AppDialogs = {
     const status = document.getElementById('connection-status');
     status.textContent = text;
     status.className = 'connection-status ' + (connected ? 'connected' : 'disconnected');
+  },
+
+  /**
+   * 切换 Context 信息条显示
+   */
+  toggleContextInfo(event) {
+    if (event) event.stopPropagation();
+
+    const contextBar = document.getElementById('context-bar');
+    if (!contextBar) return;
+
+    const isVisible = contextBar.classList.contains('visible');
+
+    if (isVisible) {
+      contextBar.classList.remove('visible');
+    } else {
+      // 显示并刷新数据
+      contextBar.classList.add('visible');
+      this.refreshContextInfo();
+
+      // 发送 /context 命令到终端刷新数据
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'input', data: '/context\n' }));
+      }
+    }
+  },
+
+  /**
+   * 刷新 Context 信息
+   */
+  async refreshContextInfo() {
+    try {
+      const response = await fetch('/api/context', {
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+
+      if (!response.ok) return;
+
+      const result = await response.json();
+      if (!result.available || !result.data) return;
+
+      const data = result.data;
+      const categories = data.categories || {};
+
+      // 更新显示
+      const ctxUsed = document.getElementById('ctx-used');
+      const ctxFree = document.getElementById('ctx-free');
+      const ctxBuffer = document.getElementById('ctx-buffer');
+
+      if (ctxUsed) {
+        const usedK = Math.round(data.tokens_used / 1000);
+        const maxK = Math.round(data.tokens_max / 1000);
+        ctxUsed.textContent = `${usedK}k/${maxK}k (${data.percentage}%)`;
+      }
+
+      if (ctxFree && categories.free_space) {
+        const freeK = Math.round(categories.free_space.tokens / 1000);
+        ctxFree.textContent = `${freeK}k free`;
+      }
+
+      if (ctxBuffer && categories.autocompact_buffer) {
+        const bufferK = Math.round(categories.autocompact_buffer.tokens / 1000);
+        const freeK = categories.free_space ? Math.round(categories.free_space.tokens / 1000) : 0;
+        const untilCompact = freeK - bufferK;
+        ctxBuffer.textContent = untilCompact > 0 ? `${untilCompact}k 后压缩` : '即将压缩';
+      }
+    } catch (e) {
+      console.error('Failed to refresh context info:', e);
+    }
   }
 };
 

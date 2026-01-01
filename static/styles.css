@@ -1764,6 +1764,66 @@ body {
   max-width: 45vw;
 }
 
+/* Context 图标 */
+.context-icon {
+  font-size: 14px;
+  color: #9333ea;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.context-icon:active {
+  background-color: rgba(147, 51, 234, 0.2);
+}
+
+/* Context 信息条 */
+.context-bar {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 100;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.context-bar.visible {
+  display: flex;
+}
+
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #999;
+}
+
+.context-item .icon {
+  font-size: 11px;
+}
+
+.context-used .icon {
+  color: #9333ea;
+}
+
+.context-free .icon {
+  color: #888;
+}
+
+.context-buffer .icon {
+  color: #666;
+}
+
 /* 连接状态文字 - 只在异常时显示 */
 .connection-status {
   font-size: 12px;

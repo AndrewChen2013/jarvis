@@ -284,3 +284,98 @@ async def get_profile(_: str = Depends(verify_token)):
     except Exception as e:
         logger.error(f"Get profile error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/context")
+async def get_context(_: str = Depends(verify_token)):
+    """获取当前 session 的 context 使用情况
+
+    从 Claude 的 session 文件中读取最近一次 /context 命令的输出。
+    """
+    try:
+        claude_dir = Path.home() / ".claude"
+        debug_latest = claude_dir / "debug" / "latest"
+
+        # 获取当前 session ID
+        if not debug_latest.exists():
+            return {"available": False, "reason": "No active session"}
+
+        import os
+        session_id = os.path.basename(os.readlink(debug_latest)).replace(".txt", "")
+
+        # 查找 session 文件（搜索所有项目目录）
+        projects_dir = claude_dir / "projects"
+        session_file = None
+
+        if projects_dir.exists():
+            for project_dir in projects_dir.iterdir():
+                if project_dir.is_dir() and not project_dir.name.startswith('.'):
+                    candidate = project_dir / f"{session_id}.jsonl"
+                    if candidate.exists():
+                        session_file = candidate
+                        break
+
+        if not session_file:
+            return {"available": False, "reason": "Session file not found", "session_id": session_id}
+
+        # 读取并解析 /context 输出
+        context_data = None
+        import re
+
+        with open(session_file) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                    content = d.get("message", {}).get("content", "")
+                    if "<local-command-stdout>" in content and "Context Usage" in content:
+                        # 提取 markdown 内容
+                        match = re.search(r"<local-command-stdout>(.*?)</local-command-stdout>", content, re.DOTALL)
+                        if match:
+                            md = match.group(1)
+                            context_data = _parse_context_markdown(md)
+                except:
+                    pass
+
+        if not context_data:
+            return {"available": False, "reason": "No /context output found"}
+
+        return {"available": True, "data": context_data}
+
+    except Exception as e:
+        logger.error(f"Get context error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _parse_context_markdown(md: str) -> dict:
+    """解析 /context 命令的 markdown 输出"""
+    import re
+
+    result = {
+        "model": None,
+        "tokens_used": 0,
+        "tokens_max": 200000,
+        "percentage": 0,
+        "categories": {}
+    }
+
+    # 解析 Model 和 Tokens
+    model_match = re.search(r"\*\*Model:\*\*\s*(\S+)", md)
+    if model_match:
+        result["model"] = model_match.group(1)
+
+    tokens_match = re.search(r"\*\*Tokens:\*\*\s*([\d.]+)k\s*/\s*([\d.]+)k\s*\((\d+)%\)", md)
+    if tokens_match:
+        result["tokens_used"] = int(float(tokens_match.group(1)) * 1000)
+        result["tokens_max"] = int(float(tokens_match.group(2)) * 1000)
+        result["percentage"] = int(tokens_match.group(3))
+
+    # 解析 Categories 表格
+    category_pattern = r"\|\s*(System prompt|System tools|Messages|Free space|Autocompact buffer)\s*\|\s*([\d.]+)k?\s*\|\s*([\d.]+)%\s*\|"
+    for match in re.finditer(category_pattern, md):
+        name = match.group(1).lower().replace(" ", "_")
+        tokens_str = match.group(2)
+        tokens = int(float(tokens_str) * 1000) if "." in tokens_str or float(tokens_str) >= 1 else int(tokens_str)
+        pct = float(match.group(3))
+        result["categories"][name] = {"tokens": tokens, "percentage": pct}
+
+    return result
