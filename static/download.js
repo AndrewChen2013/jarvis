@@ -160,7 +160,7 @@ const AppDownload = {
               <span class="file-name">${item.name}</span>
               <span class="file-meta">${sizeStr}${sizeStr && dateStr ? ' · ' : ''}${dateStr}</span>
             </div>
-            ${canPreview && item.readable ? `<button class="btn-preview-file">👁</button>` : ''}
+            ${canPreview && item.readable ? `<button class="btn-preview-file"><span class="icon-eye"></span></button>` : ''}
             ${!item.is_dir && item.readable ? `<button class="btn-download-file">↓</button>` : ''}
           </div>
         `;
@@ -514,7 +514,8 @@ const AppDownload = {
    * @param {number} bytes - Size in bytes
    */
   formatFileSize(bytes) {
-    if (!bytes || bytes === 0) return '';
+    if (bytes === null || bytes === undefined) return '';
+    if (bytes === 0) return '0 B';
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';

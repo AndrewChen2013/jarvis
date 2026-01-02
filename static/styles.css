@@ -3258,7 +3258,7 @@ body {
 }
 
 .btn-download-file {
-  background: #4a9eff;
+  background: #6b7280;
   border: none;
   color: #fff;
   width: 32px;
@@ -3270,7 +3270,7 @@ body {
 }
 
 .btn-download-file:active {
-  background: #3a8eef;
+  background: #5b6270;
 }
 
 .btn-preview-file {
@@ -3280,14 +3280,38 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  font-size: 14px;
   cursor: pointer;
   flex-shrink: 0;
   margin-right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-preview-file:active {
   background: #5b6270;
+}
+
+/* CSS 扁平化眼睛图标 - 密码显示样式 */
+.icon-eye {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 70% / 50%;
+}
+
+.icon-eye::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
 }
 
 /* ========== File Preview Modal ========== */
