@@ -633,12 +633,6 @@ body {
   border-radius: 4px;
 }
 
-/* ========== Indicator Swipe Area ========== */
-.indicator-swipe-area {
-  padding: 0 0 env(safe-area-inset-bottom, 0px);
-  background-color: transparent;
-}
-
 /* ========== Preview Mode ========== */
 .preview-mode .swipe-container {
   opacity: 0.3;

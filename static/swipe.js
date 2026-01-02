@@ -316,12 +316,6 @@ const AppSwipe = {
       });
     });
 
-    // Swipe up on indicator area to enter preview mode
-    const indicatorArea = document.createElement('div');
-    indicatorArea.className = 'indicator-swipe-area';
-    indicator.parentNode.insertBefore(indicatorArea, indicator);
-    indicatorArea.appendChild(indicator);
-
     // Two-finger pinch gesture to trigger preview mode
     let pinchStartDistance = null;
 
