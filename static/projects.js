@@ -499,9 +499,12 @@ const AppProjects = {
           </div>
           ${contextHtml}
         </div>
-        <button class="btn-session-history" title="${this.t('history.title', 'History')}">▤</button>
-        <button class="btn-session-rename" title="${this.t('common.rename', 'Rename')}">✎</button>
-        <button class="btn-session-delete" title="${this.t('common.delete', 'Delete')}">✕</button>
+        <div class="session-btn-grid">
+          <button class="btn-session-pin" title="${this.t('sessions.pin', 'Pin to home')}">⤴</button>
+          <button class="btn-session-history" title="${this.t('history.title', 'History')}">▤</button>
+          <button class="btn-session-rename" title="${this.t('common.rename', 'Rename')}">✎</button>
+          <button class="btn-session-delete" title="${this.t('common.delete', 'Delete')}">✕</button>
+        </div>
       `;
 
       // 点击会话信息区域进入终端
@@ -511,6 +514,13 @@ const AppProjects = {
         const displayName = customName || claudeSummary || session.session_id.substring(0, 8);
         // 使用 session 的真实 working_dir（而非项目目录 workDir）
         this.connectTerminal(session.working_dir, session.session_id, displayName);
+      });
+
+      // 点击置顶按钮
+      item.querySelector('.btn-session-pin').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const displayName = customName || claudeSummary || session.session_id.substring(0, 8);
+        this.pinSession(session.session_id, session.working_dir, displayName);
       });
 
       // 点击历史按钮

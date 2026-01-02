@@ -171,47 +171,79 @@ class App {
   }
 
   /**
-   * 初始化下拉刷新
+   * 初始化下拉刷新（支持两个页面）
    */
   initPullRefresh() {
-    const main = document.getElementById('sessions-main');
-    const pullRefresh = document.getElementById('pull-refresh');
-    const sessionsList = document.getElementById('sessions-list');
+    // Projects 页面
+    this.initPullRefreshForPage(
+      'page-projects',
+      'pull-refresh',
+      'sessions-list',
+      async () => {
+        await Promise.all([this.loadSessions(), this.loadSystemInfo()]);
+      }
+    );
 
-    if (!main || !pullRefresh || !sessionsList) return;
+    // Sessions 页面
+    this.initPullRefreshForPage(
+      'page-all-sessions',
+      'pull-refresh-sessions',
+      'all-sessions-grid',
+      async () => {
+        await this.loadPinnedSessions();
+      }
+    );
+  }
+
+  /**
+   * 为单个页面初始化下拉刷新
+   */
+  initPullRefreshForPage(pageId, pullRefreshId, listId, refreshCallback) {
+    const page = document.getElementById(pageId);
+    const pullRefresh = document.getElementById(pullRefreshId);
+    const list = document.getElementById(listId);
+
+    if (!page || !pullRefresh || !list) return;
 
     let startY = 0;
     let currentY = 0;
     let pulling = false;
+    let refreshing = false;
 
-    main.addEventListener('touchstart', (e) => {
+    page.addEventListener('touchstart', (e) => {
+      // 编辑模式下禁用下拉刷新（拖动卡片时）
+      const grid = document.getElementById('all-sessions-grid');
+      if (grid && grid.classList.contains('edit-mode')) {
+        pulling = false;
+        return;
+      }
       // 只在滚动到顶部时才启用下拉刷新
-      if (main.scrollTop <= 0 && !this.pullRefresh.refreshing) {
+      if (page.scrollTop <= 0 && !refreshing) {
         startY = e.touches[0].clientY;
         pulling = true;
       }
     }, { passive: true });
 
-    main.addEventListener('touchmove', (e) => {
-      if (!pulling || this.pullRefresh.refreshing) return;
+    page.addEventListener('touchmove', (e) => {
+      if (!pulling || refreshing) return;
 
       currentY = e.touches[0].clientY;
       const deltaY = currentY - startY;
 
       // 只处理向下拉
-      if (deltaY > 0 && main.scrollTop <= 0) {
+      if (deltaY > 0 && page.scrollTop <= 0) {
         e.preventDefault();
 
         // 拖拽时禁用过渡动画
         pullRefresh.classList.add('dragging');
-        sessionsList.classList.add('dragging');
+        list.classList.add('dragging');
 
         // 计算下拉距离（带阻尼效果）
         const pullDistance = Math.min(deltaY * 0.5, this.pullRefresh.maxPull);
 
         // 更新 UI
         pullRefresh.style.transform = `translateY(${pullDistance}px)`;
-        sessionsList.style.transform = `translateY(${pullDistance}px)`;
+        list.style.transform = `translateY(${pullDistance}px)`;
 
         // 更新状态 - 两段式提示
         const textEl = pullRefresh.querySelector('.pull-refresh-text');
@@ -231,7 +263,7 @@ class App {
       }
     }, { passive: false });
 
-    main.addEventListener('touchend', async () => {
+    page.addEventListener('touchend', async () => {
       if (!pulling) return;
       pulling = false;
 
@@ -240,38 +272,36 @@ class App {
 
       // 移除 dragging 类，启用过渡动画
       pullRefresh.classList.remove('dragging');
-      sessionsList.classList.remove('dragging');
+      list.classList.remove('dragging');
 
-      if (pullDistance >= this.pullRefresh.reloadThreshold && !this.pullRefresh.refreshing) {
+      if (pullDistance >= this.pullRefresh.reloadThreshold && !refreshing) {
         // 大幅下拉 - 刷新整个页面
-        // 设置标志位，避免页面卸载时的请求取消触发错误弹窗
         window._isPageReloading = true;
         location.reload();
-      } else if (pullDistance >= this.pullRefresh.dataThreshold && !this.pullRefresh.refreshing) {
+      } else if (pullDistance >= this.pullRefresh.dataThreshold && !refreshing) {
         // 常规下拉 - 只刷新数据
-        this.pullRefresh.refreshing = true;
+        refreshing = true;
         const textEl = pullRefresh.querySelector('.pull-refresh-text');
         if (textEl) textEl.textContent = this.t('sessions.refreshing', '刷新中...');
 
         // 先立即回弹
         pullRefresh.style.transform = '';
-        sessionsList.style.transform = '';
+        list.style.transform = '';
         pullRefresh.classList.remove('pulling', 'reload-mode');
 
         // 异步加载数据
-        Promise.all([
-          this.loadSessions(),
-          this.loadSystemInfo()
-        ]).catch(e => {
+        try {
+          await refreshCallback();
+        } catch (e) {
           console.error('Refresh data error:', e);
-        }).finally(() => {
-          this.pullRefresh.refreshing = false;
+        } finally {
+          refreshing = false;
           if (textEl) textEl.textContent = this.t('sessions.pullToRefresh', '下拉刷新');
-        });
+        }
       } else {
         // 未达到阈值，恢复位置（带动画）
         pullRefresh.style.transform = '';
-        sessionsList.style.transform = '';
+        list.style.transform = '';
         pullRefresh.classList.remove('pulling', 'reload-mode');
       }
 
@@ -280,14 +310,14 @@ class App {
     }, { passive: true });
 
     // 触摸取消时也要恢复
-    main.addEventListener('touchcancel', () => {
+    page.addEventListener('touchcancel', () => {
       if (!pulling) return;
       pulling = false;
 
       pullRefresh.classList.remove('dragging');
-      sessionsList.classList.remove('dragging');
+      list.classList.remove('dragging');
       pullRefresh.style.transform = '';
-      sessionsList.style.transform = '';
+      list.style.transform = '';
       pullRefresh.classList.remove('pulling', 'reload-mode');
 
       startY = 0;
@@ -534,6 +564,11 @@ class App {
       this.initHistory();
     }
 
+    // 初始化滑动功能
+    if (this.initSwipe) {
+      this.initSwipe();
+    }
+
   }
 
   // ==================== 认证相关 ====================
@@ -760,6 +795,7 @@ if (window.AppUtils) mixinModule(window.AppUtils);
 if (window.AppDebug) mixinModule(window.AppDebug);
 if (window.AppDialogs) mixinModule(window.AppDialogs);
 if (window.AppSettings) mixinModule(window.AppSettings);
+if (window.AppSwipe) mixinModule(window.AppSwipe);
 if (window.AppProjects) mixinModule(window.AppProjects);
 if (window.AppWebSocket) mixinModule(window.AppWebSocket);
 if (window.AppUpload) mixinModule(window.AppUpload);

@@ -180,6 +180,22 @@ class Database:
                     ON terminal_history(created_at DESC)
                 """)
 
+                # 置顶会话表（首屏快捷访问）
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS pinned_sessions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL UNIQUE,
+                        working_dir TEXT NOT NULL,
+                        display_name TEXT,
+                        position INTEGER DEFAULT 0,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_pinned_position
+                    ON pinned_sessions(position ASC)
+                """)
+
                 logger.info("Database initialized")
 
     def _migrate_from_json(self):
@@ -589,6 +605,74 @@ class Database:
                     ORDER BY last_activity DESC
                 """)
                 return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== 置顶会话 ====================
+
+    def get_pinned_sessions(self) -> List[Dict[str, Any]]:
+        """获取所有置顶会话，按位置排序"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, session_id, working_dir, display_name, position, created_at
+                    FROM pinned_sessions
+                    ORDER BY position ASC
+                """)
+                return [dict(row) for row in cursor.fetchall()]
+
+    def add_pinned_session(self, session_id: str, working_dir: str,
+                           display_name: str = None) -> Optional[int]:
+        """添加置顶会话，返回新记录ID"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                # 获取最大位置
+                cursor.execute("SELECT MAX(position) FROM pinned_sessions")
+                max_pos = cursor.fetchone()[0] or 0
+                try:
+                    cursor.execute("""
+                        INSERT INTO pinned_sessions (session_id, working_dir, display_name, position)
+                        VALUES (?, ?, ?, ?)
+                    """, (session_id, working_dir, display_name, max_pos + 1))
+                    return cursor.lastrowid
+                except sqlite3.IntegrityError:
+                    # 已存在
+                    return None
+
+    def remove_pinned_session(self, session_id: str) -> bool:
+        """移除置顶会话"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM pinned_sessions WHERE session_id = ?
+                """, (session_id,))
+                return cursor.rowcount > 0
+
+    def update_pinned_positions(self, positions: List[Dict[str, Any]]) -> bool:
+        """批量更新置顶会话位置
+        positions: [{"session_id": "xxx", "position": 1}, ...]
+        """
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                for item in positions:
+                    cursor.execute("""
+                        UPDATE pinned_sessions
+                        SET position = ?
+                        WHERE session_id = ?
+                    """, (item['position'], item['session_id']))
+                return True
+
+    def is_session_pinned(self, session_id: str) -> bool:
+        """检查会话是否已置顶"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 1 FROM pinned_sessions WHERE session_id = ?
+                """, (session_id,))
+                return cursor.fetchone() is not None
 
     # ==================== 清理 ====================
 

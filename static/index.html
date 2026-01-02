@@ -25,7 +25,7 @@
   <!-- DNS 预解析和预连接 CDN -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="/static/styles.css?v=41">
+  <link rel="stylesheet" href="/static/styles.css?v=61">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -197,13 +197,35 @@
     </div>
 
     <main class="main" id="sessions-main">
-      <!-- 下拉刷新指示器 -->
-      <div id="pull-refresh" class="pull-refresh">
-        <div class="pull-refresh-spinner"></div>
-        <span class="pull-refresh-text" data-i18n="sessions.pullToRefresh">下拉刷新</span>
+      <!-- 左右滑动容器 -->
+      <div class="swipe-container" id="swipe-container">
+        <!-- 第一屏: 项目列表 -->
+        <div class="swipe-page" id="page-projects">
+          <!-- 下拉刷新指示器 -->
+          <div id="pull-refresh" class="pull-refresh">
+            <div class="pull-refresh-spinner"></div>
+            <span class="pull-refresh-text" data-i18n="sessions.pullToRefresh">下拉刷新</span>
+          </div>
+          <div id="sessions-list" class="sessions-list">
+            <div class="loading" data-i18n="sessions.loading">加载中...</div>
+          </div>
+        </div>
+        <!-- 第二屏: 所有会话网格 -->
+        <div class="swipe-page" id="page-all-sessions">
+          <!-- 下拉刷新指示器 -->
+          <div id="pull-refresh-sessions" class="pull-refresh">
+            <div class="pull-refresh-spinner"></div>
+            <span class="pull-refresh-text" data-i18n="sessions.pullToRefresh">下拉刷新</span>
+          </div>
+          <div id="all-sessions-grid" class="all-sessions-grid">
+            <div class="loading" data-i18n="sessions.loading">加载中...</div>
+          </div>
+        </div>
       </div>
-      <div id="sessions-list" class="sessions-list">
-        <div class="loading" data-i18n="sessions.loading">加载中...</div>
+      <!-- 页面指示器 -->
+      <div class="page-indicator" id="page-indicator">
+        <span class="page-dot active" data-page="0"></span>
+        <span class="page-dot" data-page="1"></span>
       </div>
     </main>
   </div>
@@ -441,6 +463,8 @@
   </script>
   <!-- 引入应用脚本 (defer: 并行加载，按顺序执行) -->
   <!-- MessagePack 二进制协议 -->
+  <!-- SortableJS 拖拽排序 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack@3.0.0-beta2/dist.es5+umd/msgpack.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
@@ -454,11 +478,12 @@
   <script defer src="/static/debug.js?v=3"></script>
   <script defer src="/static/dialogs.js?v=23"></script>
   <script defer src="/static/settings.js?v=5"></script>
-  <script defer src="/static/projects.js?v=22"></script>
+  <script defer src="/static/swipe.js?v=16"></script>
+  <script defer src="/static/projects.js?v=24"></script>
   <script defer src="/static/websocket.js?v=43"></script>
   <script defer src="/static/upload.js?v=4"></script>
   <script defer src="/static/download.js?v=3"></script>
   <script defer src="/static/history.js?v=11"></script>
-  <script defer src="/static/app.js?v=17"></script>
+  <script defer src="/static/app.js?v=20"></script>
 </body>
 </html>

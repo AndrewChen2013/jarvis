@@ -563,10 +563,435 @@ body {
 
 .main {
   flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   background-color: #111;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ========== 左右滑动容器 ========== */
+.swipe-container {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* 禁止文字选中 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.swipe-container::-webkit-scrollbar {
+  display: none;
+}
+
+.swipe-page {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  /* 禁止文字选中 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 页面指示器 */
+.page-indicator {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  background-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.page-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #3a3a3a;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.page-dot.active {
+  background-color: #4a9eff;
+  width: 20px;
+  border-radius: 4px;
+}
+
+/* ========== Indicator Swipe Area ========== */
+.indicator-swipe-area {
+  padding: 16px 0 8px;
+  background-color: #111;
+  touch-action: pan-x;
+}
+
+.indicator-swipe-area.swiping-up {
+  background-color: #1a1a1a;
+}
+
+.indicator-swipe-area.swiping-up .page-indicator {
+  transform: translateY(-4px);
+  transition: transform 0.15s ease-out;
+}
+
+/* ========== Preview Mode ========== */
+.preview-mode .swipe-container {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.preview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.preview-overlay.fade-out {
+  animation: fadeOut 0.2s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.preview-container {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+}
+
+.preview-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  touch-action: none;
+}
+
+.preview-item:active {
+  transform: scale(1.02);
+}
+
+.preview-item.dragging {
+  z-index: 10;
+}
+
+.preview-item.swap-target {
+  opacity: 0.5;
+  transform: scale(0.95);
+}
+
+.preview-frame {
+  width: 140px;
+  height: 250px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #3a3a3a;
+  background-color: #1a1a1a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.preview-item.dragging .preview-frame {
+  border-color: #4a9eff;
+  box-shadow: 0 12px 32px rgba(74, 158, 255, 0.3);
+}
+
+.preview-content {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #111;
+}
+
+.preview-label {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #aaa;
+  font-weight: 500;
+}
+
+.preview-item.dragging .preview-label {
+  color: #4a9eff;
+}
+
+.preview-hint {
+  color: #666;
+  font-size: 12px;
+  margin-top: 20px;
+}
+
+/* ========== 所有会话网格 (Flexbox for SortableJS) ========== */
+.all-sessions-grid {
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.all-sessions-grid .session-grid-item {
+  /* 2列布局：(100% - gap) / 2 */
+  flex: 0 0 calc(50% - 5px);
+  max-width: calc(50% - 5px);
+}
+
+/* 会话网格卡片 */
+.session-grid-item {
+  background-color: #1e1e1e;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #2a2a2a;
+  position: relative;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.session-grid-item:active {
+  background-color: #252525;
+}
+
+/* 编辑模式下禁止浏览器默认触摸行为和滚动 */
+.all-sessions-grid.edit-mode {
+  touch-action: none;
+}
+
+.all-sessions-grid.edit-mode .session-grid-item {
+  touch-action: none;
+  cursor: grab;
+}
+
+.all-sessions-grid.edit-mode .session-grid-item:active {
+  cursor: grabbing;
+}
+
+/* 编辑模式下禁止页面滚动 */
+#page-all-sessions.dragging {
+  overflow: hidden !important;
+  touch-action: none;
+}
+
+/* 后端活跃状态 (绿色 - 后端有终端进程) */
+.session-grid-item.is-backend-active {
+  border-color: #22c55e;
+}
+
+.session-grid-item.is-backend-active::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 28px;
+  width: 8px;
+  height: 8px;
+  background-color: #22c55e;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+  animation: pulse 2s infinite;
+}
+
+/* 前端连接状态 (蓝色 - 当前客户端已连接) */
+.session-grid-item.is-frontend-connected {
+  border-color: #4a9eff;
+}
+
+.session-grid-item.is-frontend-connected::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 28px;
+  width: 8px;
+  height: 8px;
+  background-color: #4a9eff;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(74, 158, 255, 0.6);
+  animation: pulse 2s infinite;
+}
+
+.session-grid-item .session-grid-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 16px;
+}
+
+.session-grid-item .session-grid-project {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* context + time 同一行 */
+.session-grid-item .session-grid-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  gap: 8px;
+}
+
+.session-grid-item .session-grid-context {
+  font-size: 10px;
+  color: #9333ea;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.session-grid-item .session-grid-time {
+  font-size: 10px;
+  color: #525252;
+  white-space: nowrap;
+}
+
+/* 取消置顶按钮 - 默认隐藏，编辑模式显示 */
+.session-grid-item .btn-unpin {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  font-size: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.5);
+  transition: opacity 0.2s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* 编辑模式：显示删除按钮 */
+.all-sessions-grid.edit-mode .session-grid-item .btn-unpin {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.session-grid-item .btn-unpin:active {
+  transform: scale(0.9);
+}
+
+/* 编辑模式：卡片抖动动画 */
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-1deg); }
+  50% { transform: rotate(1deg); }
+}
+
+.all-sessions-grid.edit-mode .session-grid-item {
+  animation: wiggle 0.3s ease-in-out infinite;
+}
+
+/* 被选中拖动的元素 */
+.session-grid-item.sortable-drag {
+  opacity: 1 !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7) !important;
+  border: 2px solid #4a9eff !important;
+  z-index: 99999 !important;
+  animation: none !important;
+}
+
+/* 原位置占位符 */
+.session-grid-item.sortable-ghost {
+  opacity: 0.3 !important;
+  border: 2px dashed #4a9eff !important;
+  background: transparent !important;
+}
+
+/* 被选中但还没开始拖的状态 */
+.session-grid-item.sortable-chosen {
+  animation: none !important;
+}
+
+/* iPad 响应式布局 - 更多列 (Flexbox) */
+@media (min-width: 600px) {
+  .all-sessions-grid {
+    gap: 12px;
+    padding: 16px;
+  }
+  .all-sessions-grid .session-grid-item {
+    /* 3列 */
+    flex: 0 0 calc(33.333% - 8px);
+    max-width: calc(33.333% - 8px);
+  }
+}
+
+@media (min-width: 900px) {
+  .all-sessions-grid {
+    gap: 14px;
+    padding: 20px;
+  }
+  .all-sessions-grid .session-grid-item {
+    /* 4列 */
+    flex: 0 0 calc(25% - 11px);
+    max-width: calc(25% - 11px);
+  }
+}
+
+@media (min-width: 1200px) {
+  .all-sessions-grid {
+    gap: 16px;
+  }
+  .all-sessions-grid .session-grid-item {
+    /* 5列 */
+    flex: 0 0 calc(20% - 13px);
+    max-width: calc(20% - 13px);
+  }
+}
+
+/* 空状态 */
+.all-sessions-grid .empty {
+  grid-column: 1 / -1;
+  padding: 40px 20px;
 }
 
 /* ========== 下拉刷新 ========== */
@@ -1656,10 +2081,10 @@ body {
   font-weight: 500;
 }
 
-/* 会话项布局 - 信息 + 重命名按钮 */
+/* 会话项布局 - 信息 + 按钮网格 */
 .sessions-modal-list .claude-session-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
@@ -1670,23 +2095,36 @@ body {
   cursor: pointer;
 }
 
-/* Session 操作按钮（历史、重命名、删除）统一样式 */
+/* Session 按钮 2x2 网格 */
+.session-btn-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Session 操作按钮（置顶、历史、重命名、删除）统一样式 */
+.btn-session-pin,
 .btn-session-history,
 .btn-session-rename,
 .btn-session-delete {
   background: none;
   border: none;
   color: #555;
-  font-size: 18px;
-  padding: 8px;
+  font-size: 16px;
+  padding: 4px 8px;
   cursor: pointer;
   transition: color 0.2s;
-  flex-shrink: 0;
 }
 
 .btn-session-history:hover,
 .btn-session-history:active {
   color: #10b981;
+}
+
+.btn-session-pin:hover,
+.btn-session-pin:active {
+  color: #f59e0b;
 }
 
 .btn-session-rename:hover,
