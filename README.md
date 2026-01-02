@@ -102,7 +102,7 @@ Fragment time adds up to **real productivity**.
 
 Claude spends 70% of the time outputting. Waiting is waste.
 
-<img src="screenshots/multi-session.png" width="300" alt="Multi-Session">
+<img src="screenshots/multi-session.jpg" width="300" alt="Multi-Session">
 
 Run 3-4 tasks simultaneously:
 - Session A is generating → Switch to Session B, give instructions
@@ -123,7 +123,15 @@ Your phone's keyboard has voice input built-in.
 
 ### Built with Itself
 
-This project was developed using Claude Remote. After the core features were complete, all subsequent development was done via voice input on a phone — during commutes, while walking, in bed. Proof that vibe coding works.
+This project was developed using Claude Remote. After the core features were complete, all subsequent development was done via voice input on a phone — during commutes, while walking, in bed.
+
+**Everything you see here was created by Claude Code:**
+- 📝 This README — written and translated
+- 🎬 The demo GIF — frames extracted from screen recording, composed automatically
+- 🖼️ All screenshots — extracted, cropped, and sensitive info masked
+- 🌍 9 language translations — i18n files with 200+ entries each
+
+Proof that vibe coding works.
 
 ---
 
@@ -224,7 +232,7 @@ Enter your AUTH_TOKEN (shown during installation or in `.env` file).
 
 ### Session Management
 
-<img src="screenshots/sessions.png" width="300" alt="Sessions">
+<img src="screenshots/sessions.jpg" width="300" alt="Sessions">
 
 - **Create new session**: Tap `+`, select working directory
 - **Resume existing session**: Browse your Claude history and continue
@@ -232,7 +240,7 @@ Enter your AUTH_TOKEN (shown during installation or in `.env` file).
 
 ### Terminal
 
-<img src="screenshots/terminal.png" width="300" alt="Terminal">
+<img src="screenshots/terminal.jpg" width="300" alt="Terminal">
 
 Full terminal experience on mobile:
 - **Virtual keys**: Tab, ↑↓, ESC, Backspace, and more
@@ -314,6 +322,8 @@ Full terminal experience on mobile:
 
 ### 📊 Usage Monitoring
 
+<img src="screenshots/context-info.jpg" width="300" alt="Context Info">
+
 - **Real-time Usage** — View 5-hour and 7-day cycle utilization
 - **Sonnet Quota** — Separate display for Sonnet model usage
 - **Context Info** — Token consumption, remaining space, distance to compact
@@ -321,8 +331,8 @@ Full terminal experience on mobile:
 
 ### 🌐 Multi-Language Support
 
-- Chinese / English switch anytime
-- Settings auto-saved
+- 9 languages: Chinese, English, Japanese, Korean, French, German, Spanish, Russian, Portuguese
+- Switch anytime, settings auto-saved
 
 ### 🔐 Secure Access
 

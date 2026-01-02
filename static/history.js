@@ -489,7 +489,7 @@ const AppHistory = {
     return `
       <div class="history-message-item">
         <span class="history-time">${time}</span>
-        <pre class="history-content">${content}</pre>
+        <pre class="history-item-content">${content}</pre>
       </div>
     `;
   },

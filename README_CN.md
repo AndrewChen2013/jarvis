@@ -102,7 +102,7 @@ AI 时代，**想象力才是你最大的资产**。不要把它浪费在记忆�
 
 Claude 有 70% 的时间在输出。等待就是浪费。
 
-<img src="screenshots/multi-session.png" width="300" alt="多会话">
+<img src="screenshots/multi-session.jpg" width="300" alt="多会话">
 
 同时跑 3-4 个任务：
 - Session A 正在生成 → 切到 Session B，下指令
@@ -123,7 +123,15 @@ Claude 有 70% 的时间在输出。等待就是浪费。
 
 ### 自举开发
 
-这个项目本身就是用 Claude Remote 开发的。核心功能完成后，后续所有功能都是用手机语音输入完成的——通勤时、走路时、躺床上。这就是氛围编程的最好证明。
+这个项目本身就是用 Claude Remote 开发的。核心功能完成后，后续所有功能都是用手机语音输入完成的——通勤时、走路时、躺床上。
+
+**你看到的一切都是 Claude Code 创造的：**
+- 📝 这份 README — 撰写和翻译
+- 🎬 演示 GIF — 从录屏中提取帧，自动合成
+- 🖼️ 所有截图 — 提取、裁剪、敏感信息打码
+- 🌍 9 种语言翻译 — 每种语言 200+ 条目
+
+这就是氛围编程的最好证明。
 
 ---
 
@@ -224,7 +232,7 @@ cloudflared tunnel run claude-remote
 
 ### 会话管理
 
-<img src="screenshots/sessions.png" width="300" alt="会话列表">
+<img src="screenshots/sessions.jpg" width="300" alt="会话列表">
 
 - **创建新会话**：点击 `+`，选择工作目录
 - **恢复历史会话**：浏览 Claude 历史记录，继续之前的对话
@@ -232,7 +240,7 @@ cloudflared tunnel run claude-remote
 
 ### 终端操作
 
-<img src="screenshots/terminal.png" width="300" alt="终端">
+<img src="screenshots/terminal.jpg" width="300" alt="终端">
 
 移动端完整终端体验：
 - **虚拟按键**：Tab、↑↓、ESC、退格键等
@@ -314,6 +322,8 @@ cloudflared tunnel run claude-remote
 
 ### 📊 用量监控
 
+<img src="screenshots/context-info.jpg" width="300" alt="Context 信息">
+
 - **实时用量** — 查看 5 小时周期和 7 天周期的使用情况
 - **Sonnet 额度** — 单独显示 Sonnet 模型用量
 - **Context 信息** — 当前会话的 token 消耗、剩余空间、距离压缩
@@ -321,8 +331,8 @@ cloudflared tunnel run claude-remote
 
 ### 🌐 多语言支持
 
-- 中文 / English 随时切换
-- 设置自动保存
+- 9 种语言：中文、英文、日语、韩语、法语、德语、西班牙语、俄语、葡萄牙语
+- 随时切换，设置自动保存
 
 ### 🔐 安全访问
 

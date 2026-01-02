@@ -202,6 +202,10 @@ class App {
       if (deltaY > 0 && main.scrollTop <= 0) {
         e.preventDefault();
 
+        // 拖拽时禁用过渡动画
+        pullRefresh.classList.add('dragging');
+        sessionsList.classList.add('dragging');
+
         // 计算下拉距离（带阻尼效果）
         const pullDistance = Math.min(deltaY * 0.5, this.pullRefresh.maxPull);
 
@@ -234,6 +238,10 @@ class App {
       const deltaY = currentY - startY;
       const pullDistance = Math.min(deltaY * 0.5, this.pullRefresh.maxPull);
 
+      // 移除 dragging 类，启用过渡动画
+      pullRefresh.classList.remove('dragging');
+      sessionsList.classList.remove('dragging');
+
       if (pullDistance >= this.pullRefresh.reloadThreshold && !this.pullRefresh.refreshing) {
         // 大幅下拉 - 刷新整个页面
         // 设置标志位，避免页面卸载时的请求取消触发错误弹窗
@@ -245,24 +253,42 @@ class App {
         const textEl = pullRefresh.querySelector('.pull-refresh-text');
         if (textEl) textEl.textContent = this.t('sessions.refreshing', '刷新中...');
 
-        try {
-          await this.loadSessions();
-          await this.loadSystemInfo();
-        } catch (e) {
-          console.error('Refresh data error:', e);
-        }
-
-        // 恢复位置
+        // 先立即回弹
         pullRefresh.style.transform = '';
         sessionsList.style.transform = '';
         pullRefresh.classList.remove('pulling', 'reload-mode');
-        this.pullRefresh.refreshing = false;
+
+        // 异步加载数据
+        Promise.all([
+          this.loadSessions(),
+          this.loadSystemInfo()
+        ]).catch(e => {
+          console.error('Refresh data error:', e);
+        }).finally(() => {
+          this.pullRefresh.refreshing = false;
+          if (textEl) textEl.textContent = this.t('sessions.pullToRefresh', '下拉刷新');
+        });
       } else {
-        // 未达到阈值，恢复位置
+        // 未达到阈值，恢复位置（带动画）
         pullRefresh.style.transform = '';
         sessionsList.style.transform = '';
         pullRefresh.classList.remove('pulling', 'reload-mode');
       }
+
+      startY = 0;
+      currentY = 0;
+    }, { passive: true });
+
+    // 触摸取消时也要恢复
+    main.addEventListener('touchcancel', () => {
+      if (!pulling) return;
+      pulling = false;
+
+      pullRefresh.classList.remove('dragging');
+      sessionsList.classList.remove('dragging');
+      pullRefresh.style.transform = '';
+      sessionsList.style.transform = '';
+      pullRefresh.classList.remove('pulling', 'reload-mode');
 
       startY = 0;
       currentY = 0;

@@ -582,7 +582,7 @@ body {
   gap: 10px;
   color: #888;
   font-size: 14px;
-  transition: transform 0.2s ease;
+  transition: transform 0.3s ease-out;
   z-index: 10;
 }
 
@@ -644,6 +644,13 @@ body {
 
 .sessions-list {
   padding: 12px;
+  transition: transform 0.3s ease-out;
+}
+
+/* 拖拽时禁用过渡动画 */
+.pull-refresh.dragging,
+.sessions-list.dragging {
+  transition: none !important;
 }
 
 /* 会话卡片 - 纵向布局 */
@@ -3373,7 +3380,7 @@ body {
   margin-bottom: 4px;
 }
 
-.history-content {
+.history-item-content {
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -3418,7 +3425,7 @@ body {
 }
 
 #terminal-history-modal .modal-body {
-  padding: 16px;
+  padding: 8px 16px 16px;
   overflow-y: auto;
   max-height: calc(80vh - 60px);
 }
