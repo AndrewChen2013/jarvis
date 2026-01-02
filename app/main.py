@@ -30,7 +30,7 @@ import os
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.terminal_manager import terminal_manager
-from app.api import auth, projects, system
+from app.api import auth, projects, system, upload
 from app.api.terminal import handle_terminal_websocket
 
 
@@ -71,6 +71,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(system.router)
+app.include_router(upload.router)
 
 # 挂载静态文件
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")

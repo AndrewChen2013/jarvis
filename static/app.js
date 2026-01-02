@@ -447,6 +447,11 @@ class App {
       this.debugLog('warning: minimize button not found!');
     }
 
+    // 初始化上传功能
+    if (this.initUpload) {
+      this.initUpload();
+    }
+
   }
 
   // ==================== 认证相关 ====================
@@ -668,6 +673,7 @@ if (window.AppDialogs) mixinModule(window.AppDialogs);
 if (window.AppSettings) mixinModule(window.AppSettings);
 if (window.AppProjects) mixinModule(window.AppProjects);
 if (window.AppWebSocket) mixinModule(window.AppWebSocket);
+if (window.AppUpload) mixinModule(window.AppUpload);
 
 // 页面加载完成后初始化
 window.addEventListener('DOMContentLoaded', () => {

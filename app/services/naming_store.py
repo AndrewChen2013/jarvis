@@ -16,87 +16,44 @@
 附加命名存储
 
 提供给 Claude Session 添加自定义名称的能力。
-使用简单的 JSON 文件存储，不需要复杂的数据库。
+使用 SQLite 数据库存储。
 """
-import os
-import json
 from typing import Optional, Dict
-from threading import Lock
+
+from app.services.database import db
 from app.core.logging import logger
 
 
 class NamingStore:
-    """附加命名存储"""
-
-    def __init__(self, store_path: str = None):
-        self.store_path = store_path or os.path.expanduser("~/.claude-remote/session_names.json")
-        self._lock = Lock()
-        self._cache: Dict[str, str] = {}
-        self._load()
-
-    def _ensure_dir(self):
-        """确保存储目录存在"""
-        dir_path = os.path.dirname(self.store_path)
-        if dir_path and not os.path.exists(dir_path):
-            os.makedirs(dir_path, exist_ok=True)
-
-    def _load(self):
-        """从文件加载命名数据"""
-        try:
-            if os.path.exists(self.store_path):
-                with open(self.store_path, 'r', encoding='utf-8') as f:
-                    self._cache = json.load(f)
-                logger.info(f"Loaded {len(self._cache)} session names")
-        except Exception as e:
-            logger.error(f"Failed to load naming store: {e}")
-            self._cache = {}
-
-    def _save(self):
-        """保存命名数据到文件"""
-        try:
-            self._ensure_dir()
-            with open(self.store_path, 'w', encoding='utf-8') as f:
-                json.dump(self._cache, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to save naming store: {e}")
+    """附加命名存储（基于 SQLite）"""
 
     def get_name(self, session_id: str) -> Optional[str]:
         """获取会话的自定义名称"""
-        with self._lock:
-            return self._cache.get(session_id)
+        return db.get_session_name(session_id)
 
     def set_name(self, session_id: str, name: str):
         """设置会话的自定义名称"""
-        with self._lock:
-            if name:
-                self._cache[session_id] = name
-            elif session_id in self._cache:
-                del self._cache[session_id]
-            self._save()
-        logger.info(f"Set name for session {session_id[:8]}...: {name}")
+        if name:
+            db.set_session_name(session_id, name)
+        else:
+            db.delete_session_name(session_id)
 
     def delete_name(self, session_id: str):
         """删除会话的自定义名称"""
-        with self._lock:
-            if session_id in self._cache:
-                del self._cache[session_id]
-                self._save()
-                logger.info(f"Deleted name for session {session_id[:8]}...")
+        db.delete_session_name(session_id)
 
     def get_all_names(self) -> Dict[str, str]:
         """获取所有命名映射"""
-        with self._lock:
-            return self._cache.copy()
+        return db.get_all_session_names()
 
     def cleanup_orphans(self, valid_session_ids: set):
         """清理不存在的会话的命名"""
-        with self._lock:
-            orphans = [sid for sid in self._cache if sid not in valid_session_ids]
-            for sid in orphans:
-                del self._cache[sid]
-            if orphans:
-                self._save()
-                logger.info(f"Cleaned up {len(orphans)} orphan names")
+        all_names = self.get_all_names()
+        orphans = [sid for sid in all_names if sid not in valid_session_ids]
+        for sid in orphans:
+            self.delete_name(sid)
+        if orphans:
+            logger.info(f"Cleaned up {len(orphans)} orphan names")
 
 
 # 全局实例

@@ -59,6 +59,8 @@ const i18n = {
       'sessions.help.ctxFree': '剩余可用空间',
       'sessions.help.ctxCompact': '距离自动压缩',
       'sessions.help.ctxTotal': '会话总消耗',
+      'sessions.help.settingsTitle': '设置功能',
+      'sessions.help.upload': '上传文件到服务器主目录',
       'sessions.loading': '加载中...',
       'sessions.empty': '暂无会话',
       'sessions.pullToRefresh': '下拉刷新',
@@ -220,6 +222,18 @@ const i18n = {
       'debug.copied': '已复制!',
       'debug.clear': '清除',
       'debug.close': '关闭',
+
+      // 上传
+      'settings.upload': '上传文件',
+      'upload.uploading': '上传中...',
+      'upload.success': '上传成功',
+      'upload.failed': '上传失败',
+      'upload.fileTooLarge': '文件过大（最大 500MB）',
+      'upload.networkError': '网络错误',
+      'upload.successTitle': '上传成功',
+      'upload.filePath': '文件路径',
+      'upload.copyPath': '复制路径',
+      'upload.copied': '已复制!',
     },
 
     en: {
@@ -244,6 +258,8 @@ const i18n = {
       'sessions.help.ctxFree': 'Free space',
       'sessions.help.ctxCompact': 'Until compact',
       'sessions.help.ctxTotal': 'Total consumed',
+      'sessions.help.settingsTitle': 'Settings',
+      'sessions.help.upload': 'Upload file to server home directory',
       'sessions.loading': 'Loading...',
       'sessions.empty': 'No sessions',
       'sessions.pullToRefresh': 'Pull to refresh',
@@ -405,6 +421,18 @@ const i18n = {
       'debug.copied': 'Copied!',
       'debug.clear': 'Clear',
       'debug.close': 'Close',
+
+      // Upload
+      'settings.upload': 'Upload File',
+      'upload.uploading': 'Uploading...',
+      'upload.success': 'Upload successful',
+      'upload.failed': 'Upload failed',
+      'upload.fileTooLarge': 'File too large (max 500MB)',
+      'upload.networkError': 'Network error',
+      'upload.successTitle': 'Upload Successful',
+      'upload.filePath': 'File Path',
+      'upload.copyPath': 'Copy Path',
+      'upload.copied': 'Copied!',
     },
 
     ja: {
@@ -429,6 +457,8 @@ const i18n = {
       'sessions.help.ctxFree': '残り容量',
       'sessions.help.ctxCompact': '圧縮まで',
       'sessions.help.ctxTotal': '合計消費',
+      'sessions.help.settingsTitle': '設定機能',
+      'sessions.help.upload': 'サーバーのホームにファイルをアップロード',
       'sessions.loading': '読み込み中...',
       'sessions.empty': 'セッションなし',
       'sessions.pullToRefresh': '下にスワイプして更新',
@@ -583,6 +613,18 @@ const i18n = {
       'debug.copied': 'コピーしました!',
       'debug.clear': 'クリア',
       'debug.close': '閉じる',
+
+      // アップロード
+      'settings.upload': 'ファイルをアップロード',
+      'upload.uploading': 'アップロード中...',
+      'upload.success': 'アップロード成功',
+      'upload.failed': 'アップロード失敗',
+      'upload.fileTooLarge': 'ファイルが大きすぎます（最大500MB）',
+      'upload.networkError': 'ネットワークエラー',
+      'upload.successTitle': 'アップロード成功',
+      'upload.filePath': 'ファイルパス',
+      'upload.copyPath': 'パスをコピー',
+      'upload.copied': 'コピーしました!',
     },
 
     ko: {
@@ -607,6 +649,8 @@ const i18n = {
       'sessions.help.ctxFree': '남은 공간',
       'sessions.help.ctxCompact': '압축까지',
       'sessions.help.ctxTotal': '총 소비',
+      'sessions.help.settingsTitle': '설정 기능',
+      'sessions.help.upload': '서버 홈 디렉토리에 파일 업로드',
       'sessions.loading': '로딩 중...',
       'sessions.empty': '세션 없음',
       'sessions.pullToRefresh': '당겨서 새로고침',
@@ -761,6 +805,18 @@ const i18n = {
       'debug.copied': '복사됨!',
       'debug.clear': '지우기',
       'debug.close': '닫기',
+
+      // 업로드
+      'settings.upload': '파일 업로드',
+      'upload.uploading': '업로드 중...',
+      'upload.success': '업로드 성공',
+      'upload.failed': '업로드 실패',
+      'upload.fileTooLarge': '파일이 너무 큽니다 (최대 500MB)',
+      'upload.networkError': '네트워크 오류',
+      'upload.successTitle': '업로드 성공',
+      'upload.filePath': '파일 경로',
+      'upload.copyPath': '경로 복사',
+      'upload.copied': '복사됨!',
     },
 
     fr: {
@@ -785,6 +841,8 @@ const i18n = {
       'sessions.help.ctxFree': 'Espace libre',
       'sessions.help.ctxCompact': 'Avant compactage',
       'sessions.help.ctxTotal': 'Total consommé',
+      'sessions.help.settingsTitle': 'Paramètres',
+      'sessions.help.upload': 'Télécharger fichier vers répertoire serveur',
       'sessions.loading': 'Chargement...',
       'sessions.empty': 'Aucune session',
       'sessions.pullToRefresh': 'Tirer pour actualiser',
@@ -939,6 +997,18 @@ const i18n = {
       'debug.copied': 'Copié !',
       'debug.clear': 'Effacer',
       'debug.close': 'Fermer',
+
+      // Téléchargement
+      'settings.upload': 'Télécharger fichier',
+      'upload.uploading': 'Téléchargement...',
+      'upload.success': 'Téléchargement réussi',
+      'upload.failed': 'Échec du téléchargement',
+      'upload.fileTooLarge': 'Fichier trop volumineux (max 500Mo)',
+      'upload.networkError': 'Erreur réseau',
+      'upload.successTitle': 'Téléchargement réussi',
+      'upload.filePath': 'Chemin du fichier',
+      'upload.copyPath': 'Copier le chemin',
+      'upload.copied': 'Copié !',
     },
 
     de: {
@@ -963,6 +1033,8 @@ const i18n = {
       'sessions.help.ctxFree': 'Frei',
       'sessions.help.ctxCompact': 'Bis Kompakt',
       'sessions.help.ctxTotal': 'Gesamt verbraucht',
+      'sessions.help.settingsTitle': 'Einstellungen',
+      'sessions.help.upload': 'Datei ins Server-Homeverzeichnis hochladen',
       'sessions.loading': 'Laden...',
       'sessions.empty': 'Keine Sitzungen',
       'sessions.pullToRefresh': 'Zum Aktualisieren ziehen',
@@ -1117,6 +1189,18 @@ const i18n = {
       'debug.copied': 'Kopiert!',
       'debug.clear': 'Löschen',
       'debug.close': 'Schließen',
+
+      // Upload
+      'settings.upload': 'Datei hochladen',
+      'upload.uploading': 'Hochladen...',
+      'upload.success': 'Upload erfolgreich',
+      'upload.failed': 'Upload fehlgeschlagen',
+      'upload.fileTooLarge': 'Datei zu groß (max 500MB)',
+      'upload.networkError': 'Netzwerkfehler',
+      'upload.successTitle': 'Upload erfolgreich',
+      'upload.filePath': 'Dateipfad',
+      'upload.copyPath': 'Pfad kopieren',
+      'upload.copied': 'Kopiert!',
     },
 
     es: {
@@ -1141,6 +1225,8 @@ const i18n = {
       'sessions.help.ctxFree': 'Espacio libre',
       'sessions.help.ctxCompact': 'Hasta compactar',
       'sessions.help.ctxTotal': 'Total consumido',
+      'sessions.help.settingsTitle': 'Configuración',
+      'sessions.help.upload': 'Subir archivo al directorio del servidor',
       'sessions.loading': 'Cargando...',
       'sessions.empty': 'Sin sesiones',
       'sessions.pullToRefresh': 'Desliza para actualizar',
@@ -1295,6 +1381,18 @@ const i18n = {
       'debug.copied': '¡Copiado!',
       'debug.clear': 'Limpiar',
       'debug.close': 'Cerrar',
+
+      // Subir archivo
+      'settings.upload': 'Subir archivo',
+      'upload.uploading': 'Subiendo...',
+      'upload.success': 'Subida exitosa',
+      'upload.failed': 'Error al subir',
+      'upload.fileTooLarge': 'Archivo demasiado grande (máx 500MB)',
+      'upload.networkError': 'Error de red',
+      'upload.successTitle': 'Subida exitosa',
+      'upload.filePath': 'Ruta del archivo',
+      'upload.copyPath': 'Copiar ruta',
+      'upload.copied': '¡Copiado!',
     },
 
     ru: {
@@ -1319,6 +1417,8 @@ const i18n = {
       'sessions.help.ctxFree': 'Свободно',
       'sessions.help.ctxCompact': 'До сжатия',
       'sessions.help.ctxTotal': 'Всего потрачено',
+      'sessions.help.settingsTitle': 'Настройки',
+      'sessions.help.upload': 'Загрузить файл в домашнюю директорию',
       'sessions.loading': 'Загрузка...',
       'sessions.empty': 'Нет сессий',
       'sessions.pullToRefresh': 'Потяните для обновления',
@@ -1473,6 +1573,18 @@ const i18n = {
       'debug.copied': 'Скопировано!',
       'debug.clear': 'Очистить',
       'debug.close': 'Закрыть',
+
+      // Загрузка
+      'settings.upload': 'Загрузить файл',
+      'upload.uploading': 'Загрузка...',
+      'upload.success': 'Загрузка успешна',
+      'upload.failed': 'Ошибка загрузки',
+      'upload.fileTooLarge': 'Файл слишком большой (макс 500МБ)',
+      'upload.networkError': 'Ошибка сети',
+      'upload.successTitle': 'Загрузка успешна',
+      'upload.filePath': 'Путь к файлу',
+      'upload.copyPath': 'Копировать путь',
+      'upload.copied': 'Скопировано!',
     },
 
     pt: {
@@ -1497,6 +1609,8 @@ const i18n = {
       'sessions.help.ctxFree': 'Espaço livre',
       'sessions.help.ctxCompact': 'Até compactar',
       'sessions.help.ctxTotal': 'Total consumido',
+      'sessions.help.settingsTitle': 'Configurações',
+      'sessions.help.upload': 'Enviar arquivo para diretório do servidor',
       'sessions.loading': 'Carregando...',
       'sessions.empty': 'Sem sessões',
       'sessions.pullToRefresh': 'Puxe para atualizar',
@@ -1651,6 +1765,18 @@ const i18n = {
       'debug.copied': 'Copiado!',
       'debug.clear': 'Limpar',
       'debug.close': 'Fechar',
+
+      // Upload
+      'settings.upload': 'Enviar arquivo',
+      'upload.uploading': 'Enviando...',
+      'upload.success': 'Envio bem-sucedido',
+      'upload.failed': 'Falha no envio',
+      'upload.fileTooLarge': 'Arquivo muito grande (máx 500MB)',
+      'upload.networkError': 'Erro de rede',
+      'upload.successTitle': 'Envio bem-sucedido',
+      'upload.filePath': 'Caminho do arquivo',
+      'upload.copyPath': 'Copiar caminho',
+      'upload.copied': 'Copiado!',
     }
   },
 

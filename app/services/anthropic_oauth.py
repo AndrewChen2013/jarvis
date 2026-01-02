@@ -144,8 +144,13 @@ class AnthropicOAuthService:
 
         return self._token_cache
 
-    def _request(self, endpoint: str) -> Optional[Dict[str, Any]]:
-        """发送 API 请求"""
+    def _request(self, endpoint: str, retry: bool = True) -> Optional[Dict[str, Any]]:
+        """发送 API 请求
+
+        Args:
+            endpoint: API 端点
+            retry: 是否在 401 时重试（清除缓存后重新获取 token）
+        """
         token = self._get_token()
         if not token:
             return None
@@ -162,7 +167,17 @@ class AnthropicOAuthService:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return json.loads(resp.read())
         except urllib.error.HTTPError as e:
-            logger.error(f"Anthropic API error {e.code}: {e.read().decode()}")
+            if e.code == 401:
+                # Token 可能已过期或被刷新，清除缓存
+                self.clear_cache()
+                if retry:
+                    # 重试一次（用新 token）
+                    logger.warning("Anthropic API 401: Token stale, retrying with fresh token")
+                    return self._request(endpoint, retry=False)
+                else:
+                    logger.error("Anthropic API 401: Retry failed, token still invalid")
+            else:
+                logger.error(f"Anthropic API error {e.code}: {e.read().decode()}")
             return None
         except Exception as e:
             logger.error(f"Anthropic API request failed: {e}")

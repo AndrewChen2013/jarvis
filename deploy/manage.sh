@@ -382,6 +382,44 @@ view_logs() {
     fi
 }
 
+# ==================== 安全管理 ====================
+
+# 查看安全状态
+security_status() {
+    cd "$PROJECT_ROOT"
+    source venv/bin/activate 2>/dev/null || true
+    python3 scripts/security.py list
+}
+
+# 解封 IP
+security_unblock() {
+    local ip="$1"
+    if [ -z "$ip" ]; then
+        read -p "Enter IP to unblock: " ip
+        if [ -z "$ip" ]; then
+            print_error "No IP provided"
+            return
+        fi
+    fi
+    cd "$PROJECT_ROOT"
+    source venv/bin/activate 2>/dev/null || true
+    python3 scripts/security.py unblock "$ip"
+}
+
+# 解除紧急锁定
+security_unlock() {
+    cd "$PROJECT_ROOT"
+    source venv/bin/activate 2>/dev/null || true
+    python3 scripts/security.py unlock
+}
+
+# 重置安全状态
+security_reset() {
+    cd "$PROJECT_ROOT"
+    source venv/bin/activate 2>/dev/null || true
+    python3 scripts/security.py reset
+}
+
 # 完整安装
 full_install() {
     print_header
@@ -435,6 +473,12 @@ show_menu() {
     echo ""
     echo "  7) 重新安装依赖"
     echo ""
+    echo -e "${YELLOW}  --- Security ---${NC}"
+    echo "  8) Security status"
+    echo "  9) Unblock IP"
+    echo "  10) Release emergency lock"
+    echo "  11) Reset security state"
+    echo ""
     echo "  0) 退出"
     echo ""
 }
@@ -445,14 +489,22 @@ print_usage() {
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  start       Start the service"
-    echo "  stop        Stop the service"
-    echo "  restart     Restart the service"
-    echo "  status      Show service status"
-    echo "  logs        View logs (tail -f)"
-    echo "  enable      Enable autostart on boot"
-    echo "  disable     Disable autostart on boot"
-    echo "  install     Install/reinstall dependencies"
+    echo "  start            Start the service"
+    echo "  stop             Stop the service"
+    echo "  restart          Restart the service"
+    echo "  status           Show service status"
+    echo "  logs             View logs (tail -f)"
+    echo "  enable           Enable autostart on boot"
+    echo "  disable          Disable autostart on boot"
+    echo "  install          Install/reinstall dependencies"
+    echo ""
+    echo "Security:"
+    echo "  security         Show security status (IP blacklist, lock state)"
+    echo "  unblock <ip>     Unblock an IP address"
+    echo "  unlock           Release emergency lockdown"
+    echo "  sec-reset        Reset all security state"
+    echo ""
+    echo "Note: Login attempts are tracked in memory, not persisted."
     echo ""
     echo "If no command is provided, interactive menu will be shown."
     echo ""
@@ -487,6 +539,18 @@ main() {
             install)
                 install_deps
                 ;;
+            security|sec)
+                security_status
+                ;;
+            unblock)
+                security_unblock "$2"
+                ;;
+            unlock)
+                security_unlock
+                ;;
+            sec-reset)
+                security_reset
+                ;;
             -h|--help|help)
                 print_usage
                 ;;
@@ -508,7 +572,7 @@ main() {
     # 显示交互菜单
     while true; do
         show_menu
-        read -p "请选择操作 [0-7]: " choice
+        read -p "请选择操作 [0-11]: " choice
 
         case $choice in
             1) start_service ;;
@@ -518,6 +582,10 @@ main() {
             5) enable_autostart ;;
             6) disable_autostart ;;
             7) install_deps ;;
+            8) security_status ;;
+            9) security_unblock ;;
+            10) security_unlock ;;
+            11) security_reset ;;
             0) echo ""; print_info "再见！"; echo ""; exit 0 ;;
             *) print_error "无效选项" ;;
         esac

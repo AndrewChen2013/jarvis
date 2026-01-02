@@ -14,20 +14,86 @@
 
 """
 认证相关 API
+
+包含安全防护：
+- IP 黑名单检查
+- 登录失败限制
+- 紧急锁定机制
 """
 import hmac
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel
 from typing import Optional
 
 from app.core.config import settings
 from app.core.logging import logger
+from app.services.security import security_guard
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def verify_token(authorization: Optional[str] = Header(None)):
-    """验证 token（使用恒定时间比较防止时序攻击）"""
+def get_client_ip(request: Request) -> str:
+    """获取客户端真实 IP（支持反向代理）"""
+    # 优先从 X-Forwarded-For 获取（Cloudflare 等代理）
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # X-Forwarded-For 格式: client, proxy1, proxy2
+        return forwarded_for.split(",")[0].strip()
+
+    # 其次从 X-Real-IP 获取
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+
+    # 最后使用直接连接的 IP
+    if request.client:
+        return request.client.host
+
+    return "unknown"
+
+
+def verify_token_with_security(
+    request: Request,
+    authorization: Optional[str] = Header(None)
+) -> str:
+    """验证 token（带安全防护）"""
+    ip = get_client_ip(request)
+
+    # 1. 检查是否允许访问（紧急锁定、IP 黑名单）
+    allowed, reason = security_guard.check_request(ip)
+    if not allowed:
+        logger.warning(f"Request blocked from {ip}: {reason}")
+        raise HTTPException(status_code=403, detail=reason)
+
+    # 2. 验证 token
+    if not authorization:
+        # 记录失败
+        security_guard.record_login_attempt(ip, success=False)
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    token = authorization
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+
+    if not hmac.compare_digest(token, settings.AUTH_TOKEN):
+        # 记录失败并检查是否需要封禁
+        blocked, reason = security_guard.record_login_attempt(ip, success=False)
+        if blocked:
+            logger.warning(f"IP {ip} blocked after failed attempt: {reason}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # 3. 登录成功，记录并检查异常
+    blocked, reason = security_guard.record_login_attempt(ip, success=True)
+    if blocked:
+        # 触发了紧急锁定
+        raise HTTPException(status_code=503, detail=reason)
+
+    return token
+
+
+# 保留原来的简单验证（用于不需要 IP 检查的场景）
+def verify_token(authorization: Optional[str] = Header(None)) -> str:
+    """验证 token（简单版，无 IP 检查）"""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
 
@@ -47,32 +113,36 @@ class ChangePasswordRequest(BaseModel):
 
 
 @router.post("/verify")
-async def verify_auth(_: str = Depends(verify_token)):
-    """验证 token 是否有效"""
+async def verify_auth(
+    request: Request,
+    _: str = Depends(verify_token_with_security)
+):
+    """验证 token 是否有效（带安全防护）"""
     return {"valid": True}
 
 
 @router.post("/change-password")
 async def change_password(
-    request: ChangePasswordRequest,
-    _: str = Depends(verify_token)
+    request: Request,
+    req: ChangePasswordRequest,
+    _: str = Depends(verify_token_with_security)
 ):
     """修改密码"""
-    if not hmac.compare_digest(request.old_password, settings.AUTH_TOKEN):
+    if not hmac.compare_digest(req.old_password, settings.AUTH_TOKEN):
         raise HTTPException(status_code=400, detail="旧密码错误")
 
-    if len(request.new_password) < 6:
+    if len(req.new_password) < 6:
         raise HTTPException(status_code=400, detail="新密码至少6位")
 
-    if request.new_password == request.old_password:
+    if req.new_password == req.old_password:
         raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
 
     try:
         old_token = settings.AUTH_TOKEN
-        settings.AUTH_TOKEN = request.new_password
+        settings.AUTH_TOKEN = req.new_password
 
         # 更新配置文件
-        _update_env_file("AUTH_TOKEN", request.new_password)
+        _update_env_file("AUTH_TOKEN", req.new_password)
 
         logger.info("Password changed successfully")
         return {"success": True, "message": "密码修改成功，请重新登录"}
