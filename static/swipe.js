@@ -326,6 +326,21 @@ const AppSwipe = {
     indicator.parentNode.insertBefore(indicatorArea, indicator);
     indicatorArea.appendChild(indicator);
 
+    // Double-tap on indicator area as fallback trigger
+    let lastTapTime = 0;
+    indicatorArea.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        // Double tap detected
+        e.preventDefault();
+        this.enterPreviewMode();
+        if (navigator.vibrate) navigator.vibrate(30);
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
+      }
+    });
+
     // Swipe up detection on the entire swipe container (bottom 1/4 of screen)
     container.addEventListener('touchstart', (e) => {
       if (this._previewMode) return;
