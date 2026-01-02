@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Claude Remote</title>
-  <link rel="stylesheet" href="/static/styles.css?v=31">
+  <link rel="stylesheet" href="/static/styles.css?v=37">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -65,9 +65,9 @@
       <div class="header-actions">
         <button id="usage-toggle-btn" class="btn-usage" data-i18n-title="sessions.usage">≡</button>
         <button id="create-session" class="btn-add">+</button>
+        <button id="transfer-btn" class="btn-transfer" data-i18n-title="sessions.transfer">⇅</button>
         <button id="settings-btn" class="btn-settings" data-i18n-title="sessions.settings">⚙︎</button>
         <button id="sessions-help-btn" class="btn-help" data-i18n-title="sessions.help">?</button>
-        <button id="logout-btn" class="btn-logout" data-i18n-title="sessions.logout">⏻</button>
       </div>
     </header>
 
@@ -159,6 +159,39 @@
       </div>
     </div>
 
+    <!-- 传输模态框 -->
+    <div id="transfer-modal" class="modal">
+      <div class="modal-content modal-small">
+        <div class="modal-header">
+          <div class="modal-header-left"></div>
+          <h2 data-i18n="sessions.transfer">传输</h2>
+          <div class="modal-header-right">
+            <button id="transfer-modal-close" class="btn-close">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="settings-menu">
+            <div class="settings-menu-item" id="menu-upload-quick">
+              <span data-i18n="transfer.upload">上传文件</span>
+              <span class="settings-menu-arrow">^</span>
+            </div>
+            <div class="settings-menu-item" id="menu-download-quick">
+              <span data-i18n="transfer.download">下载文件</span>
+              <span class="settings-menu-arrow">v</span>
+            </div>
+            <div class="settings-menu-item" id="menu-upload-history-quick">
+              <span data-i18n="transfer.uploadHistory">上传历史</span>
+              <span class="settings-menu-arrow">›</span>
+            </div>
+            <div class="settings-menu-item" id="menu-download-history-quick">
+              <span data-i18n="transfer.downloadHistory">下载历史</span>
+              <span class="settings-menu-arrow">›</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <main class="main" id="sessions-main">
       <!-- 下拉刷新指示器 -->
       <div id="pull-refresh" class="pull-refresh">
@@ -244,9 +277,8 @@
             <span data-i18n="settings.title">修改密码</span>
             <span class="settings-menu-arrow">›</span>
           </div>
-          <div class="settings-menu-item" id="menu-upload">
-            <span data-i18n="settings.upload">上传文件</span>
-            <span class="settings-menu-arrow">›</span>
+          <div class="settings-menu-item settings-menu-danger" id="menu-logout">
+            <span data-i18n="settings.logout">退出登录</span>
           </div>
         </div>
         <!-- 隐藏的文件输入 -->
@@ -292,6 +324,7 @@
         <span id="connection-status" class="connection-status"></span>
       </div>
       <div class="toolbar-right">
+        <button id="terminal-history-btn" class="btn-toolbar" data-i18n-title="terminal.historyBtn" title="历史">▤</button>
         <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel(event)">?</button>
       </div>
     </header>
@@ -410,15 +443,17 @@
   <script src="/static/terminal.js?v=12"></script>
   <script src="/static/session-manager.js?v=8"></script>
   <script src="/static/floating-button.js"></script>
-  <script src="/static/i18n.js?v=12"></script>
+  <script src="/static/i18n.js?v=14"></script>
   <!-- App 模块 -->
   <script src="/static/utils.js?v=3"></script>
   <script src="/static/debug.js?v=3"></script>
   <script src="/static/dialogs.js?v=23"></script>
-  <script src="/static/settings.js?v=3"></script>
-  <script src="/static/projects.js?v=21"></script>
+  <script src="/static/settings.js?v=5"></script>
+  <script src="/static/projects.js?v=22"></script>
   <script src="/static/websocket.js?v=43"></script>
-  <script src="/static/upload.js?v=2"></script>
-  <script src="/static/app.js?v=11"></script>
+  <script src="/static/upload.js?v=4"></script>
+  <script src="/static/download.js?v=2"></script>
+  <script src="/static/history.js?v=9"></script>
+  <script src="/static/app.js?v=15"></script>
 </body>
 </html>

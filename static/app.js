@@ -276,8 +276,54 @@ class App {
       this.handleLogin();
     });
 
-    // 退出按钮
-    document.getElementById('logout-btn').addEventListener('click', () => {
+    // 传输按钮 - 打开传输模态框
+    document.getElementById('transfer-btn').addEventListener('click', () => {
+      this.openTransferModal();
+    });
+
+    // 关闭传输模态框
+    document.getElementById('transfer-modal-close').addEventListener('click', () => {
+      this.closeTransferModal();
+    });
+
+    // 点击传输模态框背景关闭
+    document.getElementById('transfer-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'transfer-modal') {
+        this.closeTransferModal();
+      }
+    });
+
+    // 传输菜单项 - 上传文件
+    document.getElementById('menu-upload-quick').addEventListener('click', () => {
+      this.closeTransferModal();
+      document.getElementById('file-input').value = '';
+      document.getElementById('file-input').click();
+    });
+
+    // 传输菜单项 - 下载文件
+    document.getElementById('menu-download-quick').addEventListener('click', () => {
+      this.closeTransferModal();
+      this.openSettingsModal();
+      this.showFileBrowser();
+    });
+
+    // 传输菜单项 - 上传历史
+    document.getElementById('menu-upload-history-quick').addEventListener('click', () => {
+      this.closeTransferModal();
+      this.openSettingsModal();
+      this.showUploadHistory();
+    });
+
+    // 传输菜单项 - 下载历史
+    document.getElementById('menu-download-history-quick').addEventListener('click', () => {
+      this.closeTransferModal();
+      this.openSettingsModal();
+      this.showDownloadHistory();
+    });
+
+    // 退出按钮（现在在设置菜单中）
+    document.getElementById('menu-logout').addEventListener('click', () => {
+      this.closeSettingsModal();
       this.handleLogout();
     });
 
@@ -450,6 +496,16 @@ class App {
     // 初始化上传功能
     if (this.initUpload) {
       this.initUpload();
+    }
+
+    // 初始化下载功能
+    if (this.initDownload) {
+      this.initDownload();
+    }
+
+    // 初始化历史记录功能
+    if (this.initHistory) {
+      this.initHistory();
     }
 
   }
@@ -674,6 +730,8 @@ if (window.AppSettings) mixinModule(window.AppSettings);
 if (window.AppProjects) mixinModule(window.AppProjects);
 if (window.AppWebSocket) mixinModule(window.AppWebSocket);
 if (window.AppUpload) mixinModule(window.AppUpload);
+if (window.AppDownload) mixinModule(window.AppDownload);
+if (window.AppHistory) mixinModule(window.AppHistory);
 
 // 页面加载完成后初始化
 window.addEventListener('DOMContentLoaded', () => {

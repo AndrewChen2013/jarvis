@@ -28,7 +28,8 @@ import fcntl
 import struct
 import termios
 import signal
-from typing import Dict, Optional, Callable, List
+import pyte
+from typing import Dict, Optional, Callable, List, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 from app.core.logging import logger
@@ -49,6 +50,9 @@ class Terminal:
     _output_callbacks: List[Callable] = field(default_factory=list)
     _output_history: bytearray = field(default_factory=bytearray)
     _read_task: Optional[asyncio.Task] = None
+    # pyte 终端模拟器（用于渲染屏幕状态）
+    _screen: Any = None           # pyte.HistoryScreen
+    _stream: Any = None           # pyte.Stream
 
     def add_output_callback(self, callback: Callable):
         """添加输出回调"""
@@ -66,6 +70,43 @@ class Terminal:
     def get_output_history(self) -> bytes:
         """获取输出历史"""
         return bytes(self._output_history)
+
+    def get_screen_content(self) -> str:
+        """获取当前屏幕内容（包括滚动历史）"""
+        if not self._screen:
+            return ""
+        try:
+            result_lines = []
+
+            # 获取滚动历史（上方滚出的行）
+            if hasattr(self._screen.history, 'top'):
+                for line in self._screen.history.top:
+                    # history 行是 StaticDefaultDict，需要转换
+                    if isinstance(line, str):
+                        result_lines.append(line.rstrip())
+                    else:
+                        # 从 StaticDefaultDict 提取字符
+                        text = ''.join(line[i].data for i in range(self._screen.columns))
+                        result_lines.append(text.rstrip())
+
+            # 获取当前显示的行（已经是字符串）
+            for line in self._screen.display:
+                result_lines.append(line.rstrip())
+
+            # 去除整体尾部空行
+            result = "\n".join(result_lines).rstrip()
+            return result
+        except Exception as e:
+            logger.error(f"Get screen content error: {e}")
+            return ""
+
+    def reset_screen(self):
+        """重置屏幕（用于下一批输出）"""
+        if self._screen:
+            try:
+                self._screen.reset()
+            except Exception as e:
+                logger.error(f"Reset screen error: {e}")
 
 
 class TerminalManager:
@@ -165,6 +206,11 @@ class TerminalManager:
                 pid=pid,
                 master_fd=master_fd
             )
+
+            # 初始化 pyte 终端模拟器（保留 10000 行历史）
+            terminal._screen = pyte.HistoryScreen(cols, rows, history=10000)
+            terminal._stream = pyte.Stream(terminal._screen)
+            logger.debug(f"[Terminal] pyte screen initialized: {cols}x{rows}")
 
             self.terminals[terminal_id] = terminal
 
@@ -366,6 +412,15 @@ class TerminalManager:
             return False
 
         self._set_winsize(terminal.master_fd, rows, cols)
+
+        # 同步更新 pyte 屏幕大小
+        if terminal._screen:
+            try:
+                terminal._screen.resize(rows, cols)
+                logger.debug(f"[Terminal:{terminal_id[:8]}] pyte screen resized to {rows}x{cols}")
+            except Exception as e:
+                logger.debug(f"pyte resize error: {e}")
+
         logger.info(f"[Terminal:{terminal_id[:8]}] Resized from {current_rows}x{current_cols} to {rows}x{cols}")
         return True
 
@@ -390,6 +445,14 @@ class TerminalManager:
                     # 限制历史大小
                     if len(terminal._output_history) > self.MAX_OUTPUT_HISTORY:
                         terminal._output_history = terminal._output_history[-self.MAX_OUTPUT_HISTORY:]
+
+                    # Feed 给 pyte 终端模拟器
+                    if terminal._stream:
+                        try:
+                            text = data.decode('utf-8', errors='replace')
+                            terminal._stream.feed(text)
+                        except Exception as e:
+                            logger.debug(f"pyte feed error: {e}")
 
                     # 调用回调
                     for callback in terminal._output_callbacks:

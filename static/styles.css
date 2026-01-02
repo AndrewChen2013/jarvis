@@ -1663,7 +1663,8 @@ body {
   cursor: pointer;
 }
 
-/* Session 操作按钮（重命名、删除）统一样式 */
+/* Session 操作按钮（历史、重命名、删除）统一样式 */
+.btn-session-history,
 .btn-session-rename,
 .btn-session-delete {
   background: none;
@@ -1674,6 +1675,11 @@ body {
   cursor: pointer;
   transition: color 0.2s;
   flex-shrink: 0;
+}
+
+.btn-session-history:hover,
+.btn-session-history:active {
+  color: #10b981;
 }
 
 .btn-session-rename:hover,
@@ -2247,6 +2253,101 @@ body {
   font-size: 13px;
   color: #4a9eff;
   word-break: break-all;
+}
+
+/* 上传历史列表 */
+.upload-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upload-history-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.upload-history-item:active {
+  background: #333;
+}
+
+.upload-history-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.upload-history-item.success .upload-history-icon {
+  background: #4caf50;
+  color: #fff;
+}
+
+.upload-history-item.failed .upload-history-icon {
+  background: #f44336;
+  color: #fff;
+}
+
+.upload-history-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.upload-history-filename {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+
+.upload-history-meta {
+  font-size: 12px;
+  color: #888;
+}
+
+.upload-history-error {
+  font-size: 11px;
+  color: #f44336;
+  margin-top: 4px;
+}
+
+/* 空状态 */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: #888;
+}
+
+/* 错误状态 */
+.error-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.error-text {
+  font-size: 14px;
+  color: #f44336;
 }
 
 /* 帮助面板 */
@@ -3001,4 +3102,406 @@ body {
 .terminal-session-container .xterm-viewport {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
+}
+
+/* ========== File Browser ========== */
+.file-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.file-browser-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.file-browser-path {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.btn-path-home,
+.btn-path-part {
+  background: transparent;
+  border: none;
+  color: #4a9eff;
+  font-size: 12px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.btn-path-home:hover,
+.btn-path-part:hover {
+  background: #3a3a3a;
+}
+
+.path-sep {
+  color: #666;
+  margin: 0 2px;
+}
+
+.btn-path-up {
+  background: #3a3a3a;
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-path-up:active {
+  background: #4a4a4a;
+}
+
+.file-browser-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #2a2a2a;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.file-item:active {
+  background: #2a2a2a;
+}
+
+.file-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-item.dir {
+  cursor: pointer;
+}
+
+.file-icon {
+  font-size: 20px;
+  margin-right: 12px;
+}
+
+.file-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-name {
+  display: block;
+  font-size: 14px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-meta {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.btn-download-file {
+  background: #4a9eff;
+  border: none;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-download-file:active {
+  background: #3a8eef;
+}
+
+/* ========== Download History ========== */
+.download-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-history-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  gap: 12px;
+}
+
+.download-history-item.failed {
+  background: rgba(255, 100, 100, 0.1);
+}
+
+.download-history-icon {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.download-history-item.success .download-history-icon {
+  color: #4ade80;
+}
+
+.download-history-item.failed .download-history-icon {
+  color: #f87171;
+}
+
+.download-history-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.download-history-filename {
+  font-size: 14px;
+  color: #fff;
+  word-break: break-all;
+}
+
+.download-history-meta {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.download-history-error {
+  font-size: 12px;
+  color: #f87171;
+  margin-top: 4px;
+}
+
+/* ========== Terminal History ========== */
+.history-content {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.history-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-session-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  cursor: pointer;
+  gap: 12px;
+}
+
+.history-session-item:active {
+  background: #3a3a3a;
+}
+
+.history-session-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.history-session-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-session-name {
+  font-size: 14px;
+  color: #fff;
+}
+
+.history-session-meta {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.history-session-arrow {
+  color: #666;
+  font-size: 18px;
+}
+
+.history-message-list {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
+}
+
+.history-message-item {
+  border-bottom: 1px solid #333;
+  padding: 8px 0;
+}
+
+.history-message-item:last-child {
+  border-bottom: none;
+}
+
+.history-time {
+  display: block;
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.history-content {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #e0e0e0;
+  white-space: pre;
+  margin: 0;
+  overflow-x: auto;
+}
+
+/* History loading spinner */
+.history-loader,
+.history-pull-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 0;
+  overflow: hidden;
+  transition: height 0.2s, opacity 0.2s;
+}
+
+.history-pull-indicator {
+  height: 0;
+  opacity: 0;
+}
+
+.history-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #444;
+  border-top-color: #888;
+  border-radius: 50%;
+  animation: history-spin 0.8s linear infinite;
+}
+
+@keyframes history-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ========== Terminal History Modal ========== */
+#terminal-history-modal .modal-content {
+  max-height: 80vh;
+}
+
+#terminal-history-modal .modal-body {
+  padding: 16px;
+  overflow-y: auto;
+  max-height: calc(80vh - 60px);
+}
+
+/* ========== Transfer Button ========== */
+.btn-transfer {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-transfer:active,
+.btn-transfer.active {
+  background: #007aff;
+  border-color: #007aff;
+  color: #fff;
+}
+
+/* ========== Dropdown Menu ========== */
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 60px;
+  right: 90px;
+  background: #2a2a2a;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  min-width: 180px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.dropdown-menu.active {
+  display: block;
+}
+
+.dropdown-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  gap: 12px;
+}
+
+.dropdown-menu-item:active {
+  background: #3a3a3a;
+}
+
+.dropdown-menu-icon {
+  width: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #888;
+}
+
+.dropdown-menu-item span:last-child {
+  flex: 1;
+  font-size: 14px;
+  color: #fff;
+}
+
+.dropdown-menu-divider {
+  height: 1px;
+  background: #3a3a3a;
+  margin: 4px 0;
+}
+
+/* ========== Settings Menu Danger Item ========== */
+.settings-menu-item.settings-menu-danger {
+  color: #f87171;
+  margin-top: 12px;
+}
+
+.settings-menu-item.settings-menu-danger span {
+  color: #f87171;
 }

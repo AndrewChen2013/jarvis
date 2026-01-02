@@ -499,6 +499,7 @@ const AppProjects = {
           </div>
           ${contextHtml}
         </div>
+        <button class="btn-session-history" title="${this.t('history.title', 'History')}">▤</button>
         <button class="btn-session-rename" title="${this.t('common.rename', 'Rename')}">✎</button>
         <button class="btn-session-delete" title="${this.t('common.delete', 'Delete')}">✕</button>
       `;
@@ -510,6 +511,12 @@ const AppProjects = {
         const displayName = customName || claudeSummary || session.session_id.substring(0, 8);
         // 使用 session 的真实 working_dir（而非项目目录 workDir）
         this.connectTerminal(session.working_dir, session.session_id, displayName);
+      });
+
+      // 点击历史按钮
+      item.querySelector('.btn-session-history').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showSessionHistoryModal(session.session_id);
       });
 
       // 点击重命名按钮

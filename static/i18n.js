@@ -47,6 +47,17 @@ const i18n = {
       'sessions.usage': '用量统计',
       'sessions.settings': '设置',
       'sessions.help': '帮助',
+      'sessions.transfer': '传输',
+
+      // 传输菜单
+      'transfer.upload': '上传文件',
+      'transfer.download': '下载文件',
+      'transfer.uploadHistory': '上传历史',
+      'transfer.downloadHistory': '下载历史',
+      'transfer.terminalHistory': '终端历史',
+
+      // 设置
+      'settings.logout': '退出登录',
       'sessions.logout': '退出登录',
       'sessions.card': '卡片',
       'sessions.help.title': '使用说明',
@@ -234,6 +245,39 @@ const i18n = {
       'upload.filePath': '文件路径',
       'upload.copyPath': '复制路径',
       'upload.copied': '已复制!',
+      'upload.historyTitle': '上传历史',
+      'upload.noHistory': '暂无上传记录',
+      'upload.loadError': '加载失败',
+      'upload.pathCopied': '路径已复制',
+      'settings.uploadHistory': '上传历史',
+      'settings.download': '下载文件',
+      'settings.downloadHistory': '下载历史',
+      'settings.terminalHistory': '终端历史',
+
+      // 下载
+      'download.browserTitle': '文件浏览器',
+      'download.parentDir': '上级目录',
+      'download.emptyDir': '空目录',
+      'download.goHome': '返回主目录',
+      'download.success': '开始下载',
+      'download.historyTitle': '下载历史',
+      'download.noHistory': '暂无下载记录',
+      'download.loadError': '加载失败',
+
+      // 终端历史
+      'history.title': '终端历史',
+      'history.sessionHistory': '会话历史',
+      'history.noSessions': '暂无终端历史',
+      'history.noMessages': '该会话暂无消息',
+      'history.loadError': '加载失败',
+      'history.loadMore': '加载更多',
+      'history.messages': '条消息',
+      'history.input': '输入',
+      'history.output': '输出',
+
+      // 终端工具栏
+      'terminal.historyBtn': '历史',
+      'common.loading': '加载中...',
     },
 
     en: {
@@ -246,6 +290,17 @@ const i18n = {
       'sessions.usage': 'Usage',
       'sessions.settings': 'Settings',
       'sessions.help': 'Help',
+      'sessions.transfer': 'Transfer',
+
+      // Transfer Menu
+      'transfer.upload': 'Upload File',
+      'transfer.download': 'Download File',
+      'transfer.uploadHistory': 'Upload History',
+      'transfer.downloadHistory': 'Download History',
+      'transfer.terminalHistory': 'Terminal History',
+
+      // Settings
+      'settings.logout': 'Logout',
       'sessions.logout': 'Logout',
       'sessions.card': 'Card',
       'sessions.help.title': 'Help',
@@ -433,6 +488,39 @@ const i18n = {
       'upload.filePath': 'File Path',
       'upload.copyPath': 'Copy Path',
       'upload.copied': 'Copied!',
+      'upload.historyTitle': 'Upload History',
+      'upload.noHistory': 'No upload history',
+      'upload.loadError': 'Failed to load',
+      'upload.pathCopied': 'Path copied',
+      'settings.uploadHistory': 'Upload History',
+      'settings.download': 'Download Files',
+      'settings.downloadHistory': 'Download History',
+      'settings.terminalHistory': 'Terminal History',
+
+      // Download
+      'download.browserTitle': 'File Browser',
+      'download.parentDir': 'Parent',
+      'download.emptyDir': 'Empty directory',
+      'download.goHome': 'Go Home',
+      'download.success': 'Download started',
+      'download.historyTitle': 'Download History',
+      'download.noHistory': 'No download history',
+      'download.loadError': 'Failed to load',
+
+      // Terminal History
+      'history.title': 'Terminal History',
+      'history.sessionHistory': 'Session History',
+      'history.noSessions': 'No terminal history',
+      'history.noMessages': 'No messages in this session',
+      'history.loadError': 'Failed to load',
+      'history.loadMore': 'Load More',
+      'history.messages': 'messages',
+      'history.input': 'Input',
+      'history.output': 'Output',
+
+      // Terminal Toolbar
+      'terminal.historyBtn': 'History',
+      'common.loading': 'Loading...',
     },
 
     ja: {
@@ -445,6 +533,17 @@ const i18n = {
       'sessions.usage': '使用量',
       'sessions.settings': '設定',
       'sessions.help': 'ヘルプ',
+      'sessions.transfer': '転送',
+
+      // 転送メニュー
+      'transfer.upload': 'ファイルをアップロード',
+      'transfer.download': 'ファイルをダウンロード',
+      'transfer.uploadHistory': 'アップロード履歴',
+      'transfer.downloadHistory': 'ダウンロード履歴',
+      'transfer.terminalHistory': 'ターミナル履歴',
+
+      // 設定
+      'settings.logout': 'ログアウト',
       'sessions.logout': 'ログアウト',
       'sessions.card': 'カード',
       'sessions.help.title': '使い方',
@@ -625,6 +724,39 @@ const i18n = {
       'upload.filePath': 'ファイルパス',
       'upload.copyPath': 'パスをコピー',
       'upload.copied': 'コピーしました!',
+      'upload.historyTitle': 'アップロード履歴',
+      'upload.noHistory': 'アップロード履歴なし',
+      'upload.loadError': '読み込み失敗',
+      'upload.pathCopied': 'パスをコピーしました',
+      'settings.uploadHistory': 'アップロード履歴',
+      'settings.download': 'ファイルダウンロード',
+      'settings.downloadHistory': 'ダウンロード履歴',
+      'settings.terminalHistory': 'ターミナル履歴',
+
+      // ダウンロード
+      'download.browserTitle': 'ファイルブラウザ',
+      'download.parentDir': '上へ',
+      'download.emptyDir': '空のディレクトリ',
+      'download.goHome': 'ホームへ',
+      'download.success': 'ダウンロード開始',
+      'download.historyTitle': 'ダウンロード履歴',
+      'download.noHistory': 'ダウンロード履歴なし',
+      'download.loadError': '読み込み失敗',
+
+      // ターミナル履歴
+      'history.title': 'ターミナル履歴',
+      'history.sessionHistory': 'セッション履歴',
+      'history.noSessions': 'ターミナル履歴なし',
+      'history.noMessages': 'このセッションにはメッセージがありません',
+      'history.loadError': '読み込み失敗',
+      'history.loadMore': 'もっと読み込む',
+      'history.messages': '件のメッセージ',
+      'history.input': '入力',
+      'history.output': '出力',
+
+      // ターミナルツールバー
+      'terminal.historyBtn': '履歴',
+      'common.loading': '読み込み中...',
     },
 
     ko: {
@@ -637,6 +769,17 @@ const i18n = {
       'sessions.usage': '사용량',
       'sessions.settings': '설정',
       'sessions.help': '도움말',
+      'sessions.transfer': '전송',
+
+      // 전송 메뉴
+      'transfer.upload': '파일 업로드',
+      'transfer.download': '파일 다운로드',
+      'transfer.uploadHistory': '업로드 기록',
+      'transfer.downloadHistory': '다운로드 기록',
+      'transfer.terminalHistory': '터미널 기록',
+
+      // 설정
+      'settings.logout': '로그아웃',
       'sessions.logout': '로그아웃',
       'sessions.card': '카드',
       'sessions.help.title': '사용법',
@@ -817,6 +960,39 @@ const i18n = {
       'upload.filePath': '파일 경로',
       'upload.copyPath': '경로 복사',
       'upload.copied': '복사됨!',
+      'upload.historyTitle': '업로드 기록',
+      'upload.noHistory': '업로드 기록 없음',
+      'upload.loadError': '로드 실패',
+      'upload.pathCopied': '경로 복사됨',
+      'settings.uploadHistory': '업로드 기록',
+      'settings.download': '파일 다운로드',
+      'settings.downloadHistory': '다운로드 기록',
+      'settings.terminalHistory': '터미널 기록',
+
+      // 다운로드
+      'download.browserTitle': '파일 브라우저',
+      'download.parentDir': '상위',
+      'download.emptyDir': '빈 디렉토리',
+      'download.goHome': '홈으로',
+      'download.success': '다운로드 시작',
+      'download.historyTitle': '다운로드 기록',
+      'download.noHistory': '다운로드 기록 없음',
+      'download.loadError': '로드 실패',
+
+      // 터미널 기록
+      'history.title': '터미널 기록',
+      'history.sessionHistory': '세션 기록',
+      'history.noSessions': '터미널 기록 없음',
+      'history.noMessages': '이 세션에 메시지 없음',
+      'history.loadError': '로드 실패',
+      'history.loadMore': '더 보기',
+      'history.messages': '개 메시지',
+      'history.input': '입력',
+      'history.output': '출력',
+
+      // 터미널 도구모음
+      'terminal.historyBtn': '기록',
+      'common.loading': '로딩 중...',
     },
 
     fr: {
@@ -829,6 +1005,17 @@ const i18n = {
       'sessions.usage': 'Utilisation',
       'sessions.settings': 'Paramètres',
       'sessions.help': 'Aide',
+      'sessions.transfer': 'Transfert',
+
+      // Menu transfert
+      'transfer.upload': 'Téléverser',
+      'transfer.download': 'Télécharger',
+      'transfer.uploadHistory': 'Historique envois',
+      'transfer.downloadHistory': 'Historique téléchargements',
+      'transfer.terminalHistory': 'Historique terminal',
+
+      // Paramètres
+      'settings.logout': 'Déconnexion',
       'sessions.logout': 'Déconnexion',
       'sessions.card': 'Carte',
       'sessions.help.title': 'Aide',
@@ -1009,6 +1196,39 @@ const i18n = {
       'upload.filePath': 'Chemin du fichier',
       'upload.copyPath': 'Copier le chemin',
       'upload.copied': 'Copié !',
+      'upload.historyTitle': 'Historique des téléchargements',
+      'upload.noHistory': 'Aucun historique',
+      'upload.loadError': 'Échec du chargement',
+      'upload.pathCopied': 'Chemin copié',
+      'settings.uploadHistory': 'Historique des téléchargements',
+      'settings.download': 'Télécharger fichiers',
+      'settings.downloadHistory': 'Historique téléchargements',
+      'settings.terminalHistory': 'Historique terminal',
+
+      // Téléchargement
+      'download.browserTitle': 'Explorateur de fichiers',
+      'download.parentDir': 'Parent',
+      'download.emptyDir': 'Dossier vide',
+      'download.goHome': 'Accueil',
+      'download.success': 'Téléchargement démarré',
+      'download.historyTitle': 'Historique téléchargements',
+      'download.noHistory': 'Aucun historique',
+      'download.loadError': 'Échec du chargement',
+
+      // Historique terminal
+      'history.title': 'Historique terminal',
+      'history.sessionHistory': 'Historique session',
+      'history.noSessions': 'Aucun historique',
+      'history.noMessages': 'Aucun message dans cette session',
+      'history.loadError': 'Échec du chargement',
+      'history.loadMore': 'Charger plus',
+      'history.messages': 'messages',
+      'history.input': 'Entrée',
+      'history.output': 'Sortie',
+
+      // Barre outils terminal
+      'terminal.historyBtn': 'Historique',
+      'common.loading': 'Chargement...',
     },
 
     de: {
@@ -1021,6 +1241,17 @@ const i18n = {
       'sessions.usage': 'Nutzung',
       'sessions.settings': 'Einstellungen',
       'sessions.help': 'Hilfe',
+      'sessions.transfer': 'Übertragung',
+
+      // Übertragungsmenü
+      'transfer.upload': 'Hochladen',
+      'transfer.download': 'Herunterladen',
+      'transfer.uploadHistory': 'Upload-Verlauf',
+      'transfer.downloadHistory': 'Download-Verlauf',
+      'transfer.terminalHistory': 'Terminal-Verlauf',
+
+      // Einstellungen
+      'settings.logout': 'Abmelden',
       'sessions.logout': 'Abmelden',
       'sessions.card': 'Karte',
       'sessions.help.title': 'Hilfe',
@@ -1201,6 +1432,39 @@ const i18n = {
       'upload.filePath': 'Dateipfad',
       'upload.copyPath': 'Pfad kopieren',
       'upload.copied': 'Kopiert!',
+      'upload.historyTitle': 'Upload-Verlauf',
+      'upload.noHistory': 'Kein Upload-Verlauf',
+      'upload.loadError': 'Laden fehlgeschlagen',
+      'upload.pathCopied': 'Pfad kopiert',
+      'settings.uploadHistory': 'Upload-Verlauf',
+      'settings.download': 'Dateien herunterladen',
+      'settings.downloadHistory': 'Download-Verlauf',
+      'settings.terminalHistory': 'Terminal-Verlauf',
+
+      // Download
+      'download.browserTitle': 'Datei-Browser',
+      'download.parentDir': 'Übergeordnet',
+      'download.emptyDir': 'Leeres Verzeichnis',
+      'download.goHome': 'Zum Startverzeichnis',
+      'download.success': 'Download gestartet',
+      'download.historyTitle': 'Download-Verlauf',
+      'download.noHistory': 'Kein Download-Verlauf',
+      'download.loadError': 'Laden fehlgeschlagen',
+
+      // Terminal-Verlauf
+      'history.title': 'Terminal-Verlauf',
+      'history.sessionHistory': 'Sitzungsverlauf',
+      'history.noSessions': 'Kein Terminal-Verlauf',
+      'history.noMessages': 'Keine Nachrichten in dieser Sitzung',
+      'history.loadError': 'Laden fehlgeschlagen',
+      'history.loadMore': 'Mehr laden',
+      'history.messages': 'Nachrichten',
+      'history.input': 'Eingabe',
+      'history.output': 'Ausgabe',
+
+      // Terminal-Symbolleiste
+      'terminal.historyBtn': 'Verlauf',
+      'common.loading': 'Laden...',
     },
 
     es: {
@@ -1213,6 +1477,17 @@ const i18n = {
       'sessions.usage': 'Uso',
       'sessions.settings': 'Configuración',
       'sessions.help': 'Ayuda',
+      'sessions.transfer': 'Transferencia',
+
+      // Menú de transferencia
+      'transfer.upload': 'Subir archivo',
+      'transfer.download': 'Descargar archivo',
+      'transfer.uploadHistory': 'Historial de subidas',
+      'transfer.downloadHistory': 'Historial de descargas',
+      'transfer.terminalHistory': 'Historial de terminal',
+
+      // Configuración
+      'settings.logout': 'Cerrar sesión',
       'sessions.logout': 'Cerrar sesión',
       'sessions.card': 'Tarjeta',
       'sessions.help.title': 'Ayuda',
@@ -1393,6 +1668,39 @@ const i18n = {
       'upload.filePath': 'Ruta del archivo',
       'upload.copyPath': 'Copiar ruta',
       'upload.copied': '¡Copiado!',
+      'upload.historyTitle': 'Historial de subidas',
+      'upload.noHistory': 'Sin historial de subidas',
+      'upload.loadError': 'Error al cargar',
+      'upload.pathCopied': 'Ruta copiada',
+      'settings.uploadHistory': 'Historial de subidas',
+      'settings.download': 'Descargar archivos',
+      'settings.downloadHistory': 'Historial de descargas',
+      'settings.terminalHistory': 'Historial de terminal',
+
+      // Descarga
+      'download.browserTitle': 'Explorador de archivos',
+      'download.parentDir': 'Superior',
+      'download.emptyDir': 'Directorio vacío',
+      'download.goHome': 'Ir al inicio',
+      'download.success': 'Descarga iniciada',
+      'download.historyTitle': 'Historial de descargas',
+      'download.noHistory': 'Sin historial de descargas',
+      'download.loadError': 'Error al cargar',
+
+      // Historial de terminal
+      'history.title': 'Historial de terminal',
+      'history.sessionHistory': 'Historial de sesión',
+      'history.noSessions': 'Sin historial de terminal',
+      'history.noMessages': 'Sin mensajes en esta sesión',
+      'history.loadError': 'Error al cargar',
+      'history.loadMore': 'Cargar más',
+      'history.messages': 'mensajes',
+      'history.input': 'Entrada',
+      'history.output': 'Salida',
+
+      // Barra de herramientas
+      'terminal.historyBtn': 'Historial',
+      'common.loading': 'Cargando...',
     },
 
     ru: {
@@ -1405,6 +1713,17 @@ const i18n = {
       'sessions.usage': 'Использование',
       'sessions.settings': 'Настройки',
       'sessions.help': 'Помощь',
+      'sessions.transfer': 'Передача',
+
+      // Меню передачи
+      'transfer.upload': 'Загрузить файл',
+      'transfer.download': 'Скачать файл',
+      'transfer.uploadHistory': 'История загрузок',
+      'transfer.downloadHistory': 'История скачиваний',
+      'transfer.terminalHistory': 'История терминала',
+
+      // Настройки
+      'settings.logout': 'Выйти',
       'sessions.logout': 'Выйти',
       'sessions.card': 'Карточка',
       'sessions.help.title': 'Помощь',
@@ -1585,6 +1904,39 @@ const i18n = {
       'upload.filePath': 'Путь к файлу',
       'upload.copyPath': 'Копировать путь',
       'upload.copied': 'Скопировано!',
+      'upload.historyTitle': 'История загрузок',
+      'upload.noHistory': 'Нет истории загрузок',
+      'upload.loadError': 'Ошибка загрузки',
+      'upload.pathCopied': 'Путь скопирован',
+      'settings.uploadHistory': 'История загрузок',
+      'settings.download': 'Скачать файлы',
+      'settings.downloadHistory': 'История скачиваний',
+      'settings.terminalHistory': 'История терминала',
+
+      // Скачивание
+      'download.browserTitle': 'Файловый менеджер',
+      'download.parentDir': 'Наверх',
+      'download.emptyDir': 'Пустая папка',
+      'download.goHome': 'На главную',
+      'download.success': 'Загрузка начата',
+      'download.historyTitle': 'История скачиваний',
+      'download.noHistory': 'Нет истории скачиваний',
+      'download.loadError': 'Ошибка загрузки',
+
+      // История терминала
+      'history.title': 'История терминала',
+      'history.sessionHistory': 'История сессии',
+      'history.noSessions': 'Нет истории терминала',
+      'history.noMessages': 'Нет сообщений в этой сессии',
+      'history.loadError': 'Ошибка загрузки',
+      'history.loadMore': 'Загрузить ещё',
+      'history.messages': 'сообщений',
+      'history.input': 'Ввод',
+      'history.output': 'Вывод',
+
+      // Панель инструментов
+      'terminal.historyBtn': 'История',
+      'common.loading': 'Загрузка...',
     },
 
     pt: {
@@ -1597,6 +1949,17 @@ const i18n = {
       'sessions.usage': 'Uso',
       'sessions.settings': 'Configurações',
       'sessions.help': 'Ajuda',
+      'sessions.transfer': 'Transferência',
+
+      // Menu de transferência
+      'transfer.upload': 'Enviar arquivo',
+      'transfer.download': 'Baixar arquivo',
+      'transfer.uploadHistory': 'Histórico de envios',
+      'transfer.downloadHistory': 'Histórico de downloads',
+      'transfer.terminalHistory': 'Histórico do terminal',
+
+      // Configurações
+      'settings.logout': 'Sair',
       'sessions.logout': 'Sair',
       'sessions.card': 'Cartão',
       'sessions.help.title': 'Ajuda',
@@ -1777,6 +2140,39 @@ const i18n = {
       'upload.filePath': 'Caminho do arquivo',
       'upload.copyPath': 'Copiar caminho',
       'upload.copied': 'Copiado!',
+      'upload.historyTitle': 'Histórico de envios',
+      'upload.noHistory': 'Sem histórico de envios',
+      'upload.loadError': 'Falha ao carregar',
+      'upload.pathCopied': 'Caminho copiado',
+      'settings.uploadHistory': 'Histórico de envios',
+      'settings.download': 'Baixar arquivos',
+      'settings.downloadHistory': 'Histórico de downloads',
+      'settings.terminalHistory': 'Histórico do terminal',
+
+      // Download
+      'download.browserTitle': 'Navegador de arquivos',
+      'download.parentDir': 'Acima',
+      'download.emptyDir': 'Pasta vazia',
+      'download.goHome': 'Ir para início',
+      'download.success': 'Download iniciado',
+      'download.historyTitle': 'Histórico de downloads',
+      'download.noHistory': 'Sem histórico de downloads',
+      'download.loadError': 'Falha ao carregar',
+
+      // Histórico do terminal
+      'history.title': 'Histórico do terminal',
+      'history.sessionHistory': 'Histórico da sessão',
+      'history.noSessions': 'Sem histórico do terminal',
+      'history.noMessages': 'Sem mensagens nesta sessão',
+      'history.loadError': 'Falha ao carregar',
+      'history.loadMore': 'Carregar mais',
+      'history.messages': 'mensagens',
+      'history.input': 'Entrada',
+      'history.output': 'Saída',
+
+      // Barra de ferramentas
+      'terminal.historyBtn': 'Histórico',
+      'common.loading': 'Carregando...',
     }
   },
 

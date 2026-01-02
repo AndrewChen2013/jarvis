@@ -121,6 +121,65 @@ class Database:
                     )
                 """)
 
+                # 上传历史记录表
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS upload_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        filename TEXT NOT NULL,
+                        path TEXT NOT NULL,
+                        size INTEGER DEFAULT 0,
+                        status TEXT DEFAULT 'success',
+                        duration REAL DEFAULT 0,
+                        error TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                # 创建索引加速查询
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_upload_history_created
+                    ON upload_history(created_at DESC)
+                """)
+
+                # 下载历史记录表
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS download_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        filename TEXT NOT NULL,
+                        path TEXT NOT NULL,
+                        size INTEGER DEFAULT 0,
+                        status TEXT DEFAULT 'success',
+                        duration REAL DEFAULT 0,
+                        error TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_download_history_created
+                    ON download_history(created_at DESC)
+                """)
+
+                # 终端历史记录表
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS terminal_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL,
+                        direction TEXT NOT NULL,
+                        raw_content BLOB,
+                        text_content TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                # 按会话查询索引
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_terminal_session
+                    ON terminal_history(session_id, created_at)
+                """)
+                # 按时间查询索引
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_terminal_created
+                    ON terminal_history(created_at DESC)
+                """)
+
                 logger.info("Database initialized")
 
     def _migrate_from_json(self):
@@ -365,6 +424,171 @@ class Database:
             logger.critical("EMERGENCY LOCK ACTIVATED - All connections refused!")
         else:
             logger.info("Emergency lock released")
+
+    # ==================== 上传历史 ====================
+
+    def record_upload(
+        self,
+        filename: str,
+        path: str,
+        size: int,
+        status: str = "success",
+        duration: float = 0,
+        error: str = None
+    ) -> int:
+        """记录上传历史，返回记录ID"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO upload_history (filename, path, size, status, duration, error)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (filename, path, size, status, duration, error))
+                return cursor.lastrowid
+
+    def update_upload(
+        self,
+        upload_id: int,
+        size: int = None,
+        status: str = None,
+        duration: float = None,
+        error: str = None
+    ):
+        """更新上传记录"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                updates = []
+                params = []
+                if size is not None:
+                    updates.append("size = ?")
+                    params.append(size)
+                if status is not None:
+                    updates.append("status = ?")
+                    params.append(status)
+                if duration is not None:
+                    updates.append("duration = ?")
+                    params.append(duration)
+                if error is not None:
+                    updates.append("error = ?")
+                    params.append(error)
+                if updates:
+                    params.append(upload_id)
+                    cursor.execute(f"""
+                        UPDATE upload_history SET {', '.join(updates)} WHERE id = ?
+                    """, params)
+
+    def get_upload_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """获取上传历史"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, filename, path, size, status, duration, error, created_at
+                    FROM upload_history
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,))
+                return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== 下载历史 ====================
+
+    def record_download(
+        self,
+        filename: str,
+        path: str,
+        size: int,
+        status: str = "success",
+        duration: float = 0,
+        error: str = None
+    ):
+        """记录下载历史"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO download_history (filename, path, size, status, duration, error)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (filename, path, size, status, duration, error))
+
+    def get_download_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """获取下载历史"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, filename, path, size, status, duration, error, created_at
+                    FROM download_history
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,))
+                return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== 终端历史 ====================
+
+    def record_terminal_io(
+        self,
+        session_id: str,
+        direction: str,
+        raw_content: bytes,
+        text_content: str
+    ):
+        """记录终端输入/输出"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO terminal_history (session_id, direction, raw_content, text_content)
+                    VALUES (?, ?, ?, ?)
+                """, (session_id, direction, raw_content, text_content))
+
+    def get_terminal_history(
+        self,
+        session_id: str = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """获取终端历史
+
+        Args:
+            session_id: 会话ID，为空则获取所有
+            limit: 返回数量限制
+            offset: 偏移量（分页用）
+        """
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                if session_id:
+                    cursor.execute("""
+                        SELECT id, session_id, direction, text_content, created_at
+                        FROM terminal_history
+                        WHERE session_id = ?
+                        ORDER BY created_at DESC
+                        LIMIT ? OFFSET ?
+                    """, (session_id, limit, offset))
+                else:
+                    cursor.execute("""
+                        SELECT id, session_id, direction, text_content, created_at
+                        FROM terminal_history
+                        ORDER BY created_at DESC
+                        LIMIT ? OFFSET ?
+                    """, (limit, offset))
+                return [dict(row) for row in cursor.fetchall()]
+
+    def get_terminal_sessions(self) -> List[Dict[str, Any]]:
+        """获取有历史记录的会话列表"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT session_id,
+                           COUNT(*) as message_count,
+                           MAX(created_at) as last_activity
+                    FROM terminal_history
+                    GROUP BY session_id
+                    ORDER BY last_activity DESC
+                """)
+                return [dict(row) for row in cursor.fetchall()]
 
     # ==================== 清理 ====================
 

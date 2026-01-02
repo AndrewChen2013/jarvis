@@ -144,6 +144,20 @@ const AppSettings = {
   },
 
   /**
+   * 打开传输模态框
+   */
+  openTransferModal() {
+    document.getElementById('transfer-modal').classList.add('active');
+  },
+
+  /**
+   * 关闭传输模态框
+   */
+  closeTransferModal() {
+    document.getElementById('transfer-modal').classList.remove('active');
+  },
+
+  /**
    * 显示密码错误
    */
   showPasswordError(message) {

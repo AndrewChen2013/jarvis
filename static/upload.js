@@ -17,27 +17,23 @@
 /**
  * 上传模块
  * 提供文件上传功能（上传到用户主目录）
+ * 支持进度显示、后台上传、debugLog 记录
  */
 const AppUpload = {
+  // 当前上传状态
+  _currentUpload: null,
+
   /**
    * 初始化上传功能
    * 在 bindEvents 中调用
    */
   initUpload() {
-    const menuUpload = document.getElementById('menu-upload');
     const fileInput = document.getElementById('file-input');
 
-    if (!menuUpload || !fileInput) {
-      console.warn('Upload elements not found');
+    if (!fileInput) {
+      console.warn('Upload file input not found');
       return;
     }
-
-    // 点击上传菜单时触发文件选择
-    menuUpload.addEventListener('click', () => {
-      // 确保每次都能触发 change 事件
-      fileInput.value = '';
-      fileInput.click();
-    });
 
     // 文件选择后处理上传
     fileInput.addEventListener('change', (e) => {
@@ -49,10 +45,10 @@ const AppUpload = {
   },
 
   /**
-   * 上传文件到用户主目录
+   * 上传文件到用户主目录（使用 XHR 支持进度）
    * @param {File} file - 要上传的文件
    */
-  async uploadFile(file) {
+  uploadFile(file) {
     // 检查文件大小（500MB 限制）
     const maxSize = 500 * 1024 * 1024;
     if (file.size > maxSize) {
@@ -63,42 +59,110 @@ const AppUpload = {
     // 关闭设置模态框
     this.closeSettingsModal();
 
-    // 显示上传中提示
-    const uploadingMsg = this.t('upload.uploading', 'Uploading...');
-    this.showToast(`${uploadingMsg} ${file.name}`, 'info');
+    const startTime = Date.now();
+    const fileName = file.name;
+    const fileSize = file.size;
 
-    try {
-      // 创建 FormData
-      const formData = new FormData();
-      formData.append('file', file);
+    // 记录开始日志
+    this.debugLog(`Upload started: ${fileName} (${this.formatFileSize(fileSize)})`);
 
-      // 发送上传请求
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: formData
-      });
+    // 保存上传状态
+    this._currentUpload = {
+      fileName,
+      fileSize,
+      startTime,
+      loaded: 0,
+      progress: 0
+    };
 
-      if (response.ok) {
-        const result = await response.json();
-        this.debugLog(`File uploaded: ${result.path}`);
-        // 显示成功弹框
-        this.showUploadSuccessDialog(result);
-      } else if (response.status === 401) {
+    // 创建 XHR
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    // 上传进度事件
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const progress = Math.round((e.loaded / e.total) * 100);
+        const elapsed = (Date.now() - startTime) / 1000;
+        const speed = e.loaded / elapsed;
+        const remaining = (e.total - e.loaded) / speed;
+
+        this._currentUpload.loaded = e.loaded;
+        this._currentUpload.progress = progress;
+
+        // 每 10% 记录一次日志
+        if (progress % 10 === 0 && progress !== this._lastLoggedProgress) {
+          this._lastLoggedProgress = progress;
+          this.debugLog(
+            `Upload progress: ${fileName} ${progress}% ` +
+            `(${this.formatFileSize(e.loaded)}/${this.formatFileSize(e.total)}, ` +
+            `${this.formatSpeed(speed)}, ETA ${this.formatTime(remaining)})`
+          );
+        }
+      }
+    };
+
+    // 上传完成
+    xhr.onload = () => {
+      const duration = (Date.now() - startTime) / 1000;
+      this._currentUpload = null;
+      this._lastLoggedProgress = -1;
+
+      if (xhr.status === 200) {
+        try {
+          const result = JSON.parse(xhr.responseText);
+          const speed = fileSize / duration;
+
+          this.debugLog(
+            `Upload completed: ${result.filename} ` +
+            `(${this.formatFileSize(result.size)} in ${duration.toFixed(1)}s, ${this.formatSpeed(speed)})`
+          );
+
+          // 显示成功弹框
+          this.showUploadSuccessDialog(result);
+        } catch (e) {
+          this.debugLog(`Upload response parse error: ${e.message}`);
+          this.showToast(this.t('upload.failed', 'Upload failed'), 'error');
+        }
+      } else if (xhr.status === 401) {
+        this.debugLog(`Upload failed: Unauthorized`);
         this.handleUnauthorized();
-      } else if (response.status === 413) {
+      } else if (xhr.status === 413) {
+        this.debugLog(`Upload failed: File too large`);
         this.showToast(this.t('upload.fileTooLarge', 'File too large'), 'error');
       } else {
-        const error = await response.json().catch(() => ({}));
-        const errorMsg = error.detail || this.t('upload.failed', 'Upload failed');
+        let errorMsg = 'Upload failed';
+        try {
+          const error = JSON.parse(xhr.responseText);
+          errorMsg = error.detail || errorMsg;
+        } catch (e) {}
+        this.debugLog(`Upload failed: ${xhr.status} ${errorMsg}`);
         this.showToast(errorMsg, 'error');
       }
-    } catch (error) {
-      console.error('Upload error:', error);
+    };
+
+    // 上传错误
+    xhr.onerror = () => {
+      const duration = (Date.now() - startTime) / 1000;
+      this._currentUpload = null;
+
+      this.debugLog(`Upload network error: ${fileName} (after ${duration.toFixed(1)}s)`);
       this.showToast(this.t('upload.networkError', 'Network error'), 'error');
-    }
+    };
+
+    // 上传中断
+    xhr.onabort = () => {
+      this._currentUpload = null;
+      this.debugLog(`Upload aborted: ${fileName}`);
+    };
+
+    // 发送请求
+    xhr.open('POST', '/api/upload');
+    xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
+    xhr.send(formData);
+
+    this.debugLog(`Upload request sent: ${fileName}`);
   },
 
   /**
@@ -113,6 +177,7 @@ const AppUpload = {
     }
 
     const sizeStr = this.formatFileSize(result.size);
+    const durationStr = result.duration ? `${result.duration}s` : '';
 
     // 创建弹框
     const dialog = document.createElement('div');
@@ -128,7 +193,7 @@ const AppUpload = {
           <div class="upload-success-info">
             <div class="upload-success-icon">✓</div>
             <div class="upload-success-filename">${result.filename}</div>
-            <div class="upload-success-size">${sizeStr}</div>
+            <div class="upload-success-size">${sizeStr}${durationStr ? ' · ' + durationStr : ''}</div>
           </div>
           <div class="upload-success-path">
             <label>${this.t('upload.filePath', 'File Path')}:</label>
@@ -166,6 +231,106 @@ const AppUpload = {
         copyBtn.textContent = this.t('upload.copyPath', 'Copy Path');
       }, 1500);
     });
+  },
+
+  /**
+   * 显示上传历史页面
+   */
+  async showUploadHistory() {
+    // 隐藏主菜单，显示历史页面
+    const menu = document.getElementById('settings-menu');
+    const backBtn = document.getElementById('settings-back-btn');
+    const modalTitle = document.getElementById('settings-modal-title');
+
+    if (menu) menu.style.display = 'none';
+    if (backBtn) backBtn.classList.remove('hidden');
+    if (modalTitle) modalTitle.textContent = this.t('upload.historyTitle', 'Upload History');
+
+    // 创建或获取历史页面容器
+    let historyPage = document.getElementById('settings-upload-history');
+    if (!historyPage) {
+      historyPage = document.createElement('div');
+      historyPage.id = 'settings-upload-history';
+      historyPage.className = 'settings-page';
+      document.querySelector('#settings-modal .modal-body').appendChild(historyPage);
+    }
+
+    historyPage.classList.add('active');
+    historyPage.innerHTML = `<div class="loading">${this.t('common.loading', 'Loading...')}</div>`;
+
+    try {
+      const response = await fetch('/api/uploads', {
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load history');
+      }
+
+      const data = await response.json();
+      const uploads = data.uploads || [];
+
+      if (uploads.length === 0) {
+        historyPage.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📁</div>
+            <div class="empty-text">${this.t('upload.noHistory', 'No upload history')}</div>
+          </div>
+        `;
+        return;
+      }
+
+      // 渲染历史列表
+      historyPage.innerHTML = `
+        <div class="upload-history-list">
+          ${uploads.map(item => this.renderUploadHistoryItem(item)).join('')}
+        </div>
+      `;
+
+      // 绑定复制事件
+      historyPage.querySelectorAll('.upload-history-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const path = el.dataset.path;
+          if (path) {
+            this.copyToClipboard(path);
+            this.showToast(this.t('upload.pathCopied', 'Path copied'), 'success');
+          }
+        });
+      });
+
+    } catch (error) {
+      console.error('Load upload history error:', error);
+      historyPage.innerHTML = `
+        <div class="error-state">
+          <div class="error-text">${this.t('upload.loadError', 'Failed to load history')}</div>
+        </div>
+      `;
+    }
+  },
+
+  /**
+   * 渲染上传历史项
+   * @param {Object} item - 历史记录项
+   */
+  renderUploadHistoryItem(item) {
+    const statusIcon = item.status === 'success' ? '✓' : '✗';
+    const statusClass = item.status === 'success' ? 'success' : 'failed';
+    const sizeStr = this.formatFileSize(item.size);
+    const dateStr = this.formatDateTime(item.created_at);
+    const durationStr = item.duration ? `${item.duration.toFixed(1)}s` : '';
+
+    return `
+      <div class="upload-history-item ${statusClass}" data-path="${item.path}">
+        <div class="upload-history-icon">${statusIcon}</div>
+        <div class="upload-history-info">
+          <div class="upload-history-filename">${item.filename}</div>
+          <div class="upload-history-meta">
+            ${sizeStr}${durationStr ? ' · ' + durationStr : ''} · ${dateStr}
+          </div>
+          ${item.error ? `<div class="upload-history-error">${item.error}</div>` : ''}
+        </div>
+      </div>
+    `;
   },
 
   /**
@@ -209,6 +374,58 @@ const AppUpload = {
       return (bytes / 1024).toFixed(1) + ' KB';
     } else {
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+  },
+
+  /**
+   * 格式化速度
+   * @param {number} bytesPerSec - 每秒字节数
+   * @returns {string} 格式化的速度字符串
+   */
+  formatSpeed(bytesPerSec) {
+    if (bytesPerSec < 1024) {
+      return bytesPerSec.toFixed(0) + ' B/s';
+    } else if (bytesPerSec < 1024 * 1024) {
+      return (bytesPerSec / 1024).toFixed(1) + ' KB/s';
+    } else {
+      return (bytesPerSec / (1024 * 1024)).toFixed(1) + ' MB/s';
+    }
+  },
+
+  /**
+   * 格式化时间
+   * @param {number} seconds - 秒数
+   * @returns {string} 格式化的时间字符串
+   */
+  formatTime(seconds) {
+    if (seconds < 60) {
+      return Math.round(seconds) + 's';
+    } else {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.round(seconds % 60);
+      return `${mins}m${secs}s`;
+    }
+  },
+
+  /**
+   * 格式化日期时间
+   * @param {string} isoString - ISO 日期字符串
+   * @returns {string} 格式化的日期时间
+   */
+  formatDateTime(isoString) {
+    try {
+      const date = new Date(isoString);
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+
+      if (isToday) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+          ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    } catch (e) {
+      return isoString;
     }
   }
 };

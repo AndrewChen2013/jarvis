@@ -25,6 +25,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from app.services.terminal_manager import terminal_manager, Terminal
 from app.core.config import settings
 from app.core.logging import logger
+from app.services.database import db
 
 
 async def handle_terminal_websocket(
@@ -127,6 +128,8 @@ async def handle_terminal_websocket(
                         "type": "output",
                         "data": text
                     })
+                    # 注意：不再在这里记录输出到数据库
+                    # 输出会在下次用户输入时，通过 pyte 渲染后保存
                 except Exception:
                     pass
 
@@ -200,7 +203,7 @@ async def handle_terminal_websocket(
                 else:
                     continue
 
-                await _handle_message(websocket, terminal, data)
+                await _handle_message(websocket, terminal, data, session_id=session_id)
 
             except WebSocketDisconnect:
                 break
@@ -218,18 +221,52 @@ async def handle_terminal_websocket(
             terminal.remove_output_callback(output_callback)
 
         if terminal:
+            # WebSocket 断开时，保存当前屏幕内容
+            if session_id:
+                try:
+                    screen_content = terminal.get_screen_content()
+                    if screen_content.strip():
+                        db.record_terminal_io(
+                            session_id=session_id,
+                            direction="output",
+                            raw_content=None,
+                            text_content=screen_content
+                        )
+                        logger.debug(f"[Terminal:{terminal.terminal_id[:8]}] Saved screen on disconnect ({len(screen_content)} chars)")
+                    terminal.reset_screen()
+                except Exception as e:
+                    logger.debug(f"Save screen on disconnect error: {e}")
+
             remaining = terminal_manager.decrement_websocket_count(terminal.terminal_id)
             logger.info(f"[Terminal:{terminal.terminal_id[:8]}] WebSocket disconnected (remaining: {remaining})")
             # 不立即关闭，让 cleanup_loop 延迟清理（给重连机会）
 
 
-async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict):
+async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict, session_id: str = None):
     """处理消息"""
     msg_type = data.get("type")
 
     if msg_type == "input":
         input_data = data.get("data", "")
         logger.info(f"[Terminal:{terminal.terminal_id[:8]}] Input received: {repr(input_data)}")
+
+        # 在写入 PTY 之前，先保存上一批输出的屏幕状态
+        if session_id:
+            try:
+                screen_content = terminal.get_screen_content()
+                if screen_content.strip():
+                    db.record_terminal_io(
+                        session_id=session_id,
+                        direction="output",
+                        raw_content=None,
+                        text_content=screen_content
+                    )
+                    logger.debug(f"[Terminal:{terminal.terminal_id[:8]}] Saved screen content ({len(screen_content)} chars)")
+                # 重置屏幕，准备接收下一批输出
+                terminal.reset_screen()
+            except Exception as e:
+                logger.debug(f"Save screen content error: {e}")
+
         await terminal_manager.write(terminal.terminal_id, input_data)
 
     elif msg_type == "resize":
