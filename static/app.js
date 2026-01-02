@@ -559,11 +559,13 @@ class App {
 
       if (response.ok) {
         // token 有效，显示会话列表
-        // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
+        // 注意：showView('sessions') 内部会调用 loadSessions() 和 loadUsageSummary()
         this.showView('sessions');
-        this.loadSystemInfo();
-        this.loadAccountInfo();
-        this.loadUsageSummary();
+        // 并发加载其他数据
+        Promise.all([
+          this.loadSystemInfo(),
+          this.loadAccountInfo()
+        ]).catch(e => console.error('Load info error:', e));
       } else {
         // token 无效，清除并显示登录页
         this.clearAuth();
@@ -613,11 +615,13 @@ class App {
         tokenInput.value = '';
 
         // 显示会话列表
-        // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
+        // 注意：showView('sessions') 内部会调用 loadSessions() 和 loadUsageSummary()
         this.showView('sessions');
-        this.loadSystemInfo();
-        this.loadAccountInfo();
-        this.loadUsageSummary();
+        // 并发加载其他数据
+        Promise.all([
+          this.loadSystemInfo(),
+          this.loadAccountInfo()
+        ]).catch(e => console.error('Load info error:', e));
       } else {
         this.showLoginError(this.t('login.tokenInvalid'));
       }
@@ -725,8 +729,11 @@ class App {
     }
 
     if (viewName === 'sessions') {
-      this.loadSessions();
-      this.loadUsageSummary();
+      // 并发加载会话列表和用量数据
+      Promise.all([
+        this.loadSessions(),
+        this.loadUsageSummary()
+      ]).catch(e => console.error('Load sessions error:', e));
       // 更新悬浮按钮状态
       if (this.floatingButton) {
         this.floatingButton.update();
