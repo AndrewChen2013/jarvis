@@ -326,18 +326,35 @@ const AppSwipe = {
     indicator.parentNode.insertBefore(indicatorArea, indicator);
     indicatorArea.appendChild(indicator);
 
-    // Double-tap on indicator area as fallback trigger
-    let lastTapTime = 0;
-    indicatorArea.addEventListener('touchend', (e) => {
-      const now = Date.now();
-      if (now - lastTapTime < 300) {
-        // Double tap detected
-        e.preventDefault();
+    // Long press on indicator area to trigger preview mode (500ms)
+    let longPressTimer = null;
+    indicatorArea.addEventListener('touchstart', (e) => {
+      if (this._previewMode) return;
+      longPressTimer = setTimeout(() => {
         this.enterPreviewMode();
-        if (navigator.vibrate) navigator.vibrate(30);
-        lastTapTime = 0;
-      } else {
-        lastTapTime = now;
+        if (navigator.vibrate) navigator.vibrate(50);
+        longPressTimer = null;
+      }, 500);
+    }, { passive: true });
+
+    indicatorArea.addEventListener('touchend', () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    });
+
+    indicatorArea.addEventListener('touchmove', () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    }, { passive: true });
+
+    indicatorArea.addEventListener('touchcancel', () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
       }
     });
 
