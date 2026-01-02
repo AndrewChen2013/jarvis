@@ -99,12 +99,15 @@ const AppHistory = {
     // Create modal - simplified without back button
     const modal = document.createElement('div');
     modal.id = 'terminal-history-modal';
-    modal.className = 'modal active';
+    modal.className = 'modal history-modal active';
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
+          <div class="modal-header-left"></div>
           <h2>${this.t('history.sessionHistory', 'Session History')}</h2>
-          <button id="history-modal-close" class="btn-close">&times;</button>
+          <div class="modal-header-right">
+            <button id="history-modal-close" class="btn-close">&times;</button>
+          </div>
         </div>
         <div class="modal-body">
           <div id="history-modal-content" class="history-content">
@@ -148,12 +151,15 @@ const AppHistory = {
     // Create modal
     const modal = document.createElement('div');
     modal.id = 'terminal-history-modal';
-    modal.className = 'modal active';
+    modal.className = 'modal history-modal active';
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
+          <div class="modal-header-left"></div>
           <h2>${this.t('history.sessionHistory', 'Session History')}</h2>
-          <button id="history-modal-close" class="btn-close">&times;</button>
+          <div class="modal-header-right">
+            <button id="history-modal-close" class="btn-close">&times;</button>
+          </div>
         </div>
         <div class="modal-body">
           <div id="history-modal-content" class="history-content">
