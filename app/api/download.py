@@ -65,12 +65,14 @@ def get_file_info(path: Path) -> dict:
 @router.get("/files")
 async def list_files(
     path: str = Query(default="~", description="Directory path to list"),
+    show_hidden: bool = Query(default=False, description="Show hidden files"),
     _: str = Depends(verify_token)
 ):
     """列出目录内容
 
     Args:
         path: 目录路径，默认为用户主目录
+        show_hidden: 是否显示隐藏文件
 
     Returns:
         目录内容列表
@@ -91,8 +93,8 @@ async def list_files(
     try:
         items = []
         for item in sorted(target_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
-            # 跳过隐藏文件（以.开头）
-            if item.name.startswith('.'):
+            # 跳过隐藏文件（以.开头），除非 show_hidden=true
+            if not show_hidden and item.name.startswith('.'):
                 continue
             items.append(get_file_info(item))
 
