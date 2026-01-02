@@ -610,8 +610,8 @@ body {
   display: flex;
   justify-content: center;
   gap: 8px;
-  padding: 0;
-  background-color: transparent;
+  padding: 8px 0;
+  background-color: #111;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -635,8 +635,8 @@ body {
 
 /* ========== Indicator Swipe Area ========== */
 .indicator-swipe-area {
-  padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px));
-  background-color: #111;
+  padding: 0 0 env(safe-area-inset-bottom, 0px);
+  background-color: transparent;
 }
 
 /* ========== Preview Mode ========== */
