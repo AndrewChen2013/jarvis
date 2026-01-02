@@ -530,12 +530,18 @@ const AppSwipe = {
     // Initialize SortableJS
     this.initSortable(grid);
 
-    // Click on empty area to exit edit mode
-    grid.addEventListener('click', (e) => {
-      if (e.target === grid && this._editMode) {
-        this.exitEditMode();
-      }
-    });
+    // Click anywhere on the sessions page to exit edit mode
+    const sessionsPage = document.getElementById('page-all-sessions');
+    if (sessionsPage && !sessionsPage._editModeClickHandler) {
+      sessionsPage._editModeClickHandler = (e) => {
+        if (this._editMode) {
+          // Don't exit if clicking unpin button
+          if (e.target.classList.contains('btn-unpin')) return;
+          this.exitEditMode();
+        }
+      };
+      sessionsPage.addEventListener('click', sessionsPage._editModeClickHandler);
+    }
   },
 
   /**
