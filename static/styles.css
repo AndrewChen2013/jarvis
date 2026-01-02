@@ -635,26 +635,8 @@ body {
 
 /* ========== Indicator Swipe Area ========== */
 .indicator-swipe-area {
-  padding: 40px 0 calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px));
   background-color: #111;
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
-  /* 扩大触摸区域，避免与 iPhone home indicator 冲突 */
-  min-height: 60px;
-}
-
-.indicator-swipe-area.swiping-up {
-  background-color: #1a1a2a;
-}
-
-.indicator-swipe-area.swiping-up .page-indicator {
-  transform: translateY(-8px) scale(1.1);
-  transition: transform 0.15s ease-out;
-}
-
-.indicator-swipe-area.swiping-up .page-dot {
-  background-color: #4a9eff;
 }
 
 /* ========== Preview Mode ========== */
