@@ -351,8 +351,8 @@ const AppSwipe = {
       const deltaY = this._swipeUpStartY - touch.clientY;
       const deltaTime = Date.now() - this._swipeUpStartTime;
 
-      // Enter preview mode if swiped up by 60px+ within 500ms
-      if (deltaY > 60 && deltaTime < 500) {
+      // Enter preview mode if swiped up by 40px+ within 800ms
+      if (deltaY > 40 && deltaTime < 800) {
         this.enterPreviewMode();
         if (navigator.vibrate) navigator.vibrate(30);
       }
