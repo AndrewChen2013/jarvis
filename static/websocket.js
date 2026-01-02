@@ -988,6 +988,8 @@ const AppWebSocket = {
       'cmd-context': '/context',
       'cmd-memory': '/memory',
       'cmd-compact': '/compact',
+      'cmd-mcp': '/mcp',
+      'cmd-doctor': '/doctor',
     };
 
     // 处理斜杠命令：先发命令，再发回车，然后滚动到底部

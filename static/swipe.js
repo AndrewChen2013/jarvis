@@ -484,6 +484,21 @@ const AppSwipe = {
         contextHtml = `<span class="session-grid-context">⛁ ${usedK}k/${maxK}k (${pct}%)</span>`;
       }
 
+      // Token count (if available)
+      let tokenHtml = '';
+      if (session.total_tokens > 0) {
+        const tokens = session.total_tokens;
+        let tokenStr;
+        if (tokens >= 1000000) {
+          tokenStr = (tokens / 1000000).toFixed(1) + 'M';
+        } else if (tokens >= 1000) {
+          tokenStr = (tokens / 1000).toFixed(1) + 'k';
+        } else {
+          tokenStr = tokens.toString();
+        }
+        tokenHtml = `<span class="session-grid-tokens">${tokenStr} tokens</span>`;
+      }
+
       html += `
         <div class="session-grid-item ${statusClass}"
              data-session-id="${session.session_id}"
@@ -491,7 +506,7 @@ const AppSwipe = {
              draggable="true">
           <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
           <div class="session-grid-name">${this.escapeHtml(session.display_name || session.session_id.substring(0, 8))}</div>
-          <div class="session-grid-project">${this.escapeHtml(projectName)}</div>
+          <div class="session-grid-project"><span class="project-name">${this.escapeHtml(projectName)}</span>${tokenHtml}</div>
           <div class="session-grid-meta">${contextHtml}<span class="session-grid-time">${timeStr}</span></div>
         </div>
       `;
