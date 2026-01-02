@@ -33,6 +33,7 @@ const AppSwipe = {
   _previewMode: false,
   // Swipe up tracking
   _swipeUpStartY: null,
+  _swipeUpStartX: null,
   _swipeUpStartTime: null,
 
   /**
@@ -325,22 +326,60 @@ const AppSwipe = {
     indicator.parentNode.insertBefore(indicatorArea, indicator);
     indicatorArea.appendChild(indicator);
 
-    indicatorArea.addEventListener('touchstart', (e) => {
+    // Swipe up detection on the entire swipe container (bottom 1/4 of screen)
+    container.addEventListener('touchstart', (e) => {
       if (this._previewMode) return;
-      this._swipeUpStartY = e.touches[0].clientY;
+
+      const touch = e.touches[0];
+      const screenHeight = window.innerHeight;
+      const bottomQuarter = screenHeight * 0.75;
+
+      // Only track if touch starts in bottom 1/4 of screen
+      if (touch.clientY < bottomQuarter) return;
+
+      // Check if current page content is scrolled to bottom
+      const currentPageIndex = this._currentPage;
+      const pages = container.querySelectorAll('.swipe-page');
+      const currentPage = pages[currentPageIndex];
+
+      if (currentPage) {
+        const scrollTop = currentPage.scrollTop;
+        const scrollHeight = currentPage.scrollHeight;
+        const clientHeight = currentPage.clientHeight;
+        const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10;
+
+        // Only enable swipe-up if scrolled to bottom or content fits
+        if (!isAtBottom && scrollHeight > clientHeight) {
+          return;
+        }
+      }
+
+      this._swipeUpStartY = touch.clientY;
       this._swipeUpStartTime = Date.now();
+      this._swipeUpStartX = touch.clientX;
     }, { passive: true });
 
-    indicatorArea.addEventListener('touchmove', (e) => {
+    container.addEventListener('touchmove', (e) => {
       if (this._previewMode || this._swipeUpStartY === null) return;
-      const deltaY = this._swipeUpStartY - e.touches[0].clientY;
+
+      const touch = e.touches[0];
+      const deltaY = this._swipeUpStartY - touch.clientY;
+      const deltaX = Math.abs(touch.clientX - this._swipeUpStartX);
+
+      // Cancel if horizontal movement detected (user is swiping pages)
+      if (deltaX > 30) {
+        this._swipeUpStartY = null;
+        indicatorArea.classList.remove('swiping-up');
+        return;
+      }
+
       // Show visual feedback during swipe
       if (deltaY > 20) {
         indicatorArea.classList.add('swiping-up');
       }
     }, { passive: true });
 
-    indicatorArea.addEventListener('touchend', (e) => {
+    container.addEventListener('touchend', (e) => {
       indicatorArea.classList.remove('swiping-up');
       if (this._previewMode || this._swipeUpStartY === null) {
         this._swipeUpStartY = null;
@@ -349,10 +388,11 @@ const AppSwipe = {
 
       const touch = e.changedTouches[0];
       const deltaY = this._swipeUpStartY - touch.clientY;
+      const deltaX = Math.abs(touch.clientX - this._swipeUpStartX);
       const deltaTime = Date.now() - this._swipeUpStartTime;
 
-      // Enter preview mode if swiped up by 40px+ within 800ms
-      if (deltaY > 40 && deltaTime < 800) {
+      // Enter preview mode if swiped up by 50px+ within 600ms, and not horizontal swipe
+      if (deltaY > 50 && deltaX < 30 && deltaTime < 600) {
         this.enterPreviewMode();
         if (navigator.vibrate) navigator.vibrate(30);
       }
@@ -361,7 +401,7 @@ const AppSwipe = {
       this._swipeUpStartTime = null;
     });
 
-    indicatorArea.addEventListener('touchcancel', () => {
+    container.addEventListener('touchcancel', () => {
       indicatorArea.classList.remove('swiping-up');
       this._swipeUpStartY = null;
       this._swipeUpStartTime = null;
