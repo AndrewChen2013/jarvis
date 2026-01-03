@@ -260,6 +260,19 @@ class App {
       },
       'remote-machines-content'  // 移动整个容器（包括添加按钮）
     );
+
+    // Scheduled Tasks 页面
+    this.initPullRefreshForPage(
+      'page-scheduled-tasks',
+      'pull-refresh-tasks',
+      'scheduled-tasks-list',
+      async () => {
+        if (window.AppScheduledTasks) {
+          window.AppScheduledTasks.refreshTasks();
+        }
+      },
+      'scheduled-tasks-content'
+    );
   }
 
   /**
@@ -620,6 +633,11 @@ class App {
       window.AppMonitor.initMonitor();
     }
 
+    // 初始化定时任务
+    if (window.AppScheduledTasks && window.AppScheduledTasks.initScheduledTasks) {
+      window.AppScheduledTasks.initScheduledTasks();
+    }
+
   }
 
   // ==================== 认证相关 ====================
@@ -759,8 +777,13 @@ class App {
   /**
    * 处理退出登录
    */
-  handleLogout() {
-    if (!confirm(this.t('confirm.logout'))) return;
+  async handleLogout() {
+    const confirmed = await this.showConfirm(this.t('confirm.logout'), {
+      type: 'warning',
+      title: this.t('dialog.logout', 'Logout'),
+      confirmText: this.t('common.logout', 'Logout')
+    });
+    if (!confirmed) return;
 
     this.clearAuth();
     // 关闭所有 session
@@ -878,12 +901,13 @@ function mixinModule(module) {
 }
 
 // 混入所有模块
-// Note: AppMonitor must be before AppSwipe (swipe calls monitor methods on page change)
+// Note: AppMonitor and AppScheduledTasks must be before AppSwipe (swipe calls their methods on page change)
 if (window.AppUtils) mixinModule(window.AppUtils);
 if (window.AppDebug) mixinModule(window.AppDebug);
 if (window.AppDialogs) mixinModule(window.AppDialogs);
 if (window.AppSettings) mixinModule(window.AppSettings);
 if (window.AppMonitor) mixinModule(window.AppMonitor);
+if (window.AppScheduledTasks) mixinModule(window.AppScheduledTasks);
 if (window.AppSwipe) mixinModule(window.AppSwipe);
 if (window.AppProjects) mixinModule(window.AppProjects);
 if (window.AppWebSocket) mixinModule(window.AppWebSocket);

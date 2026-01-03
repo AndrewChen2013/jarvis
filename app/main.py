@@ -31,7 +31,8 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.services.terminal_manager import terminal_manager
 from app.services.ssh_manager import ssh_manager
-from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor
+from app.services.scheduler import scheduler
+from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor, scheduled_tasks
 from app.api.terminal import handle_terminal_websocket
 from app.api.ssh_terminal import handle_ssh_websocket
 
@@ -47,12 +48,16 @@ async def lifespan(app: FastAPI):
     # 启动 SSH 管理器
     await ssh_manager.start()
 
+    # 启动定时任务调度器
+    await scheduler.start()
+
     logger.info(f"Application started successfully")
 
     yield
 
     # 清理
     logger.info("Application shutting down...")
+    await scheduler.stop()
     await ssh_manager.stop()
     await terminal_manager.stop()
     logger.info("Application stopped")
@@ -83,6 +88,7 @@ app.include_router(history.router)
 app.include_router(pinned.router)
 app.include_router(remote_machines.router)
 app.include_router(monitor.router)
+app.include_router(scheduled_tasks.router)
 
 # 挂载静态文件
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")

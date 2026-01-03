@@ -103,7 +103,136 @@ const AppDialogs = {
    */
   showError(message) {
     this.debugLog('[showError] message=' + message + ', stack=' + new Error().stack);
-    alert(message);
+    this.showAlert(message, { type: 'error' });
+  },
+
+  /**
+   * 显示通用 Alert 弹窗（替代浏览器原生 alert）
+   * @param {string} message - 消息内容
+   * @param {Object} options - 配置选项
+   * @param {string} options.type - 类型：'info', 'success', 'warning', 'error'
+   * @param {string} options.title - 标题（可选）
+   * @param {string} options.confirmText - 确认按钮文字
+   * @returns {Promise} - 点击确认后 resolve
+   */
+  showAlert(message, options = {}) {
+    const { type = 'info', title, confirmText } = options;
+
+    const iconMap = {
+      info: '○',
+      success: '✓',
+      warning: '!',
+      error: '✗'
+    };
+
+    const titleMap = {
+      info: this.t('dialog.info', 'Info'),
+      success: this.t('dialog.success', 'Success'),
+      warning: this.t('dialog.warning', 'Warning'),
+      error: this.t('dialog.error', 'Error')
+    };
+
+    return new Promise((resolve) => {
+      const dialog = document.createElement('div');
+      dialog.className = 'custom-dialog-overlay';
+      const formattedMessage = this.escapeHtml(message).replace(/\n/g, '<br>');
+
+      dialog.innerHTML = `
+        <div class="custom-dialog custom-dialog-${type}">
+          <div class="custom-dialog-icon">${iconMap[type]}</div>
+          <div class="custom-dialog-title">${this.escapeHtml(title || titleMap[type])}</div>
+          <div class="custom-dialog-message">${formattedMessage}</div>
+          <div class="custom-dialog-buttons">
+            <button class="btn btn-primary">${confirmText || this.t('common.ok', 'OK')}</button>
+          </div>
+        </div>
+      `;
+
+      const closeDialog = () => {
+        dialog.classList.add('closing');
+        setTimeout(() => {
+          if (dialog.parentNode) {
+            document.body.removeChild(dialog);
+          }
+          resolve();
+        }, 200);
+      };
+
+      dialog.querySelector('.btn-primary').addEventListener('click', closeDialog);
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) closeDialog();
+      });
+
+      document.body.appendChild(dialog);
+      // 触发动画
+      requestAnimationFrame(() => dialog.classList.add('active'));
+    });
+  },
+
+  /**
+   * 显示通用 Confirm 弹窗（替代浏览器原生 confirm）
+   * @param {string} message - 消息内容
+   * @param {Object} options - 配置选项
+   * @param {string} options.type - 类型：'info', 'warning', 'danger'
+   * @param {string} options.title - 标题（可选）
+   * @param {string} options.confirmText - 确认按钮文字
+   * @param {string} options.cancelText - 取消按钮文字
+   * @returns {Promise<boolean>} - 确认返回 true，取消返回 false
+   */
+  showConfirm(message, options = {}) {
+    const { type = 'warning', title, confirmText, cancelText } = options;
+
+    const iconMap = {
+      info: '?',
+      warning: '!',
+      danger: '✗'
+    };
+
+    const titleMap = {
+      info: this.t('dialog.confirm', 'Confirm'),
+      warning: this.t('dialog.warning', 'Warning'),
+      danger: this.t('dialog.danger', 'Danger')
+    };
+
+    return new Promise((resolve) => {
+      const dialog = document.createElement('div');
+      dialog.className = 'custom-dialog-overlay';
+      const formattedMessage = this.escapeHtml(message).replace(/\n/g, '<br>');
+
+      const confirmBtnClass = type === 'danger' ? 'btn-danger' : 'btn-primary';
+
+      dialog.innerHTML = `
+        <div class="custom-dialog custom-dialog-${type}">
+          <div class="custom-dialog-icon">${iconMap[type]}</div>
+          <div class="custom-dialog-title">${this.escapeHtml(title || titleMap[type])}</div>
+          <div class="custom-dialog-message">${formattedMessage}</div>
+          <div class="custom-dialog-buttons">
+            <button class="btn btn-secondary btn-cancel">${cancelText || this.t('common.cancel', 'Cancel')}</button>
+            <button class="btn ${confirmBtnClass} btn-confirm">${confirmText || this.t('common.confirm', 'Confirm')}</button>
+          </div>
+        </div>
+      `;
+
+      const closeDialog = (result) => {
+        dialog.classList.add('closing');
+        setTimeout(() => {
+          if (dialog.parentNode) {
+            document.body.removeChild(dialog);
+          }
+          resolve(result);
+        }, 200);
+      };
+
+      dialog.querySelector('.btn-cancel').addEventListener('click', () => closeDialog(false));
+      dialog.querySelector('.btn-confirm').addEventListener('click', () => closeDialog(true));
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) closeDialog(false);
+      });
+
+      document.body.appendChild(dialog);
+      // 触发动画
+      requestAnimationFrame(() => dialog.classList.add('active'));
+    });
   },
 
   /**

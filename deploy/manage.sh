@@ -15,7 +15,7 @@
 
 set -e
 
-# 检查是否为 root 用户（警告但不阻止）
+# Check if running as root (warn but don't block)
 if [ "$EUID" -eq 0 ]; then
     echo ""
     echo -e "\033[1;33m╔════════════════════════════════════════════════════════════════╗\033[0m"
@@ -30,27 +30,27 @@ if [ "$EUID" -eq 0 ]; then
     echo ""
 fi
 
-# 颜色定义
+# Color definitions
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 项目路径
+# Project path
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OS=$(uname -s)
 
-# 服务标识
+# Service identifiers
 SERVICE_NAME="com.claude.remote.backend"
 PLIST_FILE="$HOME/Library/LaunchAgents/${SERVICE_NAME}.plist"
 SYSTEMD_FILE="/etc/systemd/system/claude-remote-backend.service"
 
-# 打印函数
+# Print functions
 print_header() {
     echo ""
     echo -e "${BLUE}===========================================${NC}"
-    echo -e "${BLUE}  Claude Remote 管理工具${NC}"
+    echo -e "${BLUE}  Claude Remote Management Tool${NC}"
     echo -e "${BLUE}===========================================${NC}"
     echo ""
 }
@@ -71,87 +71,131 @@ print_info() {
     echo -e "${BLUE}→ $1${NC}"
 }
 
-# 检查服务状态
+# Get service PID (returns empty if not running)
+get_service_pid() {
+    ps aux | grep "uvicorn app.main:app" | grep -v grep | awk '{print $2}' | head -1
+}
+
+# Check service status
 check_status() {
     echo ""
-    print_info "服务状态"
+    print_info "Service Status"
     echo ""
 
-    # 检查进程
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
-        PID=$(pgrep -f "uvicorn app.main:app" | head -1)
-        print_success "服务运行中 (PID: $PID)"
+    # Check process
+    PID=$(get_service_pid)
+    if [ -n "$PID" ]; then
+        print_success "Service running (PID: $PID)"
     else
-        print_warning "服务未运行"
+        print_warning "Service not running"
     fi
 
-    # 检查开机自启动
+    # Check autostart
     if [[ "$OS" == "Darwin" ]]; then
         if [ -f "$PLIST_FILE" ]; then
-            print_success "开机自启动: 已启用"
+            print_success "Autostart: Enabled"
         else
-            print_warning "开机自启动: 未启用"
+            print_warning "Autostart: Disabled"
         fi
     elif [[ "$OS" == "Linux" ]]; then
         if systemctl is-enabled claude-remote-backend &>/dev/null; then
-            print_success "开机自启动: 已启用"
+            print_success "Autostart: Enabled"
         else
-            print_warning "开机自启动: 未启用"
+            print_warning "Autostart: Disabled"
         fi
     fi
 
-    # 显示访问地址
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
+    # Show access URL
+    if [ -n "$PID" ]; then
         echo ""
-        print_info "访问地址: http://localhost:8000"
+        print_info "Access URL: http://localhost:8000"
     fi
 }
 
-# 安装依赖
+# Install Claude Skills to user directory
+install_skills() {
+    print_info "Installing Claude Skills..."
+
+    SKILLS_SRC="$PROJECT_ROOT/.claude/skills"
+    SKILLS_DST="$HOME/.claude/skills"
+
+    if [ ! -d "$SKILLS_SRC" ]; then
+        print_warning "No skills to install"
+        return
+    fi
+
+    mkdir -p "$SKILLS_DST"
+
+    for skill_dir in "$SKILLS_SRC"/*/; do
+        if [ -d "$skill_dir" ]; then
+            skill_name=$(basename "$skill_dir")
+            target_dir="$SKILLS_DST/$skill_name"
+
+            # Create target directory
+            mkdir -p "$target_dir"
+
+            # Copy and replace paths
+            for file in "$skill_dir"*; do
+                if [ -f "$file" ]; then
+                    filename=$(basename "$file")
+                    # Replace os.getcwd() with actual project path
+                    sed "s|sys.path.insert(0, os.getcwd())|sys.path.insert(0, '$PROJECT_ROOT')|g; \
+                         s|working_dir=os.getcwd()|working_dir='$PROJECT_ROOT'|g; \
+                         s|project_root = os.getcwd()|project_root = '$PROJECT_ROOT'|g" \
+                        "$file" > "$target_dir/$filename"
+                fi
+            done
+
+            print_success "  Skill: $skill_name"
+        fi
+    done
+}
+
+# Install dependencies
 install_deps() {
     echo ""
-    print_info "安装依赖..."
+    print_info "Installing dependencies..."
     echo ""
 
-    # 检查 Python
+    # Check Python
     if ! command -v python3 &> /dev/null; then
-        print_error "未找到 Python 3，请先安装"
+        print_error "Python 3 not found, please install it first"
         exit 1
     fi
     print_success "Python: $(python3 --version)"
 
-    # 检查 Claude Code
+    # Check Claude Code
     if ! command -v claude &> /dev/null; then
-        print_warning "未找到 Claude Code CLI"
-        echo "  请安装: curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/install.sh | sh"
-        read -p "是否继续安装？[y/N] " -n 1 -r
+        print_warning "Claude Code CLI not found"
+        echo "  Install: curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/install.sh | sh"
+        read -p "Continue installation? [y/N] " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
     else
-        print_success "Claude Code: 已安装"
+        print_success "Claude Code: Installed"
     fi
 
-    # 创建虚拟环境
+    # Create virtual environment
     cd "$PROJECT_ROOT"
     if [ ! -d "venv" ]; then
-        print_info "创建虚拟环境..."
+        print_info "Creating virtual environment..."
         python3 -m venv venv
     fi
 
-    # 安装依赖
-    print_info "安装 Python 依赖..."
+    # Install dependencies
+    print_info "Installing Python dependencies..."
     source venv/bin/activate
     pip install -q -r requirements.txt
-    print_success "依赖安装完成"
+    print_success "Dependencies installed"
 
-    # 配置环境变量
+    # Configure environment variables
     if [ ! -f "$PROJECT_ROOT/.env" ]; then
-        print_info "生成配置文件..."
+        print_info "Generating config file..."
         cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
 
-        # 生成随机 token
+        # Generate random token
         RANDOM_TOKEN=$(openssl rand -hex 32)
         if [[ "$OS" == "Darwin" ]]; then
             sed -i '' "s/your-secret-token-here/$RANDOM_TOKEN/" "$PROJECT_ROOT/.env"
@@ -159,85 +203,97 @@ install_deps() {
             sed -i "s/your-secret-token-here/$RANDOM_TOKEN/" "$PROJECT_ROOT/.env"
         fi
 
-        print_success "已生成随机 AUTH_TOKEN"
+        print_success "Random AUTH_TOKEN generated"
         echo ""
-        echo -e "${YELLOW}请保存此 token，用于登录:${NC}"
+        echo -e "${YELLOW}Please save this token for login:${NC}"
         echo -e "${GREEN}$RANDOM_TOKEN${NC}"
         echo ""
     else
-        print_success "配置文件已存在"
+        print_success "Config file already exists"
     fi
 
-    # 创建日志目录
+    # Create logs directory
     mkdir -p "$PROJECT_ROOT/logs"
-    print_success "日志目录已创建"
+    print_success "Logs directory created"
+
+    # Install Claude Skills
+    install_skills
 }
 
-# 启动服务
+# Start service
 start_service() {
     echo ""
 
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
-        print_warning "服务已在运行中"
+    PID=$(get_service_pid)
+    if [ -n "$PID" ]; then
+        print_warning "Service is already running (PID: $PID)"
         return
     fi
 
-    print_info "启动服务..."
+    print_info "Starting service..."
     cd "$PROJECT_ROOT"
     source venv/bin/activate
 
-    # 后台启动
+    # Register MCP Server to ~/.claude.json
+    print_info "Registering MCP Server..."
+    python scripts/register_mcp.py 2>/dev/null || true
+
+    # Start in background
     nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > logs/backend.log 2>&1 &
 
     sleep 2
 
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
-        print_success "服务已启动"
-        print_info "访问地址: http://localhost:8000"
-        print_info "日志文件: $PROJECT_ROOT/logs/backend.log"
+    PID=$(get_service_pid)
+    if [ -n "$PID" ]; then
+        print_success "Service started (PID: $PID)"
+        print_info "Access URL: http://localhost:8000"
+        print_info "Log file: $PROJECT_ROOT/logs/backend.log"
     else
-        print_error "启动失败，请查看日志"
+        print_error "Failed to start, check logs"
     fi
 }
 
-# 停止服务
+# Stop service
 stop_service() {
     echo ""
 
-    if ! pgrep -f "uvicorn app.main:app" > /dev/null; then
-        print_warning "服务未在运行"
+    PID=$(get_service_pid)
+    if [ -z "$PID" ]; then
+        print_warning "Service is not running"
         return
     fi
 
-    print_info "停止服务..."
-    pkill -f "uvicorn app.main:app" || true
+    print_info "Stopping service (PID: $PID)..."
+    kill "$PID" 2>/dev/null || true
     sleep 1
 
-    if ! pgrep -f "uvicorn app.main:app" > /dev/null; then
-        print_success "服务已停止"
+    PID=$(get_service_pid)
+    if [ -z "$PID" ]; then
+        print_success "Service stopped"
     else
-        print_warning "强制终止..."
-        pkill -9 -f "uvicorn app.main:app" || true
-        print_success "服务已强制停止"
+        print_warning "Force terminating..."
+        kill -9 "$PID" 2>/dev/null || true
+        sleep 1
+        print_success "Service force stopped"
     fi
 }
 
-# 重启服务
+# Restart service
 restart_service() {
     stop_service
     start_service
 }
 
-# 启用开机自启动
+# Enable autostart
 enable_autostart() {
     echo ""
-    print_info "配置开机自启动..."
+    print_info "Configuring autostart..."
 
     if [[ "$OS" == "Darwin" ]]; then
         # macOS LaunchAgent
         mkdir -p "$HOME/Library/LaunchAgents"
 
-        # 生成 plist 文件
+        # Generate plist file
         cat > "$PLIST_FILE" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -288,15 +344,15 @@ enable_autostart() {
 </plist>
 EOF
 
-        # 加载服务
+        # Load service
         launchctl unload "$PLIST_FILE" 2>/dev/null || true
         launchctl load "$PLIST_FILE"
 
-        print_success "开机自启动已启用 (macOS LaunchAgent)"
+        print_success "Autostart enabled (macOS LaunchAgent)"
         echo ""
-        echo "  手动控制命令:"
-        echo "    启动: launchctl start $SERVICE_NAME"
-        echo "    停止: launchctl stop $SERVICE_NAME"
+        echo "  Manual control commands:"
+        echo "    Start: launchctl start $SERVICE_NAME"
+        echo "    Stop: launchctl stop $SERVICE_NAME"
 
     elif [[ "$OS" == "Linux" ]]; then
         # Linux systemd
@@ -333,27 +389,27 @@ EOF
         sudo systemctl enable claude-remote-backend
         sudo systemctl start claude-remote-backend
 
-        print_success "开机自启动已启用 (systemd)"
+        print_success "Autostart enabled (systemd)"
         echo ""
-        echo "  手动控制命令:"
-        echo "    启动: sudo systemctl start claude-remote-backend"
-        echo "    停止: sudo systemctl stop claude-remote-backend"
-        echo "    状态: sudo systemctl status claude-remote-backend"
+        echo "  Manual control commands:"
+        echo "    Start: sudo systemctl start claude-remote-backend"
+        echo "    Stop: sudo systemctl stop claude-remote-backend"
+        echo "    Status: sudo systemctl status claude-remote-backend"
     fi
 }
 
-# 禁用开机自启动
+# Disable autostart
 disable_autostart() {
     echo ""
-    print_info "禁用开机自启动..."
+    print_info "Disabling autostart..."
 
     if [[ "$OS" == "Darwin" ]]; then
         if [ -f "$PLIST_FILE" ]; then
             launchctl unload "$PLIST_FILE" 2>/dev/null || true
             rm -f "$PLIST_FILE"
-            print_success "开机自启动已禁用"
+            print_success "Autostart disabled"
         else
-            print_warning "开机自启动未启用"
+            print_warning "Autostart is not enabled"
         fi
 
     elif [[ "$OS" == "Linux" ]]; then
@@ -362,36 +418,36 @@ disable_autostart() {
             sudo systemctl disable claude-remote-backend 2>/dev/null || true
             sudo rm -f "$SYSTEMD_FILE"
             sudo systemctl daemon-reload
-            print_success "开机自启动已禁用"
+            print_success "Autostart disabled"
         else
-            print_warning "开机自启动未启用"
+            print_warning "Autostart is not enabled"
         fi
     fi
 }
 
-# 查看日志
+# View logs
 view_logs() {
     echo ""
-    print_info "最近日志 (Ctrl+C 退出)"
+    print_info "Recent logs (Ctrl+C to exit)"
     echo ""
 
     if [ -f "$PROJECT_ROOT/logs/backend.log" ]; then
         tail -f "$PROJECT_ROOT/logs/backend.log"
     else
-        print_warning "日志文件不存在"
+        print_warning "Log file does not exist"
     fi
 }
 
-# ==================== 安全管理 ====================
+# ==================== Security Management ====================
 
-# 查看安全状态
+# View security status
 security_status() {
     cd "$PROJECT_ROOT"
     source venv/bin/activate 2>/dev/null || true
     python3 scripts/security.py list
 }
 
-# 解封 IP
+# Unblock IP
 security_unblock() {
     local ip="$1"
     if [ -z "$ip" ]; then
@@ -406,41 +462,41 @@ security_unblock() {
     python3 scripts/security.py unblock "$ip"
 }
 
-# 解除紧急锁定
+# Release emergency lock
 security_unlock() {
     cd "$PROJECT_ROOT"
     source venv/bin/activate 2>/dev/null || true
     python3 scripts/security.py unlock
 }
 
-# 重置安全状态
+# Reset security state
 security_reset() {
     cd "$PROJECT_ROOT"
     source venv/bin/activate 2>/dev/null || true
     python3 scripts/security.py reset
 }
 
-# 完整安装
+# Full installation
 full_install() {
     print_header
 
-    echo "项目目录: $PROJECT_ROOT"
-    echo "操作系统: $OS"
+    echo "Project directory: $PROJECT_ROOT"
+    echo "Operating system: $OS"
 
-    # 1. 安装依赖
+    # 1. Install dependencies
     install_deps
 
-    # 2. 询问是否启用开机自启动
+    # 2. Ask whether to enable autostart
     echo ""
-    read -p "是否启用开机自启动？[y/N] " -n 1 -r
+    read -p "Enable autostart on boot? [y/N] " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         enable_autostart
     else
-        print_info "跳过开机自启动配置"
+        print_info "Skipping autostart configuration"
         echo ""
-        # 3. 询问是否立即启动
-        read -p "是否立即启动服务？[Y/n] " -n 1 -r
+        # 3. Ask whether to start now
+        read -p "Start service now? [Y/n] " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             start_service
@@ -449,29 +505,29 @@ full_install() {
 
     echo ""
     echo -e "${GREEN}===========================================${NC}"
-    echo -e "${GREEN}  安装完成！${NC}"
+    echo -e "${GREEN}  Installation Complete!${NC}"
     echo -e "${GREEN}===========================================${NC}"
     echo ""
-    echo "后续管理请运行: $0"
+    echo "For future management, run: $0"
     echo ""
 }
 
-# 显示菜单
+# Show menu
 show_menu() {
     print_header
     check_status
     echo ""
     echo -e "${BLUE}-------------------------------------------${NC}"
     echo ""
-    echo "  1) 启动服务"
-    echo "  2) 停止服务"
-    echo "  3) 重启服务"
-    echo "  4) 查看日志"
+    echo "  1) Start service"
+    echo "  2) Stop service"
+    echo "  3) Restart service"
+    echo "  4) View logs"
     echo ""
-    echo "  5) 启用开机自启动"
-    echo "  6) 禁用开机自启动"
+    echo "  5) Enable autostart"
+    echo "  6) Disable autostart"
     echo ""
-    echo "  7) 重新安装依赖"
+    echo "  7) Reinstall dependencies"
     echo ""
     echo -e "${YELLOW}  --- Security ---${NC}"
     echo "  8) Security status"
@@ -479,7 +535,7 @@ show_menu() {
     echo "  10) Release emergency lock"
     echo "  11) Reset security state"
     echo ""
-    echo "  0) 退出"
+    echo "  0) Exit"
     echo ""
 }
 
@@ -510,7 +566,7 @@ print_usage() {
     echo ""
 }
 
-# 主逻辑
+# Main logic
 main() {
     # Handle command line arguments
     if [ $# -gt 0 ]; then
@@ -563,16 +619,16 @@ main() {
         exit 0
     fi
 
-    # 检查是否首次安装
+    # Check if first-time installation
     if [ ! -d "$PROJECT_ROOT/venv" ] || [ ! -f "$PROJECT_ROOT/.env" ]; then
         full_install
         exit 0
     fi
 
-    # 显示交互菜单
+    # Show interactive menu
     while true; do
         show_menu
-        read -p "请选择操作 [0-11]: " choice
+        read -p "Select option [0-11]: " choice
 
         case $choice in
             1) start_service ;;
@@ -586,12 +642,12 @@ main() {
             9) security_unblock ;;
             10) security_unlock ;;
             11) security_reset ;;
-            0) echo ""; print_info "再见！"; echo ""; exit 0 ;;
-            *) print_error "无效选项" ;;
+            0) echo ""; print_info "Goodbye!"; echo ""; exit 0 ;;
+            *) print_error "Invalid option" ;;
         esac
 
         echo ""
-        read -p "按回车键继续..."
+        read -p "Press Enter to continue..."
     done
 }
 

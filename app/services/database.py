@@ -220,6 +220,50 @@ class Database:
                 # 迁移：为 pinned_sessions 添加新列（如果不存在）
                 self._migrate_pinned_sessions(cursor)
 
+                # 定时任务表
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        session_id TEXT,
+                        working_dir TEXT NOT NULL,
+                        prompt TEXT NOT NULL,
+                        cron_expr TEXT NOT NULL,
+                        timezone TEXT DEFAULT 'Asia/Shanghai',
+                        enabled INTEGER DEFAULT 1,
+                        notify_feishu INTEGER DEFAULT 1,
+                        feishu_chat_id TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        last_run_at DATETIME,
+                        next_run_at DATETIME
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_enabled
+                    ON scheduled_tasks(enabled, next_run_at)
+                """)
+
+                # 任务执行历史表
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS task_executions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        task_id INTEGER NOT NULL,
+                        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        finished_at DATETIME,
+                        status TEXT DEFAULT 'running',
+                        error TEXT,
+                        output_summary TEXT,
+                        notified INTEGER DEFAULT 0,
+                        FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id) ON DELETE CASCADE
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_task_executions_task_id
+                    ON task_executions(task_id, started_at DESC)
+                """)
+
                 logger.info("Database initialized")
 
     def _migrate_pinned_sessions(self, cursor):
@@ -977,6 +1021,316 @@ class Database:
                 """, (f"-{days} days",))
                 if cursor.rowcount > 0:
                     logger.info(f"Cleaned up {cursor.rowcount} old login records")
+
+    # ==================== 定时任务 ====================
+
+    def create_scheduled_task(
+        self,
+        name: str,
+        prompt: str,
+        cron_expr: str,
+        working_dir: str,
+        session_id: str = None,
+        description: str = None,
+        timezone: str = "Asia/Shanghai",
+        notify_feishu: bool = True,
+        feishu_chat_id: str = None
+    ) -> int:
+        """创建定时任务，返回任务ID"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO scheduled_tasks
+                    (name, description, session_id, working_dir, prompt, cron_expr,
+                     timezone, enabled, notify_feishu, feishu_chat_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """, (name, description, session_id, working_dir, prompt, cron_expr,
+                      timezone, 1 if notify_feishu else 0, feishu_chat_id))
+                task_id = cursor.lastrowid
+                logger.info(f"Created scheduled task: {name} (id={task_id}, cron={cron_expr})")
+                return task_id
+
+    def get_scheduled_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """获取单个定时任务"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, name, description, session_id, working_dir, prompt,
+                           cron_expr, timezone, enabled, notify_feishu, feishu_chat_id,
+                           created_at, updated_at, last_run_at, next_run_at
+                    FROM scheduled_tasks
+                    WHERE id = ?
+                """, (task_id,))
+                row = cursor.fetchone()
+                if row:
+                    result = dict(row)
+                    result['enabled'] = bool(result['enabled'])
+                    result['notify_feishu'] = bool(result['notify_feishu'])
+                    return result
+                return None
+
+    def get_all_scheduled_tasks(self) -> List[Dict[str, Any]]:
+        """获取所有定时任务"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, name, description, session_id, working_dir, prompt,
+                           cron_expr, timezone, enabled, notify_feishu, feishu_chat_id,
+                           created_at, updated_at, last_run_at, next_run_at
+                    FROM scheduled_tasks
+                    ORDER BY created_at DESC
+                """)
+                results = []
+                for row in cursor.fetchall():
+                    item = dict(row)
+                    item['enabled'] = bool(item['enabled'])
+                    item['notify_feishu'] = bool(item['notify_feishu'])
+                    results.append(item)
+                return results
+
+    def get_enabled_scheduled_tasks(self) -> List[Dict[str, Any]]:
+        """获取所有启用的定时任务"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, name, description, session_id, working_dir, prompt,
+                           cron_expr, timezone, enabled, notify_feishu, feishu_chat_id,
+                           created_at, updated_at, last_run_at, next_run_at
+                    FROM scheduled_tasks
+                    WHERE enabled = 1
+                    ORDER BY next_run_at ASC
+                """)
+                results = []
+                for row in cursor.fetchall():
+                    item = dict(row)
+                    item['enabled'] = True
+                    item['notify_feishu'] = bool(item['notify_feishu'])
+                    results.append(item)
+                return results
+
+    def get_enabled_task_ids(self) -> List[int]:
+        """获取所有启用的定时任务 ID（轻量级查询）"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM scheduled_tasks WHERE enabled = 1")
+                return [row['id'] for row in cursor.fetchall()]
+
+    def update_scheduled_task(
+        self,
+        task_id: int,
+        name: str = None,
+        description: str = None,
+        session_id: str = None,
+        working_dir: str = None,
+        prompt: str = None,
+        cron_expr: str = None,
+        timezone: str = None,
+        enabled: bool = None,
+        notify_feishu: bool = None,
+        feishu_chat_id: str = None
+    ) -> bool:
+        """更新定时任务"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                updates = ["updated_at = CURRENT_TIMESTAMP"]
+                params = []
+
+                if name is not None:
+                    updates.append("name = ?")
+                    params.append(name)
+                if description is not None:
+                    updates.append("description = ?")
+                    params.append(description)
+                if session_id is not None:
+                    updates.append("session_id = ?")
+                    params.append(session_id if session_id else None)
+                if working_dir is not None:
+                    updates.append("working_dir = ?")
+                    params.append(working_dir)
+                if prompt is not None:
+                    updates.append("prompt = ?")
+                    params.append(prompt)
+                if cron_expr is not None:
+                    updates.append("cron_expr = ?")
+                    params.append(cron_expr)
+                if timezone is not None:
+                    updates.append("timezone = ?")
+                    params.append(timezone)
+                if enabled is not None:
+                    updates.append("enabled = ?")
+                    params.append(1 if enabled else 0)
+                if notify_feishu is not None:
+                    updates.append("notify_feishu = ?")
+                    params.append(1 if notify_feishu else 0)
+                if feishu_chat_id is not None:
+                    updates.append("feishu_chat_id = ?")
+                    params.append(feishu_chat_id if feishu_chat_id else None)
+
+                params.append(task_id)
+                cursor.execute(f"""
+                    UPDATE scheduled_tasks SET {', '.join(updates)} WHERE id = ?
+                """, params)
+
+                if cursor.rowcount > 0:
+                    logger.info(f"Updated scheduled task id={task_id}")
+                    return True
+                return False
+
+    def delete_scheduled_task(self, task_id: int) -> bool:
+        """删除定时任务"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM scheduled_tasks WHERE id = ?", (task_id,))
+                if cursor.rowcount > 0:
+                    logger.info(f"Deleted scheduled task id={task_id}")
+                    return True
+                return False
+
+    def update_scheduled_task_last_run(self, task_id: int, last_run_at: datetime):
+        """更新任务的上次执行时间"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE scheduled_tasks
+                    SET last_run_at = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (last_run_at.isoformat(), task_id))
+
+    def update_scheduled_task_next_run(self, task_id: int, next_run_at: datetime):
+        """更新任务的下次执行时间"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE scheduled_tasks
+                    SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (next_run_at.isoformat(), task_id))
+
+    def update_task_session_id(self, task_id: int, session_id: str):
+        """更新任务的 session_id（每次执行后更新）"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE scheduled_tasks
+                    SET session_id = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (session_id, task_id))
+
+    # ==================== 任务执行历史 ====================
+
+    def create_task_execution(self, task_id: int) -> int:
+        """创建任务执行记录，返回记录ID"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO task_executions (task_id, status)
+                    VALUES (?, 'running')
+                """, (task_id,))
+                return cursor.lastrowid
+
+    def update_task_execution(
+        self,
+        execution_id: int,
+        status: str = None,
+        finished_at: datetime = None,
+        error: str = None,
+        output_summary: str = None,
+        notified: bool = None
+    ):
+        """更新任务执行记录"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                updates = []
+                params = []
+
+                if status is not None:
+                    updates.append("status = ?")
+                    params.append(status)
+                if finished_at is not None:
+                    updates.append("finished_at = ?")
+                    params.append(finished_at.isoformat())
+                if error is not None:
+                    updates.append("error = ?")
+                    params.append(error)
+                if output_summary is not None:
+                    updates.append("output_summary = ?")
+                    params.append(output_summary)
+                if notified is not None:
+                    updates.append("notified = ?")
+                    params.append(1 if notified else 0)
+
+                if updates:
+                    params.append(execution_id)
+                    cursor.execute(f"""
+                        UPDATE task_executions SET {', '.join(updates)} WHERE id = ?
+                    """, params)
+
+    def get_task_executions(
+        self,
+        task_id: int,
+        limit: int = 20,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """获取任务执行历史"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, task_id, started_at, finished_at, status,
+                           error, output_summary, notified
+                    FROM task_executions
+                    WHERE task_id = ?
+                    ORDER BY started_at DESC
+                    LIMIT ? OFFSET ?
+                """, (task_id, limit, offset))
+                results = []
+                for row in cursor.fetchall():
+                    item = dict(row)
+                    item['notified'] = bool(item['notified'])
+                    results.append(item)
+                return results
+
+    def get_task_execution(self, execution_id: int) -> Optional[Dict[str, Any]]:
+        """获取单个执行记录"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, task_id, started_at, finished_at, status,
+                           error, output_summary, notified
+                    FROM task_executions
+                    WHERE id = ?
+                """, (execution_id,))
+                row = cursor.fetchone()
+                if row:
+                    item = dict(row)
+                    item['notified'] = bool(item['notified'])
+                    return item
+                return None
+
+    def cleanup_old_task_executions(self, days: int = 30):
+        """清理旧的任务执行记录"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM task_executions
+                    WHERE started_at < datetime('now', ?)
+                """, (f"-{days} days",))
+                if cursor.rowcount > 0:
+                    logger.info(f"Cleaned up {cursor.rowcount} old task execution records")
 
 
 # 全局实例
