@@ -242,7 +242,7 @@ const RemoteMachines = {
   async saveMachine() {
     const data = this.getFormData();
     if (!data) {
-      alert(this.t('remote.fillRequired'));
+      window.app.showAlert(this.t('remote.fillRequired'), { type: 'warning' });
       return;
     }
 
@@ -272,7 +272,7 @@ const RemoteMachines = {
       await this.loadMachines();
     } catch (error) {
       console.error('Save machine error:', error);
-      alert(this.t('remote.saveFailed'));
+      window.app.showAlert(this.t('remote.saveFailed'), { type: 'error' });
     }
   },
 
@@ -283,9 +283,12 @@ const RemoteMachines = {
     const machine = this.machines.find(m => m.id === machineId);
     if (!machine) return;
 
-    if (!confirm(`${this.t('remote.confirmDelete')} "${machine.name}"?`)) {
-      return;
-    }
+    const confirmed = await window.app.showConfirm(`${this.t('remote.confirmDelete')} "${machine.name}"?`, {
+      type: 'danger',
+      title: this.t('dialog.delete', 'Delete'),
+      confirmText: this.t('common.delete', 'Delete')
+    });
+    if (!confirmed) return;
 
     try {
       const response = await fetch(`/api/remote-machines/${machineId}`, {
@@ -300,7 +303,7 @@ const RemoteMachines = {
       await this.loadMachines();
     } catch (error) {
       console.error('Delete machine error:', error);
-      alert(this.t('remote.deleteFailed'));
+      window.app.showAlert(this.t('remote.deleteFailed'), { type: 'error' });
     }
   },
 

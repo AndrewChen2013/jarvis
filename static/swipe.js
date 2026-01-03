@@ -19,8 +19,8 @@
  * Handles horizontal swipe navigation and pinned sessions grid
  */
 // Page constants (accessible to all methods)
-const SWIPE_PAGE_IDS = ['page-projects', 'page-all-sessions', 'page-files', 'page-remote', 'page-monitor'];
-const SWIPE_PAGE_NAMES = { 'page-projects': 'Projects', 'page-all-sessions': 'Sessions', 'page-files': 'Files', 'page-remote': 'Remote', 'page-monitor': 'Monitor' };
+const SWIPE_PAGE_IDS = ['page-projects', 'page-all-sessions', 'page-files', 'page-remote', 'page-monitor', 'page-scheduled-tasks'];
+const SWIPE_PAGE_NAMES = { 'page-projects': 'Projects', 'page-all-sessions': 'Sessions', 'page-files': 'Files', 'page-remote': 'Remote', 'page-monitor': 'Monitor', 'page-scheduled-tasks': 'Tasks' };
 
 const AppSwipe = {
 
@@ -46,31 +46,35 @@ const AppSwipe = {
 
     // Migration from old binary format
     if (saved === '0' || saved === null || saved === undefined) {
-      return [0, 1, 2, 3, 4]; // Projects, Sessions, Files, Remote, Monitor
+      return [0, 1, 2, 3, 4, 5]; // Projects, Sessions, Files, Remote, Monitor, Tasks
     }
     if (saved === '1') {
-      return [1, 0, 2, 3, 4]; // Sessions, Projects, Files, Remote, Monitor
+      return [1, 0, 2, 3, 4, 5]; // Sessions, Projects, Files, Remote, Monitor, Tasks
     }
 
     // New array format
     try {
       const order = JSON.parse(saved);
       if (Array.isArray(order)) {
-        // Migration: 3 pages -> 5 pages
+        // Migration: 3 pages -> 6 pages
         if (order.length === 3) {
-          return [...order, 3, 4];
+          return [...order, 3, 4, 5];
         }
-        // Migration: 4 pages -> 5 pages
+        // Migration: 4 pages -> 6 pages
         if (order.length === 4) {
-          return [...order, 4];
+          return [...order, 4, 5];
         }
+        // Migration: 5 pages -> 6 pages
         if (order.length === 5) {
+          return [...order, 5];
+        }
+        if (order.length === 6) {
           return order;
         }
       }
     } catch (e) {}
 
-    return [0, 1, 2, 3, 4]; // Default
+    return [0, 1, 2, 3, 4, 5]; // Default
   },
 
   /**
@@ -605,6 +609,9 @@ const AppSwipe = {
     if (initialPageId === 'page-remote' && window.RemoteMachines) {
       window.RemoteMachines.loadMachines();
     }
+    if (initialPageId === 'page-scheduled-tasks' && window.AppScheduledTasks) {
+      window.AppScheduledTasks.loadScheduledTasksPage();
+    }
 
     // Listen for scroll to update indicator
     container.addEventListener('scroll', () => {
@@ -719,6 +726,11 @@ const AppSwipe = {
     // Lazy load remote machines page
     if (currentPageId === 'page-remote' && window.RemoteMachines) {
       window.RemoteMachines.loadMachines();
+    }
+
+    // Lazy load scheduled tasks page
+    if (currentPageId === 'page-scheduled-tasks' && window.AppScheduledTasks) {
+      window.AppScheduledTasks.loadScheduledTasksPage();
     }
 
     // Monitor page: start/stop polling

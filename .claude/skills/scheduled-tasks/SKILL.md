@@ -109,7 +109,7 @@ Format: `minute hour day month weekday`
 
 **Claude**: I'll help you create that task. Who should receive the notification? (email or Feishu user_id)
 
-**User**: biao.chen@zilliz.com
+**User**: user@example.com
 
 **Claude**: Let me convert this email to Feishu user_id...
 [Uses Feishu MCP to get user_id]

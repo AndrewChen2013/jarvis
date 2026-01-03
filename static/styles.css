@@ -3978,6 +3978,7 @@ html, body {
 .history-message-item {
   border-bottom: 1px solid #333;
   padding: 8px 0;
+  position: relative;
 }
 
 .history-message-item:last-child {
@@ -3989,6 +3990,43 @@ html, body {
   font-size: 11px;
   color: #666;
   margin-bottom: 4px;
+}
+
+/* History copy button */
+.history-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #888;
+  font-size: 14px;
+  width: 28px;
+  height: 24px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.history-copy-btn:hover {
+  opacity: 1;
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+.history-copy-btn:active {
+  transform: scale(0.95);
+}
+
+.history-copy-btn.copied {
+  color: #10b981;
+  border-color: #10b981;
+  opacity: 1;
 }
 
 .history-item-content {

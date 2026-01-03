@@ -230,13 +230,25 @@ cloudflared tunnel run claude-remote
 
 输入 AUTH_TOKEN（安装时显示，或查看 `.env` 文件）。
 
+### 项目管理
+
+<img src="screenshots/projects.png" width="300" alt="项目列表">
+
+按项目组织你的工作：
+
+- **项目卡片**：查看所有项目及会话数量
+- **活跃指示**：绿点表示有活跃会话的项目
+- **快速访问**：点击项目查看其会话
+
 ### 会话管理
 
-<img src="screenshots/sessions.jpg" width="300" alt="会话列表">
+<img src="screenshots/sessions.png" width="300" alt="会话列表">
 
 - **创建新会话**：点击 `+`，选择工作目录
 - **恢复历史会话**：浏览 Claude 历史记录，继续之前的对话
 - **多会话切换**：使用悬浮按钮在会话间切换
+- **置顶会话**：长按会话卡片，将重要会话置顶
+- **Token 统计**：查看每个会话的总 Token 用量和上下文窗口使用情况
 
 ### 终端操作
 
@@ -251,10 +263,51 @@ cloudflared tunnel run claude-remote
 
 ### 语音输入
 
+<img src="screenshots/voice-input.jpg" width="300" alt="语音输入">
+
 1. 点击输入框
 2. 点击键盘上的麦克风图标
 3. 说出你的指令
 4. 发送
+
+### 定时任务
+
+<img src="screenshots/scheduled-tasks.png" width="300" alt="定时任务">
+
+基于 cron 表达式的定时任务自动化：
+
+- **创建任务**：设置按计划运行的 prompt（每小时、每天、每周）
+- **飞书通知**：任务结果自动发送到飞书/Lark
+- **MCP 集成**：通过 `claude-remote-tasks` MCP 服务器在 Claude Code 中管理任务
+- **执行历史**：查看过去的运行记录和输出
+- **手动触发**：一键立即运行任何任务
+
+使用场景示例：
+- 监控新闻并发送每日摘要
+- 检查邮件并过滤重要内容
+- 跟踪社交媒体动态
+- 定期运行系统健康检查
+
+### 系统监控
+
+<img src="screenshots/monitor.png" width="300" alt="系统监控">
+
+实时系统监控：
+
+- **CPU 和内存**：可视化仪表盘显示实时使用率
+- **进程列表**：按 CPU 或内存排序，可配置显示数量
+- **Claude Remote 进程**：查看所有相关进程
+- **磁盘使用**：监控所有挂载的磁盘
+
+### SSH 远程机器
+
+<img src="screenshots/remote-machines.png" width="300" alt="远程机器">
+
+通过 SSH 连接远程服务器：
+
+- **添加机器**：配置 SSH 主机、端口、用户名和密钥
+- **快速连接**：一键打开 SSH 终端
+- **管理连接**：编辑或删除已保存的机器
 
 ---
 
@@ -268,6 +321,9 @@ cloudflared tunnel run claude-remote
 | **文件操作** | "找出项目里所有的 TODO 注释" |
 | **Git 操作** | "建个分支，把这些改动提交了" |
 | **快速查询** | "配置文件的结构是什么样的？" |
+| **定时监控** | 设置每小时新闻监控，飞书推送通知 |
+| **远程服务器** | SSH 连接到服务器执行命令 |
+| **文件传输** | 从手机上传配置文件 |
 
 ---
 
@@ -334,6 +390,34 @@ cloudflared tunnel run claude-remote
 - 9 种语言：中文、英文、日语、韩语、法语、德语、西班牙语、俄语、葡萄牙语
 - 随时切换，设置自动保存
 
+### ⏰ 定时任务 & MCP 服务器
+
+- **Cron 定时调度** — 每小时、每天、每周或自定义计划运行任务
+- **飞书/Lark 通知** — 自动将任务结果发送到聊天
+- **MCP 集成** — 通过内置 MCP 服务器在 Claude Code 中管理任务
+- **执行历史** — 查看过去的运行记录、输出和状态
+- **会话关联** — 每个任务可以创建专属的 Claude Code 会话
+
+### 📊 系统监控
+
+- **实时 CPU 和内存** — 可视化仪表盘显示实时使用率
+- **进程列表** — 按 CPU 或内存排序的进程列表
+- **磁盘使用** — 监控所有挂载的磁盘
+- **Claude Remote 统计** — 查看所有相关进程及其资源使用情况
+
+### 🖥️ SSH 远程机器
+
+- **保存连接** — 存储 SSH 主机、端口、用户名和密钥路径
+- **快速连接** — 一键打开终端会话
+- **集成终端** — 完整的 xterm.js 终端体验
+
+### 📁 文件管理
+
+- **文件浏览器** — 浏览你的文件系统
+- **文件上传** — 从手机上传文件到任意目录
+- **上传历史** — 跟踪最近上传的文件，快速复制路径
+- **文件下载** — 直接下载文件到你的设备
+
 ### 🔐 安全访问
 
 - **Token 认证** — 首次运行自动生成随机访问令牌
@@ -352,6 +436,37 @@ AUTH_TOKEN=你的密码
 ```
 
 > AUTH_TOKEN 会在首次运行时自动生成。可以随时在设置中修改。
+
+### 定时任务 MCP 服务器
+
+要让 Claude Code 能够管理定时任务，需要将 MCP 服务器添加到 Claude Code 配置中：
+
+**配置文件位置：** `~/.claude/claude_desktop_config.json`（或你的 Claude Code 配置文件）
+
+```json
+{
+  "mcpServers": {
+    "claude-remote-tasks": {
+      "command": "python",
+      "args": ["/path/to/claude-remote/app/mcp/scheduled_tasks_mcp.py"],
+      "env": {
+        "CLAUDE_REMOTE_URL": "http://localhost:8000",
+        "CLAUDE_REMOTE_TOKEN": "你的访问令牌"
+      }
+    }
+  }
+}
+```
+
+**可用的 MCP 工具：**
+- `create_scheduled_task` — 创建新的定时任务
+- `list_scheduled_tasks` — 列出所有任务
+- `get_scheduled_task` — 获取任务详情
+- `update_scheduled_task` — 修改任务
+- `delete_scheduled_task` — 删除任务
+- `toggle_scheduled_task` — 启用/禁用任务
+- `run_scheduled_task_now` — 立即执行
+- `get_task_executions` — 查看执行历史
 
 ---
 

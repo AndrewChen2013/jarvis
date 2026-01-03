@@ -408,7 +408,7 @@ class SessionManager {
     }
 
     // 通过 ID 查找正确的容器（不依赖可能过期的 session.container 引用）
-    const targetContainer = document.getElementById(expectedContainerId);
+    let targetContainer = document.getElementById(expectedContainerId);
     this.log(`showSession: targetContainer by ID = ${targetContainer ? 'found' : 'NOT FOUND'}`);
 
     // 如果 session.container 引用过期（不在 DOM 中或 ID 不匹配），更新它
@@ -423,6 +423,30 @@ class SessionManager {
     } else if (targetContainer) {
       this.log(`showSession: session.container was NULL, set to targetContainer`);
       session.container = targetContainer;
+    }
+
+    // 验证 terminal 是否真的在 container 里（防止 Connected 但不渲染）
+    if (session.terminal && session.container) {
+      const xtermElement = session.container.querySelector('.xterm');
+      if (!xtermElement) {
+        this.log(`showSession: WARNING - terminal exists but xterm element NOT in container! Clearing terminal reference.`);
+        // terminal 存在但 DOM 不在 container 里，标记为无效
+        // 下次 initTerminal 会重新创建
+        try {
+          session.terminal.dispose();
+        } catch (e) {
+          this.log(`showSession: dispose error: ${e.message}`);
+        }
+        session.terminal = null;
+      } else {
+        this.log(`showSession: terminal xterm element found in container`);
+      }
+    }
+
+    // 如果没有 container，创建一个
+    if (!session.container) {
+      this.log(`showSession: creating new container`);
+      targetContainer = this.createContainer(session);
     }
 
     // 隐藏所有 container，然后只显示目标 container
@@ -440,11 +464,11 @@ class SessionManager {
     });
 
     // 最终确认
-    if (targetContainer) {
-      targetContainer.style.display = 'block';
-      this.log(`showSession: final confirm - ${expectedContainerId} is visible`);
+    if (session.container) {
+      session.container.style.display = 'block';
+      this.log(`showSession: final confirm - ${session.container.id} is visible`);
     } else {
-      this.log(`showSession: WARNING - target container ${expectedContainerId} not found in DOM!`);
+      this.log(`showSession: WARNING - no container available!`);
     }
 
     // 恢复该 session 的字体大小

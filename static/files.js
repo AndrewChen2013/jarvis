@@ -779,7 +779,7 @@ const AppFiles = {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const path = btn.dataset.path;
-          this.copyToClipboard(path);
+          this.copyToClipboard(path, true);  // showFeedback = true
         });
       });
 
@@ -874,12 +874,42 @@ const AppFiles = {
   /**
    * Copy text to clipboard
    */
-  async copyToClipboard(text) {
+  copyToClipboard(text) {
+    // 优先使用 Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          this.showToast(this.t('files.copied', 'Copied!'));
+        })
+        .catch((error) => {
+          console.warn('Clipboard API failed, using fallback:', error);
+          this.fallbackCopy(text);
+        });
+    } else {
+      this.fallbackCopy(text);
+    }
+  },
+
+  /**
+   * Fallback copy method for older browsers
+   */
+  fallbackCopy(text) {
     try {
-      await navigator.clipboard.writeText(text);
-      this.showToast(this.t('files.copied', 'Copied!'));
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (success) {
+        this.showToast(this.t('files.copied', 'Copied!'));
+      } else {
+        this.showToast(this.t('files.copyFailed', 'Copy failed'), 'error');
+      }
     } catch (error) {
-      console.error('Copy failed:', error);
+      console.error('Fallback copy failed:', error);
       this.showToast(this.t('files.copyFailed', 'Copy failed'), 'error');
     }
   },

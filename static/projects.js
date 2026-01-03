@@ -649,11 +649,11 @@ const AppProjects = {
           if (onSuccess) onSuccess(newName);
         } else {
           const data = await response.json();
-          alert(data.detail || this.t('error.saveFailed', 'Save failed'));
+          window.app.showAlert(data.detail || this.t('error.saveFailed', 'Save failed'), { type: 'error' });
         }
       } catch (error) {
         console.error('Rename error:', error);
-        alert(this.t('error.network', 'Network error'));
+        window.app.showAlert(this.t('error.network', 'Network error'), { type: 'error' });
       } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = this.t('common.save', 'Save');
@@ -704,11 +704,11 @@ const AppProjects = {
         if (onSuccess) onSuccess();
       } else {
         const data = await response.json();
-        alert(data.detail || this.t('error.deleteFailed', 'Delete failed'));
+        window.app.showAlert(data.detail || this.t('error.deleteFailed', 'Delete failed'), { type: 'error' });
       }
     } catch (error) {
       console.error('Delete session error:', error);
-      alert(this.t('error.network', 'Network error'));
+      window.app.showAlert(this.t('error.network', 'Network error'), { type: 'error' });
     }
   },
 
@@ -732,11 +732,11 @@ const AppProjects = {
         if (onSuccess) onSuccess();
       } else {
         const data = await response.json();
-        alert(data.detail || this.t('error.deleteFailed', 'Delete failed'));
+        window.app.showAlert(data.detail || this.t('error.deleteFailed', 'Delete failed'), { type: 'error' });
       }
     } catch (error) {
       console.error('Delete project error:', error);
-      alert(this.t('error.network', 'Network error'));
+      window.app.showAlert(this.t('error.network', 'Network error'), { type: 'error' });
     }
   },
 

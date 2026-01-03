@@ -230,13 +230,25 @@ Now access from anywhere: `https://claude.yourdomain.com`
 
 Enter your AUTH_TOKEN (shown during installation or in `.env` file).
 
+### Project Management
+
+<img src="screenshots/projects.png" width="300" alt="Projects">
+
+Organize your work by project:
+
+- **Project cards**: See all projects with session counts
+- **Active indicator**: Green dot shows projects with active sessions
+- **Quick access**: Tap a project to see its sessions
+
 ### Session Management
 
-<img src="screenshots/sessions.jpg" width="300" alt="Sessions">
+<img src="screenshots/sessions.png" width="300" alt="Sessions">
 
 - **Create new session**: Tap `+`, select working directory
 - **Resume existing session**: Browse your Claude history and continue
 - **Multiple sessions**: Switch between sessions with the floating button
+- **Pin sessions**: Long press to pin important sessions to the top
+- **Token tracking**: See total tokens used and context window usage for each session
 
 ### Terminal
 
@@ -251,10 +263,51 @@ Full terminal experience on mobile:
 
 ### Voice Input
 
+<img src="screenshots/voice-input.jpg" width="300" alt="Voice Input">
+
 1. Tap the input field
 2. Tap the microphone icon on your keyboard
 3. Speak your instruction
 4. Send
+
+### Scheduled Tasks
+
+<img src="screenshots/scheduled-tasks.png" width="300" alt="Scheduled Tasks">
+
+Automate recurring tasks with cron-based scheduling:
+
+- **Create tasks**: Define prompts that run on a schedule (hourly, daily, weekly)
+- **Feishu notifications**: Get task results sent to Feishu/Lark automatically
+- **MCP integration**: Use the `claude-remote-tasks` MCP server to manage tasks from Claude Code
+- **Execution history**: View past runs and their outputs
+- **Manual trigger**: Run any task immediately with one tap
+
+Example use cases:
+- Monitor news and send daily summaries
+- Check emails and filter important ones
+- Track social media updates
+- Run periodic system health checks
+
+### System Monitor
+
+<img src="screenshots/monitor.png" width="300" alt="System Monitor">
+
+Real-time system monitoring:
+
+- **CPU & Memory**: Live usage with visual gauges
+- **Top Processes**: Sort by CPU or memory, configurable count
+- **Claude Remote processes**: See all related processes
+- **Disk Usage**: Monitor all mounted volumes
+
+### SSH Remote Machines
+
+<img src="screenshots/remote-machines.png" width="300" alt="Remote Machines">
+
+Connect to remote servers via SSH:
+
+- **Add machines**: Configure SSH host, port, username, and key
+- **Quick connect**: One-tap to open SSH terminal
+- **Manage connections**: Edit or delete saved machines
 
 ---
 
@@ -268,6 +321,9 @@ Full terminal experience on mobile:
 | **File operations** | "Find all TODO comments in the project" |
 | **Git operations** | "Create a branch for this feature and commit" |
 | **Quick queries** | "What's the structure of the config file?" |
+| **Scheduled monitoring** | Set up hourly news monitoring with Feishu alerts |
+| **Remote server** | SSH into your server and run commands |
+| **File transfer** | Upload config files from your phone |
 
 ---
 
@@ -334,6 +390,34 @@ Full terminal experience on mobile:
 - 9 languages: Chinese, English, Japanese, Korean, French, German, Spanish, Russian, Portuguese
 - Switch anytime, settings auto-saved
 
+### ⏰ Scheduled Tasks & MCP Server
+
+- **Cron-based scheduling** — Run tasks hourly, daily, weekly, or custom schedules
+- **Feishu/Lark notifications** — Automatically send task results to your chat
+- **MCP integration** — Manage tasks from Claude Code with the built-in MCP server
+- **Execution history** — View past runs, outputs, and status
+- **Session linking** — Each task can create a dedicated Claude Code session
+
+### 📊 System Monitor
+
+- **Live CPU & Memory** — Real-time usage with visual gauges
+- **Process List** — Top processes sorted by CPU or memory
+- **Disk Usage** — Monitor all mounted volumes
+- **Claude Remote Stats** — See all related processes and their resource usage
+
+### 🖥️ SSH Remote Machines
+
+- **Saved connections** — Store SSH host, port, username, and key path
+- **Quick connect** — One-tap to open terminal session
+- **Integrated terminal** — Full xterm.js terminal experience
+
+### 📁 File Management
+
+- **File browser** — Navigate your filesystem
+- **File upload** — Upload files from mobile to any directory
+- **Upload history** — Track recent uploads with quick copy path
+- **File download** — Download files directly to your device
+
 ### 🔐 Secure Access
 
 - **Token Auth** — Random access token generated on first run
@@ -352,6 +436,37 @@ AUTH_TOKEN=your-secret-token
 ```
 
 > The AUTH_TOKEN is auto-generated on first run. You can change it anytime in Settings.
+
+### MCP Server for Scheduled Tasks
+
+To enable Claude Code to manage scheduled tasks, add the MCP server to your Claude Code configuration:
+
+**Location:** `~/.claude/claude_desktop_config.json` (or your Claude Code config)
+
+```json
+{
+  "mcpServers": {
+    "claude-remote-tasks": {
+      "command": "python",
+      "args": ["/path/to/claude-remote/app/mcp/scheduled_tasks_mcp.py"],
+      "env": {
+        "CLAUDE_REMOTE_URL": "http://localhost:8000",
+        "CLAUDE_REMOTE_TOKEN": "your-auth-token"
+      }
+    }
+  }
+}
+```
+
+**Available MCP Tools:**
+- `create_scheduled_task` — Create a new scheduled task
+- `list_scheduled_tasks` — List all tasks
+- `get_scheduled_task` — Get task details
+- `update_scheduled_task` — Modify a task
+- `delete_scheduled_task` — Remove a task
+- `toggle_scheduled_task` — Enable/disable a task
+- `run_scheduled_task_now` — Execute immediately
+- `get_task_executions` — View execution history
 
 ---
 

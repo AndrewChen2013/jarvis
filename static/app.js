@@ -262,16 +262,16 @@ class App {
     );
 
     // Scheduled Tasks 页面
+    // 注意: listId 必须是实际的滚动容器，否则 scrollTop 检测失效
     this.initPullRefreshForPage(
       'page-scheduled-tasks',
       'pull-refresh-tasks',
-      'scheduled-tasks-list',
+      'scheduled-tasks-content',  // 滚动容器
       async () => {
         if (window.AppScheduledTasks) {
           window.AppScheduledTasks.refreshTasks();
         }
-      },
-      'scheduled-tasks-content'
+      }
     );
   }
 

@@ -19,6 +19,8 @@ window.AppMonitor = {
    * 初始化监控模块
    */
   initMonitor() {
+    console.log('[Monitor] initMonitor called');
+
     // 刷新按钮
     const refreshBtn = document.getElementById('monitor-refresh-btn');
     if (refreshBtn) {
@@ -29,11 +31,22 @@ window.AppMonitor = {
     const sortSelect = document.getElementById('process-sort');
     const countSelect = document.getElementById('process-count');
 
+    console.log('[Monitor] sortSelect:', sortSelect);
+    console.log('[Monitor] countSelect:', countSelect);
+
     if (sortSelect) {
-      sortSelect.addEventListener('change', () => this.loadMonitorData());
+      sortSelect.addEventListener('change', (e) => {
+        console.log('[Monitor] Sort changed to:', e.target.value);
+        this.loadMonitorData();
+      });
+      console.log('[Monitor] Sort event listener added');
     }
     if (countSelect) {
-      countSelect.addEventListener('change', () => this.loadMonitorData());
+      countSelect.addEventListener('change', (e) => {
+        console.log('[Monitor] Count changed to:', e.target.value);
+        this.loadMonitorData();
+      });
+      console.log('[Monitor] Count event listener added');
     }
   },
 
@@ -79,13 +92,14 @@ window.AppMonitor = {
    * 加载监控数据
    */
   async loadMonitorData() {
-    console.log('[Monitor] loadMonitorData called, token:', this.token ? 'exists' : 'missing');
     const sortBy = document.getElementById('process-sort')?.value || 'cpu';
     const topCount = document.getElementById('process-count')?.value || '5';
+    console.log('[Monitor] loadMonitorData called, sortBy:', sortBy, 'topCount:', topCount);
 
     try {
-      const response = await fetch(
-        `/api/monitor/overview?sort_by=${sortBy}&top_count=${topCount}`,
+      const url = `/api/monitor/overview?sort_by=${sortBy}&top_count=${topCount}`;
+      console.log('[Monitor] Fetching:', url);
+      const response = await fetch(url,
         {
           headers: { 'Authorization': `Bearer ${this.token}` }
         }
@@ -219,7 +233,7 @@ window.AppMonitor = {
   },
 
   /**
-   * 更新 Claude Remote 信息
+   * 更新 Claude Remote 信息（展示全部进程）
    */
   updateClaudeRemoteDisplay(info) {
     const container = document.getElementById('claude-remote-info');
@@ -229,17 +243,33 @@ window.AppMonitor = {
     const totalMem = this.formatBytes(info.total_memory);
 
     let html = `
-      <div class="cr-row">
-        <span class="cr-label">Main Process</span>
-        <span class="cr-value">${mainMem} · PID ${info.main_pid}</span>
+      <div class="process-item">
+        <span class="process-name">Main (uvicorn)</span>
+        <span class="process-cpu">${info.main_cpu || 0}%</span>
+        <span class="process-mem">${mainMem}</span>
       </div>
-      <div class="cr-row">
-        <span class="cr-label">Terminals</span>
-        <span class="cr-value">${info.terminal_count} active</span>
-      </div>
-      <div class="cr-row cr-total">
-        <span class="cr-label">Total Memory</span>
-        <span class="cr-value">${totalMem}</span>
+    `;
+
+    // 展示所有子进程
+    if (info.terminals && info.terminals.length > 0) {
+      for (const term of info.terminals) {
+        const mem = this.formatBytes(term.memory);
+        html += `
+          <div class="process-item">
+            <span class="process-name">${term.name}</span>
+            <span class="process-cpu">${term.cpu}%</span>
+            <span class="process-mem">${mem}</span>
+          </div>
+        `;
+      }
+    }
+
+    // 总计
+    html += `
+      <div class="process-item cr-total">
+        <span class="process-name">Total (${info.terminal_count + 1})</span>
+        <span class="process-cpu"></span>
+        <span class="process-mem">${totalMem}</span>
       </div>
     `;
 

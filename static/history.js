@@ -319,6 +319,9 @@ const AppHistory = {
         </div>
       `;
 
+      // 绑定复制按钮事件
+      this.bindHistoryCopyButtons(container);
+
       // 滚动自动加载
       this.setupHistoryScroll(sessionId, container, isModal);
 
@@ -452,6 +455,8 @@ const AppHistory = {
       if (list && history.length > 0) {
         const newItems = history.map(item => this.renderHistoryItem(item)).join('');
         list.insertAdjacentHTML('beforeend', newItems);
+        // 绑定新添加项的复制按钮
+        this.bindHistoryCopyButtons(container);
       }
 
       this._historyHasMore = data.has_more;
@@ -470,12 +475,42 @@ const AppHistory = {
   },
 
   /**
+   * Bind copy button events
+   * @param {HTMLElement} container - Container element
+   */
+  bindHistoryCopyButtons(container) {
+    container.querySelectorAll('.history-copy-btn:not([data-bound])').forEach(btn => {
+      btn.dataset.bound = 'true';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const encodedContent = btn.dataset.content;
+        try {
+          // 解码 base64 + URI 编码的内容
+          const content = decodeURIComponent(atob(encodedContent));
+          this.copyToClipboard(content, true);
+          // 临时改变按钮样式表示成功
+          btn.textContent = '✓';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = '⎘';
+            btn.classList.remove('copied');
+          }, 1500);
+        } catch (error) {
+          console.error('Copy decode error:', error);
+          this.showToast(this.t('common.copyFailed', 'Copy failed'), 'error');
+        }
+      });
+    });
+  },
+
+  /**
    * Render history item
    * @param {Object} item - History item
    */
   renderHistoryItem(item) {
     const time = this.formatTime(item.created_at);
     let content = item.text_content || '';
+    const rawContent = content;  // 保存原始内容用于复制
 
     // 清理内容
     content = content
@@ -488,14 +523,18 @@ const AppHistory = {
 
     // 再次合并（处理后可能产生新的连续空行）
     content = content.replace(/\n{3,}/g, '\n\n');
-    content = this.escapeHtml(content);
+    const escapedContent = this.escapeHtml(content);
 
     if (!content) return '';  // 跳过空内容
+
+    // 复制按钮使用 data-content 存储原始内容（需要 base64 编码避免特殊字符问题）
+    const encodedContent = btoa(encodeURIComponent(rawContent.trim()));
 
     return `
       <div class="history-message-item">
         <span class="history-time">${time}</span>
-        <pre class="history-item-content">${content}</pre>
+        <button class="history-copy-btn" data-content="${encodedContent}" title="${this.t('common.copy', 'Copy')}">⎘</button>
+        <pre class="history-item-content">${escapedContent}</pre>
       </div>
     `;
   },

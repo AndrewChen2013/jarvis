@@ -336,30 +336,48 @@ const AppUpload = {
   /**
    * 复制文本到剪贴板
    * @param {string} text - 要复制的文本
+   * @param {boolean} showFeedback - 是否显示反馈 toast
    */
-  copyToClipboard(text) {
+  copyToClipboard(text, showFeedback = false) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(err => {
-        console.error('Clipboard write failed:', err);
-        this.fallbackCopy(text);
-      });
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          if (showFeedback) {
+            this.showToast(this.t('files.copied', 'Copied!'));
+          }
+        })
+        .catch(err => {
+          console.warn('Clipboard API failed, using fallback:', err);
+          this.fallbackCopy(text, showFeedback);
+        });
     } else {
-      this.fallbackCopy(text);
+      this.fallbackCopy(text, showFeedback);
     }
   },
 
   /**
    * 降级复制方法
    * @param {string} text - 要复制的文本
+   * @param {boolean} showFeedback - 是否显示反馈 toast
    */
-  fallbackCopy(text) {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textarea);
+  fallbackCopy(text, showFeedback = false) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (success && showFeedback) {
+        this.showToast(this.t('files.copied', 'Copied!'));
+      } else if (!success) {
+        console.error('execCommand copy failed');
+      }
+    } catch (error) {
+      console.error('Fallback copy failed:', error);
+    }
   },
 
   /**
