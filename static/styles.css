@@ -1417,8 +1417,10 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  padding-top: max(12px, env(safe-area-inset-top));
+  padding: 0 16px;
+  /* 固定高度，避免 git 分支显示时撑高 */
+  height: calc(48px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
   background-color: #2a2a2a;
   border-bottom: 1px solid #3a3a3a;
   /* 固定在视口顶部，软键盘弹出时不会被推走 */
@@ -2773,6 +2775,11 @@ html, body {
   transform: scale(0.95);
 }
 
+/* 工作目录按钮 - emoji 图标缩小 */
+#workdir-btn {
+  font-size: 11px;
+}
+
 /* 会话卡片 - 添加点击指示器（project-item 不显示，因为有删除按钮） */
 .session-item:not(.project-item)::after {
   content: '›';
@@ -4099,12 +4106,12 @@ html, body {
   top: 6px;
   right: 0;
   background: transparent;
-  border: 1px solid #444;
+  border: none;
   border-radius: 4px;
   color: #888;
-  font-size: 14px;
-  width: 28px;
-  height: 24px;
+  font-size: 18px;
+  width: 32px;
+  height: 28px;
   cursor: pointer;
   opacity: 0.6;
   transition: all 0.2s;
@@ -4117,7 +4124,6 @@ html, body {
   opacity: 1;
   background: #333;
   color: #fff;
-  border-color: #555;
 }
 
 .history-copy-btn:active {
@@ -4126,7 +4132,6 @@ html, body {
 
 .history-copy-btn.copied {
   color: #10b981;
-  border-color: #10b981;
   opacity: 1;
 }
 

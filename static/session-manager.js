@@ -53,6 +53,9 @@ class SessionInstance {
 
     // 输入框内容（每个 session 独立）
     this.inputValue = '';
+
+    // Git 分支信息（每个 session 独立）
+    this.gitBranch = null;
   }
 
   /**
@@ -294,6 +297,24 @@ class SessionManager {
     if (this.app.floatingButton) {
       this.app.floatingButton.update();
     }
+
+    // 更新终端标题
+    const titleEl = document.getElementById('terminal-title');
+    if (titleEl && session.name) {
+      titleEl.textContent = session.name;
+    }
+
+    // 显示 git 分支信息（从 session 缓存读取）
+    const branchEl = document.getElementById('git-branch');
+    if (branchEl) {
+      branchEl.textContent = session.gitBranch || '';
+    }
+
+    // 恢复 context bar 状态
+    if (this.app.restoreContextBarState) {
+      this.app.restoreContextBarState(session);
+    }
+
     this.log(`switchTo: done`);
   }
 

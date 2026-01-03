@@ -1430,8 +1430,12 @@ const AppWebSocket = {
     // 先清空（CSS 会自动隐藏空元素）
     branchEl.textContent = '';
 
+    // 获取当前 session
+    const session = this.sessionManager?.sessions.get(this.currentSession);
+
     if (!workDir) {
       console.log('[GitBranch] No workDir provided');
+      if (session) session.gitBranch = null;
       return;
     }
 
@@ -1447,13 +1451,24 @@ const AppWebSocket = {
         const data = await response.json();
         console.log('[GitBranch] Data:', data);
         if (data.branch) {
-          branchEl.textContent = `⎇ ${data.branch}`;
+          const branchText = `⎇ ${data.branch}`;
+          branchEl.textContent = branchText;
+          // 保存到 session
+          if (session) {
+            session.gitBranch = branchText;
+            console.log('[GitBranch] Saved to session:', session.id.substring(0, 8));
+          }
           console.log('[GitBranch] Branch displayed:', data.branch);
+        } else {
+          if (session) session.gitBranch = null;
         }
+      } else {
+        if (session) session.gitBranch = null;
       }
     } catch (e) {
       console.error('[GitBranch] Error:', e.message);
       this.debugLog(`fetchGitBranch error: ${e.message}`);
+      if (session) session.gitBranch = null;
     }
   },
 
