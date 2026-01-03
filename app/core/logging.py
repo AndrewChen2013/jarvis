@@ -30,4 +30,4 @@ logging.basicConfig(
     ]
 )
 
-logger = logging.getLogger("claude-remote")
+logger = logging.getLogger("jarvis")

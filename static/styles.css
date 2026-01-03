@@ -5370,20 +5370,20 @@ html, body {
   background: #ef4444;
 }
 
-/* Claude Remote 信息（使用 process-item 样式） */
-.claude-remote-info {
+/* Jarvis 信息（使用 process-item 样式） */
+.jarvis-info {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.claude-remote-info .process-item.cr-total {
+.jarvis-info .process-item.cr-total {
   margin-top: 4px;
   padding-top: 8px;
   border-top: 1px solid #333;
 }
 
-.claude-remote-info .process-item.cr-total .process-mem {
+.jarvis-info .process-item.cr-total .process-mem {
   color: #10b981;
   font-weight: 600;
 }

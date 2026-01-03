@@ -36,7 +36,7 @@ class Database:
     """SQLite 数据库服务"""
 
     def __init__(self, db_path: str = None):
-        self.db_path = db_path or os.path.expanduser("~/.claude-remote/claude_remote.db")
+        self.db_path = db_path or os.path.expanduser("~/.jarvis/jarvis.db")
         self._lock = Lock()
         self._ensure_dir()
         self._init_db()
@@ -285,7 +285,7 @@ class Database:
 
     def _migrate_from_json(self):
         """从 JSON 文件迁移数据"""
-        json_path = os.path.expanduser("~/.claude-remote/session_names.json")
+        json_path = os.path.expanduser("~/.jarvis/session_names.json")
         if not os.path.exists(json_path):
             return
 

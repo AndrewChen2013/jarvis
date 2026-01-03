@@ -1,11 +1,11 @@
-# Claude Remote
+# Hello, Jarvis
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
 
 **English** | [中文](README_CN.md)
 
-> Control your computer with natural language, from anywhere.
+> Your personal AI assistant. Control your computer with natural language, from anywhere.
 
 <p align="center">
   <img src="screenshots/demo.gif" width="300" alt="Demo">
@@ -32,48 +32,74 @@ In the AI age, it's time for liberation.
 
 ## Philosophy
 
-### Natural Language Controls Everything
+### The Terminal Is Just a Log
 
-**The old way:**
+**Old thinking:**
 ```
-You → Learn commands → Computer
-      (ssh, git, grep, find, curl, docker...)
-      (Hard to remember, easy to mess up)
-```
-
-**The new way:**
-```
-You → Natural language → Claude → Computer
-      ("Check if there are any 500 errors in yesterday's logs")
-      (Claude knows the commands)
+You → UI/Terminal → Computer executes
+      (Terminal is the main character)
 ```
 
-Claude becomes the **translation layer** between you and your computer:
-- You speak human language, Claude translates to machine commands
-- No need to memorize syntax
-- No need to worry about typos
-- As long as Claude understands your intent, it works
+**New thinking:**
+```
+You → Voice → Jarvis → Execute tasks
+                 ↓
+        Terminal is just "execution log"
+```
 
-**What can Claude do?**
-- Write code, fix bugs, run tests
-- Search files, check logs, read configs
-- Make HTTP requests, call APIs, run scripts
-- Manage git, handle processes, deploy services
-- **Everything the command line can do**
+**The real interaction:**
+- **Frontend**: Your voice / natural language
+- **Middle**: Jarvis understands, plans, decides
+- **Backend**: Claude Code executes (terminal log)
+- **Feedback**: Voice report / only check logs when needed
 
-**What do you need to do?**
-- Just express your intent
-- "Help me check if nginx has any 500 errors recently"
-- "Package this project and deploy to staging"
-- "Count how many records are in the users table"
+**You're not "using a computer" — you're "talking to Jarvis". The computer is just Jarvis's hands and feet.**
 
-**Don't worry about getting commands right — just make sure Claude understands you.**
+### AI Execution Bandwidth Crushes Humans
 
-### Save Your Time for Thinking
+**Human operating a computer:**
+```
+Brain → Nerve signals → Fingers → Keyboard/Mouse → Screen pixels → Eyes → Brain
+```
 
-Claude handles the execution — the commands, the syntax, the tedious details. You focus on what matters: ideas, architecture, creativity.
+**AI operating a computer:**
+```
+AI → API/Command line → System executes directly
+```
 
-In the AI age, **imagination is your greatest asset**. Don't waste it on memorizing flags and options. Let Claude be your translator, and keep your mind free for what only humans can do: **dream, create, and innovate**.
+| Dimension | Human | AI |
+|-----------|-------|-----|
+| Input | Keyboard/mouse (serial) | Commands/API (parallel) |
+| Speed | Seconds | Milliseconds |
+| Accuracy | Typos, mistakes | Precise execution |
+| Concurrency | One thing at a time | Multiple simultaneous |
+| Fatigue | Gets tired, distracted | Never |
+
+**The insight**: Humans and computers are separated by the "body" — a low-bandwidth interface. AI and computers have a "native digital" conversation with no such loss.
+
+### The Five Pillars of Jarvis
+
+| # | Element | Metaphor | What It Solves |
+|---|---------|----------|----------------|
+| 1 | **Computer** | Body | Where work happens |
+| 2 | **Claude** | Soul | Who thinks and executes (knowledgeable + capable external brain) |
+| 3 | **Jarvis** | Mouth | Human → AI command channel (breaks spatial limits) |
+| 4 | **AI-native Human** | Master | Who drives it all |
+| 5 | **Digitized Context** | Memory | AI → understands human (high-bandwidth transfer) |
+
+### Be AI-Native
+
+**Generational comparison:**
+- **Digital Immigrant**: Learned to use computers (boomers)
+- **Digital Native**: Born knowing computers (millennials, gen-z)
+- **AI-Native**: Treats AI as an extension of their own capabilities
+
+**Characteristics of AI-native people:**
+- Mindset shift: "I'll have Jarvis handle this, I'll just review"
+- Capability boundary: Your skills + AI's skills
+- Work mode: From executor to commander + reviewer
+
+**Definition**: Not "someone who learned to use AI tools", but "someone who restructured their work around AI"
 
 ---
 
@@ -89,7 +115,7 @@ A new way of programming:
 
 Traditional programming requires large time blocks — at least 1-2 hours to "get in the zone."
 
-With Claude Remote:
+With Jarvis:
 - **5 minutes** is enough to make progress
 - Waiting for elevator? Check the progress
 - Waiting for food delivery? Give feedback
@@ -123,7 +149,7 @@ Your phone's keyboard has voice input built-in.
 
 ### Built with Itself
 
-This project was developed using Claude Remote. After the core features were complete, all subsequent development was done via voice input on a phone — during commutes, while walking, in bed.
+This project was developed using Jarvis. After the core features were complete, all subsequent development was done via voice input on a phone — during commutes, while walking, in bed.
 
 **Everything you see here was created by Claude Code:**
 - 📝 This README — written and translated
@@ -147,8 +173,8 @@ Proof that vibe coding works.
 
 ```bash
 # Clone the repository
-git clone https://github.com/AndrewChen2013/claude-remote.git
-cd claude-remote
+git clone https://github.com/AndrewChen2013/jarvis.git
+cd jarvis
 
 # Run management script
 chmod +x deploy/manage.sh
@@ -199,7 +225,7 @@ If you need access from outside your local network, [Cloudflare Tunnel](https://
 brew install cloudflared
 
 # Create tunnel
-cloudflared tunnel create claude-remote
+cloudflared tunnel create jarvis
 
 # Configure tunnel (edit ~/.cloudflared/config.yml)
 tunnel: <tunnel-id>
@@ -211,7 +237,7 @@ ingress:
   - service: http_status:404
 
 # Start tunnel
-cloudflared tunnel run claude-remote
+cloudflared tunnel run jarvis
 ```
 
 Now access from anywhere: `https://claude.yourdomain.com`
@@ -278,7 +304,7 @@ Automate recurring tasks with cron-based scheduling:
 
 - **Create tasks**: Define prompts that run on a schedule (hourly, daily, weekly)
 - **Feishu notifications**: Get task results sent to Feishu/Lark automatically
-- **MCP integration**: Use the `claude-remote-tasks` MCP server to manage tasks from Claude Code
+- **MCP integration**: Use the `jarvis-tasks` MCP server to manage tasks from Claude Code
 - **Execution history**: View past runs and their outputs
 - **Manual trigger**: Run any task immediately with one tap
 
@@ -296,7 +322,7 @@ Real-time system monitoring:
 
 - **CPU & Memory**: Live usage with visual gauges
 - **Top Processes**: Sort by CPU or memory, configurable count
-- **Claude Remote processes**: See all related processes
+- **Jarvis processes**: See all related processes
 - **Disk Usage**: Monitor all mounted volumes
 
 ### SSH Remote Machines
@@ -403,7 +429,7 @@ Connect to remote servers via SSH:
 - **Live CPU & Memory** — Real-time usage with visual gauges
 - **Process List** — Top processes sorted by CPU or memory
 - **Disk Usage** — Monitor all mounted volumes
-- **Claude Remote Stats** — See all related processes and their resource usage
+- **Jarvis Stats** — See all related processes and their resource usage
 
 ### 🖥️ SSH Remote Machines
 
@@ -446,12 +472,12 @@ To enable Claude Code to manage scheduled tasks, add the MCP server to your Clau
 ```json
 {
   "mcpServers": {
-    "claude-remote-tasks": {
+    "jarvis-tasks": {
       "command": "python",
-      "args": ["/path/to/claude-remote/app/mcp/scheduled_tasks_mcp.py"],
+      "args": ["/path/to/jarvis/app/mcp/scheduled_tasks_mcp.py"],
       "env": {
-        "CLAUDE_REMOTE_URL": "http://localhost:8000",
-        "CLAUDE_REMOTE_TOKEN": "your-auth-token"
+        "JARVIS_URL": "http://localhost:8000",
+        "JARVIS_TOKEN": "your-auth-token"
       }
     }
   }
@@ -476,26 +502,26 @@ To enable Claude Code to manage scheduled tasks, add the MCP server to your Clau
 
 ```bash
 # Start
-launchctl start com.claude.remote.backend
+launchctl start com.jarvis.backend
 
 # Stop
-launchctl stop com.claude.remote.backend
+launchctl stop com.jarvis.backend
 
 # View logs
-tail -f ~/claude-remote/logs/backend.log
+tail -f ~/jarvis/logs/backend.log
 ```
 
 ### Linux
 
 ```bash
 # Start
-sudo systemctl start claude-remote
+sudo systemctl start jarvis
 
 # Stop
-sudo systemctl stop claude-remote
+sudo systemctl stop jarvis
 
 # View logs
-sudo journalctl -u claude-remote -f
+sudo journalctl -u jarvis -f
 ```
 
 ---
@@ -518,7 +544,7 @@ sudo journalctl -u claude-remote -f
 
 ### Session won't start?
 - Verify Claude Code is installed: `which claude`
-- Check logs: `~/claude-remote/logs/backend.error.log`
+- Check logs: `~/jarvis/logs/backend.error.log`
 
 ### Mobile display issues?
 - Try adjusting font size with A+/A- buttons

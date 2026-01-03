@@ -522,7 +522,7 @@ class ClaudeProjectsScanner:
             tokens = int(float(tokens_str) * 1000) if float(tokens_str) < 100 else int(float(tokens_str))
             result["skills"].append({"name": name, "source": source, "tokens": tokens})
 
-        # 2. 终端 ANSI 格式: └ claude-remote-info: 3.1k tokens
+        # 2. 终端 ANSI 格式: └ jarvis-info: 3.1k tokens
         if not result["skills"]:
             # 检测当前 source（User 或 System）
             current_source = "User"

@@ -1,11 +1,11 @@
-# Claude Remote
+# Hello, Jarvis
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
 
 [English](README.md) | **中文**
 
-> 用自然语言，随时随地控制你的电脑。
+> 你的个人 AI 助手。用自然语言，随时随地控制你的电脑。
 
 <p align="center">
   <img src="screenshots/demo.gif" width="300" alt="演示">
@@ -32,48 +32,73 @@ AI 时代，是时候解放了。
 
 ## 理念
 
-### 自然语言控制一切
+### 终端只是后台日志
 
-**传统方式：**
+**旧思维：**
 ```
-你 → 学习各种命令 → 电脑
-     (ssh, git, grep, find, curl, docker...)
-     (记不住，容易错)
+人 → 操作界面 → 电脑执行（终端是主角）
 ```
 
-**新方式：**
+**新思维：**
 ```
-你 → 自然语言 → Claude → 电脑
-     ("帮我看看昨天的日志有没有报错")
-     (Claude 自己知道用什么命令)
+人 → 语音 → 贾维斯 → 执行任务
+                ↓
+           终端只是「执行日志」
 ```
 
-Claude 成为你和电脑之间的**翻译层**：
-- 你说人话，Claude 翻译成机器指令
-- 不需要记住任何命令语法
-- 不需要担心拼写错误
-- 只要 Claude 能理解你的意图就行
+**真正的交互模式：**
+- **前台**：你的语音 / 自然语言
+- **中台**：贾维斯理解、规划、决策
+- **后台**：Claude Code 执行（终端日志）
+- **反馈**：语音汇报 / 必要时才看日志
 
-**Claude 能做什么？**
-- 写代码、改 bug、跑测试
-- 查文件、搜日志、看配置
-- 发请求、调 API、执行脚本
-- 操作 git、管理进程、部署服务
-- **一切命令行能做的事**
+**你不是在「用电脑」，你是在「跟贾维斯说话」，电脑只是贾维斯的手脚。**
 
-**你需要做什么？**
-- 只需要表达意图
-- "帮我看看 nginx 日志最近有没有 500 错误"
-- "把这个项目打包部署到测试环境"
-- "查一下数据库里用户表有多少条记录"
+### AI 的执行带宽碾压人类
 
-**不用纠结命令对不对，只要 Claude 能理解就行。**
+**人类操作电脑的瓶颈：**
+```
+人脑 → 神经信号 → 手指 → 键盘/鼠标 → 屏幕像素 → 眼睛 → 人脑
+```
 
-### 把时间留给思考
+**AI 操作电脑：**
+```
+AI → API/命令行 → 系统直接执行
+```
 
-Claude 处理执行——命令、语法、繁琐细节。你专注于真正重要的事：想法、架构、创造力。
+| 维度 | 人类 | AI |
+|------|------|-----|
+| 输入方式 | 键盘鼠标（串行） | 命令/API（并行） |
+| 速度 | 秒级 | 毫秒级 |
+| 精确度 | 会手滑、会漏 | 精确执行 |
+| 并发 | 一次一件事 | 同时操作多个 |
+| 疲劳 | 会累、会走神 | 不会 |
 
-AI 时代，**想象力才是你最大的资产**。不要把它浪费在记忆参数和选项上。让 Claude 做你的翻译官，把心智留给只有人类能做的事：**想象、创造、革新**。
+**本质洞察**：人类和电脑之间隔着「肉体」这个低带宽接口。AI 和电脑之间是「原生数字」对话，没有这层损耗。
+
+### 贾维斯系统的五大支柱
+
+| # | 要素 | 比喻 | 解决什么问题 |
+|---|------|------|--------------|
+| 1 | **电脑** | 身体 | 工作在哪里发生 |
+| 2 | **Claude** | 灵魂 | 谁来思考和执行（知识渊博 + 有执行力的外挂大脑） |
+| 3 | **Jarvis** | 嘴巴 | 人→AI 的指令通道（打破空间限制） |
+| 4 | **AI-native 的人** | 主人 | 谁来驾驭这一切 |
+| 5 | **上下文数字化** | 记忆 | AI→理解人 的信息通道（高带宽传递） |
+
+### 成为 AI-native
+
+**代际对比：**
+- **Digital Immigrant**：学会用电脑的人（70后、60后）
+- **Digital Native**：生来就会用电脑的人（90后、00后）
+- **AI-native**：把 AI 当成自己能力延伸的人
+
+**AI-native 的特征：**
+- 思维方式变了：「这事我让贾维斯搞定，我审核一下」
+- 能力边界变了：自己会的 + AI 会的
+- 工作方式变了：从执行者变成指挥官 + 审核者
+
+**定义**：不是「学会用 AI 工具的人」，而是「用 AI 重构了自己工作方式的人」
 
 ---
 
@@ -89,7 +114,7 @@ AI 时代，**想象力才是你最大的资产**。不要把它浪费在记忆�
 
 传统编程需要大块时间 —— 至少 1-2 小时才能"进入状态"。
 
-用 Claude Remote：
+用 Jarvis：
 - **5 分钟**就能推进项目
 - 等电梯？看一眼进度
 - 等外卖？给个反馈
@@ -123,7 +148,7 @@ Claude 有 70% 的时间在输出。等待就是浪费。
 
 ### 自举开发
 
-这个项目本身就是用 Claude Remote 开发的。核心功能完成后，后续所有功能都是用手机语音输入完成的——通勤时、走路时、躺床上。
+这个项目本身就是用 Jarvis 开发的。核心功能完成后，后续所有功能都是用手机语音输入完成的——通勤时、走路时、躺床上。
 
 **你看到的一切都是 Claude Code 创造的：**
 - 📝 这份 README — 撰写和翻译
@@ -147,8 +172,8 @@ Claude 有 70% 的时间在输出。等待就是浪费。
 
 ```bash
 # 克隆项目
-git clone https://github.com/AndrewChen2013/claude-remote.git
-cd claude-remote
+git clone https://github.com/AndrewChen2013/jarvis.git
+cd jarvis
 
 # 运行管理脚本
 chmod +x deploy/manage.sh
@@ -199,7 +224,7 @@ http://<你的电脑IP>:8000
 brew install cloudflared
 
 # 创建隧道
-cloudflared tunnel create claude-remote
+cloudflared tunnel create jarvis
 
 # 配置隧道（编辑 ~/.cloudflared/config.yml）
 tunnel: <tunnel-id>
@@ -211,7 +236,7 @@ ingress:
   - service: http_status:404
 
 # 启动隧道
-cloudflared tunnel run claude-remote
+cloudflared tunnel run jarvis
 ```
 
 现在可以从任何地方访问：`https://claude.你的域名.com`
@@ -278,7 +303,7 @@ cloudflared tunnel run claude-remote
 
 - **创建任务**：设置按计划运行的 prompt（每小时、每天、每周）
 - **飞书通知**：任务结果自动发送到飞书/Lark
-- **MCP 集成**：通过 `claude-remote-tasks` MCP 服务器在 Claude Code 中管理任务
+- **MCP 集成**：通过 `jarvis-tasks` MCP 服务器在 Claude Code 中管理任务
 - **执行历史**：查看过去的运行记录和输出
 - **手动触发**：一键立即运行任何任务
 
@@ -296,7 +321,7 @@ cloudflared tunnel run claude-remote
 
 - **CPU 和内存**：可视化仪表盘显示实时使用率
 - **进程列表**：按 CPU 或内存排序，可配置显示数量
-- **Claude Remote 进程**：查看所有相关进程
+- **Jarvis 进程**：查看所有相关进程
 - **磁盘使用**：监控所有挂载的磁盘
 
 ### SSH 远程机器
@@ -403,7 +428,7 @@ cloudflared tunnel run claude-remote
 - **实时 CPU 和内存** — 可视化仪表盘显示实时使用率
 - **进程列表** — 按 CPU 或内存排序的进程列表
 - **磁盘使用** — 监控所有挂载的磁盘
-- **Claude Remote 统计** — 查看所有相关进程及其资源使用情况
+- **Jarvis 统计** — 查看所有相关进程及其资源使用情况
 
 ### 🖥️ SSH 远程机器
 
@@ -446,12 +471,12 @@ AUTH_TOKEN=你的密码
 ```json
 {
   "mcpServers": {
-    "claude-remote-tasks": {
+    "jarvis-tasks": {
       "command": "python",
-      "args": ["/path/to/claude-remote/app/mcp/scheduled_tasks_mcp.py"],
+      "args": ["/path/to/jarvis/app/mcp/scheduled_tasks_mcp.py"],
       "env": {
-        "CLAUDE_REMOTE_URL": "http://localhost:8000",
-        "CLAUDE_REMOTE_TOKEN": "你的访问令牌"
+        "JARVIS_URL": "http://localhost:8000",
+        "JARVIS_TOKEN": "你的访问令牌"
       }
     }
   }
@@ -476,26 +501,26 @@ AUTH_TOKEN=你的密码
 
 ```bash
 # 启动
-launchctl start com.claude.remote.backend
+launchctl start com.jarvis.backend
 
 # 停止
-launchctl stop com.claude.remote.backend
+launchctl stop com.jarvis.backend
 
 # 查看日志
-tail -f ~/claude-remote/logs/backend.log
+tail -f ~/jarvis/logs/backend.log
 ```
 
 ### Linux
 
 ```bash
 # 启动
-sudo systemctl start claude-remote
+sudo systemctl start jarvis
 
 # 停止
-sudo systemctl stop claude-remote
+sudo systemctl stop jarvis
 
 # 查看日志
-sudo journalctl -u claude-remote -f
+sudo journalctl -u jarvis -f
 ```
 
 ---
@@ -518,7 +543,7 @@ sudo journalctl -u claude-remote -f
 
 ### 会话启动失败？
 - 确认 Claude Code 已安装：`which claude`
-- 查看日志：`~/claude-remote/logs/backend.error.log`
+- 查看日志：`~/jarvis/logs/backend.error.log`
 
 ### 手机显示异常？
 - 尝试用 A+/A- 按钮调整字体大小

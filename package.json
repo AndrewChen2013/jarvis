@@ -1,7 +1,7 @@
 {
-  "name": "claude-remote",
+  "name": "jarvis",
   "version": "1.0.0",
-  "description": "Mobile remote control for Claude Code",
+  "description": "Your personal AI assistant - Mobile remote control for Claude Code",
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",

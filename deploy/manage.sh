@@ -42,15 +42,15 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OS=$(uname -s)
 
 # Service identifiers
-SERVICE_NAME="com.claude.remote.backend"
+SERVICE_NAME="com.jarvis.backend"
 PLIST_FILE="$HOME/Library/LaunchAgents/${SERVICE_NAME}.plist"
-SYSTEMD_FILE="/etc/systemd/system/claude-remote-backend.service"
+SYSTEMD_FILE="/etc/systemd/system/jarvis-backend.service"
 
 # Print functions
 print_header() {
     echo ""
     echo -e "${BLUE}===========================================${NC}"
-    echo -e "${BLUE}  Claude Remote Management Tool${NC}"
+    echo -e "${BLUE}  Jarvis Management Tool${NC}"
     echo -e "${BLUE}===========================================${NC}"
     echo ""
 }
@@ -98,7 +98,7 @@ check_status() {
             print_warning "Autostart: Disabled"
         fi
     elif [[ "$OS" == "Linux" ]]; then
-        if systemctl is-enabled claude-remote-backend &>/dev/null; then
+        if systemctl is-enabled jarvis-backend &>/dev/null; then
             print_success "Autostart: Enabled"
         else
             print_warning "Autostart: Disabled"
@@ -386,15 +386,15 @@ WantedBy=multi-user.target
 EOF
 
         sudo systemctl daemon-reload
-        sudo systemctl enable claude-remote-backend
-        sudo systemctl start claude-remote-backend
+        sudo systemctl enable jarvis-backend
+        sudo systemctl start jarvis-backend
 
         print_success "Autostart enabled (systemd)"
         echo ""
         echo "  Manual control commands:"
-        echo "    Start: sudo systemctl start claude-remote-backend"
-        echo "    Stop: sudo systemctl stop claude-remote-backend"
-        echo "    Status: sudo systemctl status claude-remote-backend"
+        echo "    Start: sudo systemctl start jarvis-backend"
+        echo "    Stop: sudo systemctl stop jarvis-backend"
+        echo "    Status: sudo systemctl status jarvis-backend"
     fi
 }
 
@@ -414,8 +414,8 @@ disable_autostart() {
 
     elif [[ "$OS" == "Linux" ]]; then
         if [ -f "$SYSTEMD_FILE" ]; then
-            sudo systemctl stop claude-remote-backend 2>/dev/null || true
-            sudo systemctl disable claude-remote-backend 2>/dev/null || true
+            sudo systemctl stop jarvis-backend 2>/dev/null || true
+            sudo systemctl disable jarvis-backend 2>/dev/null || true
             sudo rm -f "$SYSTEMD_FILE"
             sudo systemctl daemon-reload
             print_success "Autostart disabled"

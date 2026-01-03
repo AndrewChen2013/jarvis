@@ -125,7 +125,7 @@ window.AppMonitor = {
     this.updateCpuDisplay(data.cpu);
     this.updateMemoryDisplay(data.memory);
     this.updateDiskDisplay(data.disk);
-    this.updateClaudeRemoteDisplay(data.claude_remote);
+    this.updateJarvisDisplay(data.jarvis);
     this.updateProcessList(data.top_processes);
   },
 
@@ -233,10 +233,10 @@ window.AppMonitor = {
   },
 
   /**
-   * 更新 Claude Remote 信息（展示全部进程）
+   * 更新 Jarvis 信息（展示全部进程）
    */
-  updateClaudeRemoteDisplay(info) {
-    const container = document.getElementById('claude-remote-info');
+  updateJarvisDisplay(info) {
+    const container = document.getElementById('jarvis-info');
     if (!container || !info) return;
 
     const mainMem = this.formatBytes(info.main_memory);

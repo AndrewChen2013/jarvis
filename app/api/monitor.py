@@ -40,7 +40,7 @@ async def get_monitor_overview(
             "cpu": get_cpu_info(),
             "memory": get_memory_info(),
             "disk": get_disk_info(),
-            "claude_remote": get_claude_remote_info(),
+            "jarvis": get_jarvis_info(),
             "top_processes": get_top_processes(top_count, sort_by)
         }
         return result
@@ -135,8 +135,8 @@ def get_disk_info() -> List[dict]:
         return []
 
 
-def get_claude_remote_info() -> dict:
-    """获取 Claude Remote 进程信息"""
+def get_jarvis_info() -> dict:
+    """获取 Jarvis 进程信息"""
     try:
         current_pid = os.getpid()
         current_process = psutil.Process(current_pid)

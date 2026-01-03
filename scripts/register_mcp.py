@@ -14,10 +14,10 @@
 # limitations under the License.
 
 """
-自动注册 Claude Remote MCP Server 到 ~/.claude.json
+自动注册 Jarvis MCP Server 到 ~/.claude.json
 
 在服务启动时运行此脚本，确保 MCP server 已注册到 Claude 配置中。
-这样所有在 claude-remote 项目目录下运行的 Claude agent 都能看到定时任务管理工具。
+这样所有在 jarvis 项目目录下运行的 Claude agent 都能看到定时任务管理工具。
 """
 
 import json
@@ -31,7 +31,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLAUDE_CONFIG_PATH = os.path.expanduser("~/.claude.json")
 
 # MCP Server 配置
-MCP_SERVER_NAME = "claude-remote-tasks"
+MCP_SERVER_NAME = "jarvis-tasks"
 MCP_SERVER_CONFIG = {
     "type": "stdio",
     "command": f"{PROJECT_ROOT}/venv/bin/python",
@@ -133,7 +133,7 @@ def main():
     """主函数"""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Register Claude Remote MCP Server")
+    parser = argparse.ArgumentParser(description="Register Jarvis MCP Server")
     parser.add_argument(
         "--unregister",
         action="store_true",

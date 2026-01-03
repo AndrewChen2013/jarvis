@@ -48,7 +48,7 @@ def get_db():
 
 
 # 创建 MCP Server 实例
-server = Server("claude-remote-tasks")
+server = Server("jarvis-tasks")
 
 
 @server.list_tools()
