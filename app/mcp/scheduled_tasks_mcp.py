@@ -14,12 +14,12 @@
 # limitations under the License.
 
 """
-Jarvis 定时任务管理 MCP Server
+Jarvis Scheduled Tasks MCP Server
 
-提供定时任务的创建、查询、删除、启用/禁用等功能。
-通过 MCP 协议暴露给 Claude，使其能够直接管理定时任务。
+Provides CRUD operations for scheduled tasks: create, list, delete, enable/disable.
+Exposes functionality to Claude via MCP protocol for direct task management.
 
-启动方式：
+Usage:
     python -m app.mcp.scheduled_tasks_mcp
 """
 
@@ -27,7 +27,7 @@ import json
 import sys
 import os
 
-# 添加项目根目录到 path
+# Add project root to path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
@@ -35,11 +35,11 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-# 延迟导入数据库，避免循环依赖
+# Lazy import database to avoid circular dependency
 _db = None
 
 def get_db():
-    """获取数据库实例（延迟导入）"""
+    """Get database instance (lazy import)"""
     global _db
     if _db is None:
         from app.services.database import db
@@ -47,7 +47,7 @@ def get_db():
     return _db
 
 
-# 创建 MCP Server 实例
+# Create MCP Server instance
 server = Server("jarvis-tasks")
 
 
@@ -232,7 +232,7 @@ Format: minute hour day month weekday""",
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
-    """处理工具调用"""
+    """Handle tool calls"""
     db = get_db()
 
     try:
@@ -259,7 +259,7 @@ async def call_tool(name: str, arguments: dict):
 
 
 async def handle_create_task(db, args: dict):
-    """创建定时任务"""
+    """Create scheduled task"""
     name = args.get("name")
     prompt = args.get("prompt")
     cron_expr = args.get("cron_expr")
@@ -268,7 +268,7 @@ async def handle_create_task(db, args: dict):
     notify_feishu = args.get("notify_feishu", True)
     feishu_receiver = args.get("feishu_receiver", "")
 
-    # 创建任务
+    # Create task
     task_id = db.create_scheduled_task(
         name=name,
         description=description,
@@ -279,12 +279,12 @@ async def handle_create_task(db, args: dict):
         feishu_chat_id=feishu_receiver
     )
 
-    # 注册到调度器
+    # Register to scheduler
     try:
         from app.services.scheduler import scheduler
         scheduler.add_task(task_id)
     except Exception as e:
-        # 调度器可能未运行，忽略
+        # Scheduler may not be running, ignore
         pass
 
     result = {
@@ -297,12 +297,12 @@ async def handle_create_task(db, args: dict):
         "next_hint": "Task added to scheduler. Will execute automatically according to cron expression."
     }
 
-    # 如果开启了飞书通知但没有设置接收者，添加提醒
+    # If Feishu notification enabled but no receiver set, add reminder
     if notify_feishu and not feishu_receiver:
         result["warning"] = "⚠️ No Feishu receiver set. Task results will NOT be sent as notifications."
         result["hint"] = "To receive notifications: 1) For Feishu: install lark-mcp and set feishu_receiver (email or open_id); 2) For other channels (Slack, Email, etc.): install the corresponding MCP and describe the notification method in your task prompt."
 
-    # 提示 agent 用用户的语言回复
+    # Instruct agent to reply in user's language
     result["_agent_instruction"] = "IMPORTANT: Reply to the user in the same language they used to make this request."
 
     return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
@@ -349,7 +349,7 @@ async def handle_get_task(db, args: dict):
     if not task:
         return [TextContent(type="text", text=f"Task ID {task_id} not found")]
 
-    # 获取最近执行记录
+    # Get recent execution records
     executions = db.get_task_executions(task_id, limit=5)
 
     result = {
