@@ -95,15 +95,20 @@ class TaskExecutor:
                     feishu_receive_id=feishu_chat_id
                 )
 
+                # 获取任务已有的 session_id（用于 resume）
+                existing_session_id = task.get('session_id')
+
                 # 使用 claude -p 执行
                 stdout, stderr, return_code, session_id = await self._run_claude(
                     prompt=full_prompt,
                     working_dir=working_dir,
-                    timeout=self.DEFAULT_TIMEOUT
+                    timeout=self.DEFAULT_TIMEOUT,
+                    existing_session_id=existing_session_id
                 )
 
-                # 更新任务的 session_id
-                db.update_task_session_id(task_id, session_id)
+                # 更新任务的 session_id（首次执行时保存，后续执行时 session_id 不变）
+                if not existing_session_id:
+                    db.update_task_session_id(task_id, session_id)
 
                 # 计算耗时
                 duration = (datetime.now() - start_time).total_seconds()
@@ -168,7 +173,8 @@ class TaskExecutor:
         self,
         prompt: str,
         working_dir: str,
-        timeout: int
+        timeout: int,
+        existing_session_id: str = None
     ) -> Tuple[str, str, int, str]:
         """使用 claude -p 执行任务
 
@@ -176,20 +182,32 @@ class TaskExecutor:
             prompt: 要执行的 prompt
             working_dir: 工作目录
             timeout: 超时时间（秒）
+            existing_session_id: 已有的 session_id（用于 resume）
 
         Returns:
             (stdout, stderr, return_code, session_id)
         """
-        # 生成 session_id
-        session_id = str(uuid.uuid4())
-
-        # 构建命令
-        cmd = [
-            'claude',
-            '-p',  # 非交互模式
-            '--dangerously-skip-permissions',
-            '--session-id', session_id,
-        ]
+        # 判断是 resume 还是新建
+        if existing_session_id:
+            # 复用已有的 session（resume 模式）
+            session_id = existing_session_id
+            cmd = [
+                'claude',
+                '-p',  # 非交互模式
+                '--dangerously-skip-permissions',
+                '--resume', session_id,  # 使用 --resume 继续之前的会话
+            ]
+            mode = "RESUME"
+        else:
+            # 新建 session
+            session_id = str(uuid.uuid4())
+            cmd = [
+                'claude',
+                '-p',  # 非交互模式
+                '--dangerously-skip-permissions',
+                '--session-id', session_id,  # 使用 --session-id 创建新会话
+            ]
+            mode = "NEW"
 
         # 如果设置了 MAX_TURNS，添加限制
         if self.MAX_TURNS is not None:
@@ -198,7 +216,7 @@ class TaskExecutor:
         cmd.append(prompt)
 
         turns_info = f"--max-turns {self.MAX_TURNS}" if self.MAX_TURNS else "unlimited turns"
-        logger.info(f"[TaskExecutor] Running: claude -p {turns_info} session={session_id[:8]} (prompt: {len(prompt)} chars)")
+        logger.info(f"[TaskExecutor] Running: claude -p [{mode}] {turns_info} session={session_id[:8]} (prompt: {len(prompt)} chars)")
 
         # 设置环境变量
         env = os.environ.copy()

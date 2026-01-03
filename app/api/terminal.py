@@ -19,6 +19,7 @@ WebSocket 终端 API
 """
 import asyncio
 import json
+import hashlib
 import msgpack
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -26,6 +27,13 @@ from app.services.terminal_manager import terminal_manager, Terminal
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.database import db
+
+
+def _msg_trace_id(data: bytes | str) -> str:
+    """生成消息追踪 ID（内容哈希前8位）"""
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    return hashlib.md5(data).hexdigest()[:8]
 
 
 async def handle_terminal_websocket(
@@ -82,6 +90,7 @@ async def handle_terminal_websocket(
 
     terminal = None
     output_callback = None
+    ws_count_incremented = False  # 追踪是否已增加计数，确保 increment/decrement 配对
 
     try:
         # 发送连接中消息
@@ -112,14 +121,19 @@ async def handle_terminal_websocket(
             # 复用现有终端，不做 resize（让前端延迟 resize）
             logger.info(f"[Terminal:{terminal_id[:8]}] Reusing existing PTY")
 
-        # 增加 WebSocket 计数
+        # 增加 WebSocket 计数（标记已增加，确保 finally 里正确 decrement）
         terminal_manager.increment_websocket_count(terminal_id)
+        ws_count_incremented = True
 
         # 注册输出回调
         output_buffer = []
         flush_task = [None]
+        ws_closed = [False]  # 标记 WebSocket 是否已关闭，避免向关闭的连接发送
 
         async def flush_buffer():
+            if ws_closed[0]:
+                output_buffer.clear()
+                return
             if output_buffer:
                 text = ''.join(output_buffer)
                 output_buffer.clear()
@@ -131,7 +145,8 @@ async def handle_terminal_websocket(
                     # 注意：不再在这里记录输出到数据库
                     # 输出会在下次用户输入时，通过 pyte 渲染后保存
                 except Exception:
-                    pass
+                    # 发送失败，标记为已关闭
+                    ws_closed[0] = True
 
         async def delayed_flush():
             try:
@@ -143,6 +158,10 @@ async def handle_terminal_websocket(
                 flush_task[0] = None
 
         async def output_callback(data: bytes):
+            # 如果 WebSocket 已关闭，跳过处理
+            if ws_closed[0]:
+                return
+
             text = data.decode('utf-8', errors='replace')
             output_buffer.append(text)
 
@@ -189,21 +208,36 @@ async def handle_terminal_websocket(
                 if message.get("type") == "websocket.disconnect":
                     break
 
+                # 计算原始消息大小和追踪 ID
+                raw_data = message.get("bytes") or message.get("text")
+                if raw_data:
+                    msg_size = len(raw_data) if raw_data else 0
+                    trace_id = _msg_trace_id(raw_data) if raw_data else "empty"
+                    # 大消息（>1KB）打印警告级别日志
+                    if msg_size > 1024:
+                        logger.warning(f"[WS:{terminal_id[:8]}] RECV large msg: trace={trace_id} size={msg_size} bytes")
+                    else:
+                        logger.debug(f"[WS:{terminal_id[:8]}] RECV: trace={trace_id} size={msg_size}")
+
                 data = None
                 if "bytes" in message:
                     try:
                         data = msgpack.unpackb(message["bytes"], raw=False)
-                    except Exception:
+                        logger.debug(f"[WS:{terminal_id[:8]}] UNPACK: trace={trace_id} type={data.get('type')}")
+                    except Exception as e:
+                        logger.error(f"[WS:{terminal_id[:8]}] UNPACK failed: trace={trace_id} error={e}")
                         continue
                 elif "text" in message:
                     try:
                         data = json.loads(message["text"])
-                    except Exception:
+                        logger.debug(f"[WS:{terminal_id[:8]}] PARSE: trace={trace_id} type={data.get('type')}")
+                    except Exception as e:
+                        logger.error(f"[WS:{terminal_id[:8]}] PARSE failed: trace={trace_id} error={e}")
                         continue
                 else:
                     continue
 
-                await _handle_message(websocket, terminal, data, session_id=session_id)
+                await _handle_message(websocket, terminal, data, session_id=session_id, trace_id=trace_id)
 
             except WebSocketDisconnect:
                 break
@@ -237,18 +271,29 @@ async def handle_terminal_websocket(
                 except Exception as e:
                     logger.debug(f"Save screen on disconnect error: {e}")
 
-            remaining = terminal_manager.decrement_websocket_count(terminal.terminal_id)
-            logger.info(f"[Terminal:{terminal.terminal_id[:8]}] WebSocket disconnected (remaining: {remaining})")
+            # 只在确实增加过计数时才减少（保证 increment/decrement 配对）
+            if ws_count_incremented:
+                remaining = terminal_manager.decrement_websocket_count(terminal.terminal_id)
+                logger.info(f"[Terminal:{terminal.terminal_id[:8]}] WebSocket disconnected (remaining: {remaining})")
+            else:
+                logger.warning(f"[Terminal:{terminal.terminal_id[:8]}] WebSocket disconnected but count was not incremented")
             # 不立即关闭，让 cleanup_loop 延迟清理（给重连机会）
 
 
-async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict, session_id: str = None):
+async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict, session_id: str = None, trace_id: str = None):
     """处理消息"""
     msg_type = data.get("type")
+    tid = terminal.terminal_id[:8]
 
     if msg_type == "input":
         input_data = data.get("data", "")
-        logger.info(f"[Terminal:{terminal.terminal_id[:8]}] Input received: {repr(input_data)}")
+        input_size = len(input_data.encode('utf-8')) if input_data else 0
+
+        # 大输入（>1KB）打印警告
+        if input_size > 1024:
+            logger.warning(f"[Terminal:{tid}] INPUT large: trace={trace_id} size={input_size} bytes")
+        else:
+            logger.info(f"[Terminal:{tid}] INPUT: trace={trace_id} size={input_size} data={repr(input_data[:50])}")
 
         # 在写入 PTY 之前，先保存上一批输出的屏幕状态
         if session_id:
@@ -261,13 +306,19 @@ async def _handle_message(websocket: WebSocket, terminal: Terminal, data: dict, 
                         raw_content=None,
                         text_content=screen_content
                     )
-                    logger.debug(f"[Terminal:{terminal.terminal_id[:8]}] Saved screen content ({len(screen_content)} chars)")
+                    logger.debug(f"[Terminal:{tid}] Saved screen content ({len(screen_content)} chars)")
                 # 重置屏幕，准备接收下一批输出
                 terminal.reset_screen()
             except Exception as e:
                 logger.debug(f"Save screen content error: {e}")
 
-        await terminal_manager.write(terminal.terminal_id, input_data)
+        # 写入 PTY
+        logger.debug(f"[Terminal:{tid}] WRITE_START: trace={trace_id} size={input_size}")
+        success = await terminal_manager.write(terminal.terminal_id, input_data)
+        if success:
+            logger.debug(f"[Terminal:{tid}] WRITE_DONE: trace={trace_id}")
+        else:
+            logger.error(f"[Terminal:{tid}] WRITE_FAILED: trace={trace_id}")
 
     elif msg_type == "resize":
         rows = data.get("rows", 40)

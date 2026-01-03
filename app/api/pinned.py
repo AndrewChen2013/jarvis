@@ -27,6 +27,7 @@ from app.api.auth import verify_token
 from app.core.logging import logger
 from app.services.database import db
 from app.services.claude_projects import claude_projects
+from app.services.naming_store import naming_store
 
 router = APIRouter(prefix="/api", tags=["pinned"])
 
@@ -70,7 +71,12 @@ async def get_pinned_sessions(_: str = Depends(verify_token)):
                         # 机器已被删除
                         session_data["machine_deleted"] = True
             else:
-                # Claude 会话 - 尝试获取完整的 session 信息（包含 context）
+                # Claude 会话 - 从 naming_store 获取最新名称
+                custom_name = naming_store.get_name(p["session_id"])
+                if custom_name:
+                    session_data["display_name"] = custom_name
+
+                # 尝试获取完整的 session 信息（包含 context）
                 try:
                     full_session = claude_projects.get_session(
                         p["working_dir"],
@@ -85,6 +91,9 @@ async def get_pinned_sessions(_: str = Depends(verify_token)):
                         session_data["total_tokens"] = full_session.total_tokens
                         # 添加 session 的最后活动时间
                         session_data["updated_at"] = full_session.updated_at.isoformat()
+                        # 如果没有自定义名称，使用 session 的 summary
+                        if not custom_name and full_session.summary:
+                            session_data["display_name"] = full_session.summary
                 except Exception as e:
                     logger.debug(f"Could not get context for {p['session_id']}: {e}")
 

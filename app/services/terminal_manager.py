@@ -173,8 +173,19 @@ class TerminalManager:
         skip_perm_flag = "" if is_root else " --dangerously-skip-permissions"
 
         if session_id:
-            cmd = f"claude --resume {session_id}{skip_perm_flag}"
-            logger.info(f"[Terminal] RESUME mode: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
+            # 检查是否是已存在的 session（通过检查文件是否存在）
+            home = os.path.expanduser("~")
+            encoded_path = working_dir.replace("/", "-")
+            session_file = os.path.join(home, ".claude", "projects", encoded_path, f"{session_id}.jsonl")
+
+            if os.path.exists(session_file):
+                # Session 存在，使用 --resume
+                cmd = f"claude --resume {session_id}{skip_perm_flag}"
+                logger.info(f"[Terminal] RESUME mode: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
+            else:
+                # Session 不存在，使用 --session-id 创建新的
+                cmd = f"claude --session-id {session_id}{skip_perm_flag}"
+                logger.info(f"[Terminal] NEW mode with session-id: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
         else:
             cmd = f"claude{skip_perm_flag}"
             logger.info(f"[Terminal] NEW mode (cwd: {working_dir}, root: {is_root})")
@@ -317,14 +328,23 @@ class TerminalManager:
 
         logger.info(f"[Terminal:{terminal_id[:8]}] Closed (see_ya={see_ya_detected})")
 
-    def _write_all(self, fd: int, data: bytes, terminal_id: str) -> bool:
+    async def _write_all(self, fd: int, data: bytes, terminal_id: str) -> bool:
         """分块写入所有数据到 PTY（处理 buffer 限制）
 
         PTY 写入 buffer 通常只有 ~1KB，大数据需要分块写入。
+        使用 asyncio.sleep 避免阻塞事件循环。
         """
         total = len(data)
         written_total = 0
         chunk_count = 0
+        retry_count = 0
+        total_retries = 0
+        max_retries = 1000  # 防止无限循环（10秒超时）
+        tid = terminal_id[:8]
+
+        # 大数据（>1KB）打印开始日志
+        if total > 1024:
+            logger.warning(f"[PTY:{tid}] WRITE_ALL start: size={total} bytes")
 
         while written_total < total:
             try:
@@ -333,21 +353,36 @@ class TerminalManager:
                 written = os.write(fd, chunk)
                 written_total += written
                 chunk_count += 1
+                retry_count = 0  # 成功写入后重置重试计数
+
+                # 大数据进度日志（每 10KB 打印一次）
+                if total > 10240 and written_total % 10240 < 512:
+                    logger.info(f"[PTY:{tid}] WRITE progress: {written_total}/{total} ({100*written_total//total}%)")
 
                 if written == 0:
                     # 写入失败
-                    logger.error(f"[Terminal:{terminal_id[:8]}] Write returned 0, stopping")
+                    logger.error(f"[PTY:{tid}] Write returned 0, stopping at {written_total}/{total}")
                     break
             except BlockingIOError:
-                # buffer 满了，等一下再试
-                import time
-                time.sleep(0.01)
+                # buffer 满了，异步等待后重试（不阻塞事件循环）
+                retry_count += 1
+                total_retries += 1
+                if retry_count >= max_retries:
+                    logger.error(f"[PTY:{tid}] Write timeout: {max_retries} consecutive retries at {written_total}/{total}")
+                    return False
+                # 每 100 次重试打印一次警告
+                if retry_count % 100 == 0:
+                    logger.warning(f"[PTY:{tid}] WRITE blocked: retry={retry_count} at {written_total}/{total}")
+                await asyncio.sleep(0.01)
             except OSError as e:
-                logger.error(f"[Terminal:{terminal_id[:8]}] Write error at {written_total}/{total}: {e}")
+                logger.error(f"[PTY:{tid}] Write OSError at {written_total}/{total}: {e}")
                 return False
 
-        if total > 100:  # 只记录较长的写入
-            logger.info(f"[Terminal:{terminal_id[:8]}] Write complete: {total} bytes in {chunk_count} chunks")
+        # 完成日志
+        if total > 1024:
+            logger.warning(f"[PTY:{tid}] WRITE_ALL done: {total} bytes, {chunk_count} chunks, {total_retries} retries")
+        elif total > 100:
+            logger.info(f"[PTY:{tid}] Write complete: {total} bytes in {chunk_count} chunks")
 
         return written_total == total
 
@@ -362,13 +397,13 @@ class TerminalManager:
             if data.endswith('\n') and len(data) > 1:
                 content = data.rstrip('\n')
                 encoded = content.encode('utf-8')
-                success = self._write_all(terminal.master_fd, encoded, terminal_id)
+                success = await self._write_all(terminal.master_fd, encoded, terminal_id)
                 if success:
                     os.write(terminal.master_fd, b'\r')
                 return success
             else:
                 encoded = data.encode('utf-8')
-                return self._write_all(terminal.master_fd, encoded, terminal_id)
+                return await self._write_all(terminal.master_fd, encoded, terminal_id)
         except OSError as e:
             logger.error(f"[Terminal:{terminal_id[:8]}] Write error: {e}")
             return False
