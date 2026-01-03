@@ -38,7 +38,7 @@ from app.services.database import db
 def print_status():
     """Print current security status"""
     print("\n" + "=" * 50)
-    print("  Claude Remote Security Status")
+    print("  Jarvis Security Status")
     print("=" * 50)
 
     # Emergency lock status

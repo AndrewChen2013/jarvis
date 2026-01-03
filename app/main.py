@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Claude Remote - 主应用入口
+Jarvis - 主应用入口
 
 简化后的架构：
 - 直接使用 Claude 的 ~/.claude/projects/ 作为数据源

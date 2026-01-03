@@ -170,7 +170,7 @@ def get_jarvis_info() -> dict:
             "total_memory": total_memory
         }
     except Exception as e:
-        logger.error(f"Get Claude Remote info error: {e}")
+        logger.error(f"Get Jarvis info error: {e}")
         return {
             "main_pid": 0,
             "main_memory": 0,

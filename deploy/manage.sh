@@ -360,7 +360,7 @@ EOF
 
         sudo tee "$SYSTEMD_FILE" > /dev/null << EOF
 [Unit]
-Description=Claude Remote Backend Service
+Description=Jarvis Backend Service
 After=network.target
 
 [Service]

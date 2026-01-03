@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-Claude Remote 定时任务管理 MCP Server
+Jarvis 定时任务管理 MCP Server
 
 提供定时任务的创建、查询、删除、启用/禁用等功能。
 通过 MCP 协议暴露给 Claude，使其能够直接管理定时任务。

@@ -19,7 +19,7 @@ import secrets
 class Settings(BaseSettings):
     # API Settings
     API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "Claude Remote"
+    PROJECT_NAME: str = "Jarvis"
 
     # Security
     SECRET_KEY: str = secrets.token_urlsafe(32)
