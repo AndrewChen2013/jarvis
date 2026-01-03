@@ -472,7 +472,7 @@ const AppSettings = {
     const container = document.getElementById('usage-chart');
     if (!container || history.length === 0) {
       if (container) {
-        container.innerHTML = '<div class="chart-loading">暂无数据</div>';
+        container.innerHTML = '<div class="chart-loading">' + this.t('usage.noData', 'No data') + '</div>';
       }
       return;
     }

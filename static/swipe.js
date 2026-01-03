@@ -862,17 +862,9 @@ const AppSwipe = {
         // Claude session card
         const projectName = this.getProjectDisplayName(session.working_dir);
 
-        // Context info (if available)
-        let contextHtml = '';
-        if (session.context_used > 0) {
-          const usedK = Math.round(session.context_used / 1000);
-          const maxK = Math.round((session.context_max || 200000) / 1000);
-          const pct = session.context_percentage || 0;
-          contextHtml = `<span class="session-grid-context">⛁ ${usedK}k/${maxK}k ${pct}%</span>`;
-        }
-
         // Token count (if available)
         let tokenHtml = '';
+        let tokenLen = 0;
         if (session.total_tokens > 0) {
           const tokens = session.total_tokens;
           let tokenStr;
@@ -884,6 +876,19 @@ const AppSwipe = {
             tokenStr = tokens.toString();
           }
           tokenHtml = `<span class="session-grid-tokens">${tokenStr}</span>`;
+          tokenLen = tokenStr.length;
+        }
+
+        // Context info (if available)
+        // 如果 token 字符串太长（>4），不显示百分比以节省空间
+        let contextHtml = '';
+        if (session.context_used > 0) {
+          const usedK = Math.round(session.context_used / 1000);
+          const pct = session.context_percentage || 0;
+          const showPct = tokenLen <= 4;
+          contextHtml = showPct
+            ? `<span class="session-grid-context">⛁ ${usedK}k ${pct}%</span>`
+            : `<span class="session-grid-context">⛁ ${usedK}k</span>`;
         }
 
         html += `

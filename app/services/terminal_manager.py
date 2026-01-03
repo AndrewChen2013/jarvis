@@ -175,7 +175,10 @@ class TerminalManager:
         if session_id:
             # 检查是否是已存在的 session（通过检查文件是否存在）
             home = os.path.expanduser("~")
-            encoded_path = working_dir.replace("/", "-")
+            # Claude CLI 会将 "/" " " "~" 都替换为 "-"
+            # 例如: /Users/bill/Library/Mobile Documents/com~apple~CloudDocs
+            #   ->  -Users-bill-Library-Mobile-Documents-com-apple-CloudDocs
+            encoded_path = working_dir.replace("/", "-").replace(" ", "-").replace("~", "-")
             session_file = os.path.join(home, ".claude", "projects", encoded_path, f"{session_id}.jsonl")
 
             if os.path.exists(session_file):

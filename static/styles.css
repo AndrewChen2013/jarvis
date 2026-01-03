@@ -888,13 +888,17 @@ html, body {
   display: flex;
   align-items: center;
   margin-top: 4px;
-  gap: 4px;
+  gap: 6px;
 }
 
 .session-grid-item .session-grid-context {
   font-size: 10px;
   color: #9333ea;
   font-family: 'SF Mono', Monaco, monospace;
+}
+
+.session-grid-item .meta-sep {
+  color: #444;
 }
 
 .session-grid-item .session-grid-time {

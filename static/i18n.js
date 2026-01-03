@@ -92,6 +92,7 @@ const i18n = {
       'usage.refresh': '刷新',
       'usage.trend': '7日趋势',
       'usage.loading': '加载中...',
+      'usage.noData': '暂无数据',
 
       // 创建会话
       'create.title': '新建会话',
@@ -144,6 +145,10 @@ const i18n = {
       'terminal.keys.mode': '模式',
       'terminal.keys.slash': '斜杠命令',
       'terminal.send': '发送',
+      'terminal.initError': '终端初始化失败: ',
+
+      // 悬浮按钮
+      'float.noBackgroundSession': '没有后台会话',
 
       // Context 信息
       'context.title': 'Context',
@@ -404,6 +409,7 @@ const i18n = {
       'usage.refresh': 'Refresh',
       'usage.trend': '7-day trend',
       'usage.loading': 'Loading...',
+      'usage.noData': 'No data',
 
       // Create session
       'create.title': 'New Session',
@@ -456,6 +462,10 @@ const i18n = {
       'terminal.keys.mode': 'Mode',
       'terminal.keys.slash': 'Slash commands',
       'terminal.send': 'Send',
+      'terminal.initError': 'Terminal init failed: ',
+
+      // Float button
+      'float.noBackgroundSession': 'No background sessions',
 
       // Context info
       'context.title': 'Context',
@@ -716,6 +726,7 @@ const i18n = {
       'usage.refresh': '更新',
       'usage.trend': '7日間の推移',
       'usage.loading': '読み込み中...',
+      'usage.noData': 'データなし',
 
       // セッション作成
       'create.title': '新規セッション',
@@ -983,6 +994,7 @@ const i18n = {
       'usage.refresh': '새로고침',
       'usage.trend': '7일 추이',
       'usage.loading': '로딩 중...',
+      'usage.noData': '데이터 없음',
 
       // 세션 생성
       'create.title': '새 세션',
@@ -1517,6 +1529,7 @@ const i18n = {
       'usage.refresh': 'Aktualisieren',
       'usage.trend': '7-Tage-Trend',
       'usage.loading': 'Laden...',
+      'usage.noData': 'Keine Daten',
 
       // Sitzung erstellen
       'create.title': 'Neue Sitzung',
@@ -1784,6 +1797,7 @@ const i18n = {
       'usage.refresh': 'Actualizar',
       'usage.trend': 'Tendencia 7 días',
       'usage.loading': 'Cargando...',
+      'usage.noData': 'Sin datos',
 
       // Crear sesión
       'create.title': 'Nueva sesión',
@@ -2051,6 +2065,7 @@ const i18n = {
       'usage.refresh': 'Обновить',
       'usage.trend': 'Тренд за 7 дней',
       'usage.loading': 'Загрузка...',
+      'usage.noData': 'Нет данных',
 
       // Создание сессии
       'create.title': 'Новая сессия',
@@ -2318,6 +2333,7 @@ const i18n = {
       'usage.refresh': 'Atualizar',
       'usage.trend': 'Tendência 7 dias',
       'usage.loading': 'Carregando...',
+      'usage.noData': 'Sem dados',
 
       // Criar sessão
       'create.title': 'Nova sessão',

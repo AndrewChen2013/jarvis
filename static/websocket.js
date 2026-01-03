@@ -451,7 +451,7 @@ const AppWebSocket = {
     } catch (error) {
       console.error('Terminal init error:', error);
       this.debugLog(`initTerminal: error for session ${capturedSessionId?.substring(0, 8)}: ${error.message}`);
-      container.innerHTML = '<div style="color:red;padding:20px;">终端初始化失败: ' + error.message + '</div>';
+      container.innerHTML = '<div style="color:red;padding:20px;">' + this.t('terminal.initError', 'Terminal init failed: ') + error.message + '</div>';
     }
   },
 

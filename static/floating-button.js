@@ -399,7 +399,7 @@ class FloatingButton {
       if (sessionsSize === 0) {
         // 没有后台 session，提示用户
         if (this.app.showToast) {
-          this.app.showToast('没有后台会话');
+          this.app.showToast(this.app.t('float.noBackgroundSession', 'No background sessions'));
         }
       } else {
         // 有 session 但找不到目标，展开菜单
