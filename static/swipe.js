@@ -852,6 +852,7 @@ const AppSwipe = {
                data-machine-id="${machineId}"
                data-machine-name="${this.escapeHtml(displayName)}"
                draggable="true">
+            <button class="btn-rename-session" title="${this.t('common.rename', 'Rename')}">✎</button>
             <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
             <div class="session-grid-name"><span class="ssh-icon">⌨</span> ${this.escapeHtml(displayName)}</div>
             <div class="session-grid-project"><span class="project-name ssh-host">${this.escapeHtml(hostInfo)}</span></div>
@@ -897,6 +898,7 @@ const AppSwipe = {
                data-session-type="claude"
                data-working-dir="${session.working_dir}"
                draggable="true">
+            <button class="btn-rename-session" title="${this.t('common.rename', 'Rename')}">✎</button>
             <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
             <div class="session-grid-name">${this.escapeHtml(session.display_name || session.session_id.substring(0, 8))}</div>
             <div class="session-grid-project">${this.escapeHtml(projectName)}</div>
@@ -951,6 +953,17 @@ const AppSwipe = {
           this.unpinSession(item.dataset.sessionId);
         });
       }
+
+      // Rename button
+      const renameBtn = item.querySelector('.btn-rename-session');
+      if (renameBtn) {
+        renameBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const sessionId = item.dataset.sessionId;
+          const displayName = item.querySelector('.session-grid-name')?.textContent || sessionId;
+          this.renameSession(sessionId, displayName, item);
+        });
+      }
     });
 
     // Initialize SortableJS
@@ -961,8 +974,9 @@ const AppSwipe = {
     if (sessionsPage && !sessionsPage._editModeClickHandler) {
       sessionsPage._editModeClickHandler = (e) => {
         if (this._editMode) {
-          // Don't exit if clicking unpin button
+          // Don't exit if clicking action buttons
           if (e.target.classList.contains('btn-unpin')) return;
+          if (e.target.classList.contains('btn-rename-session')) return;
           this.exitEditMode();
         }
       };
@@ -1314,6 +1328,104 @@ const AppSwipe = {
   getFilesPageIndex() {
     const order = this.getPageOrder();
     return order.indexOf(2); // 2 = files page
+  },
+
+  /**
+   * Show context menu for session item (long press)
+   */
+  showSessionContextMenu(item, x, y) {
+    // Remove existing menu if any
+    this.hideSessionContextMenu();
+
+    const sessionId = item.dataset.sessionId;
+    const sessionType = item.dataset.sessionType || 'claude';
+    const displayName = item.querySelector('.session-grid-name')?.textContent || sessionId;
+
+    // Create menu overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'session-context-overlay';
+    overlay.addEventListener('click', () => this.hideSessionContextMenu());
+
+    // Create menu
+    const menu = document.createElement('div');
+    menu.className = 'session-context-menu';
+    menu.innerHTML = `
+      <div class="context-menu-title">${this.escapeHtml(displayName)}</div>
+      <div class="context-menu-item" data-action="rename">
+        <span class="context-menu-icon">✎</span>
+        <span>${this.t('common.rename', 'Rename')}</span>
+      </div>
+      <div class="context-menu-item context-menu-danger" data-action="unpin">
+        <span class="context-menu-icon">✕</span>
+        <span>${this.t('sessions.unpin', 'Unpin')}</span>
+      </div>
+    `;
+
+    // Position menu
+    const menuWidth = 200;
+    const menuHeight = 120;
+    let menuX = x - menuWidth / 2;
+    let menuY = y - menuHeight - 10;
+
+    // Ensure menu is within viewport
+    if (menuX < 10) menuX = 10;
+    if (menuX + menuWidth > window.innerWidth - 10) menuX = window.innerWidth - menuWidth - 10;
+    if (menuY < 10) menuY = y + 20;
+
+    menu.style.left = `${menuX}px`;
+    menu.style.top = `${menuY}px`;
+
+    // Bind actions
+    menu.querySelector('[data-action="rename"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.hideSessionContextMenu();
+      this.renameSession(sessionId, displayName, item);
+    });
+
+    menu.querySelector('[data-action="unpin"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.hideSessionContextMenu();
+      this.unpinSession(sessionId);
+    });
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(menu);
+    this._contextMenu = { overlay, menu };
+
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(30);
+  },
+
+  /**
+   * Hide session context menu
+   */
+  hideSessionContextMenu() {
+    if (this._contextMenu) {
+      this._contextMenu.overlay.remove();
+      this._contextMenu.menu.remove();
+      this._contextMenu = null;
+    }
+  },
+
+  /**
+   * Rename a pinned session
+   */
+  renameSession(sessionId, currentName, gridItem) {
+    this.showRenameDialog(sessionId, currentName, (newName) => {
+      // Update grid item display
+      const nameEl = gridItem.querySelector('.session-grid-name');
+      if (nameEl) {
+        nameEl.textContent = newName;
+      }
+
+      // Update local array
+      const session = this._pinnedSessions.find(s => s.session_id === sessionId);
+      if (session) {
+        session.display_name = newName;
+      }
+
+      this.showToast(this.t('sessions.renamed', 'Session renamed'));
+    });
   }
 };
 

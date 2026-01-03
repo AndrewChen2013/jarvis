@@ -27,7 +27,7 @@
   <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="stylesheet" href="/static/styles.css?v=102">
+  <link rel="stylesheet" href="/static/styles.css?v=109">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -202,6 +202,8 @@
               <button id="files-sort-btn" class="btn-files-nav" title="Sort">A↓</button>
               <button id="files-menu-btn" class="btn-files-nav">⋮</button>
             </div>
+            <!-- 快捷访问 -->
+            <div id="files-favorites" class="files-favorites"></div>
             <!-- 文件列表 -->
             <div id="files-list" class="files-list">
               <div class="loading" data-i18n="sessions.loading">Loading...</div>
@@ -533,6 +535,7 @@
       <button id="theme-toggle" class="btn-font btn-theme" title="Theme">◐</button>
       <button id="context-toggle" class="btn-font btn-context" title="Context Info">⛁</button>
       <button id="workdir-btn" class="btn-font btn-workdir" title="Open Working Directory">⊞</button>
+      <button id="rename-session-btn" class="btn-font btn-rename" data-i18n-title="common.rename" title="Rename Session">✎</button>
     </div>
 
     <!-- Context 信息悬浮条（默认收起） -->
@@ -679,27 +682,27 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
   <script defer src="/static/terminal.js?v=12"></script>
-  <script defer src="/static/session-manager.js?v=9"></script>
+  <script defer src="/static/session-manager.js?v=10"></script>
   <script defer src="/static/floating-button.js"></script>
-  <script defer src="/static/i18n.js?v=31"></script>
+  <script defer src="/static/i18n.js?v=32"></script>
   <!-- App 模块 -->
   <script defer src="/static/utils.js?v=3"></script>
   <script defer src="/static/debug.js?v=3"></script>
   <script defer src="/static/dialogs.js?v=24"></script>
   <script defer src="/static/settings.js?v=15"></script>
-  <script defer src="/static/swipe.js?v=50"></script>
-  <script defer src="/static/files.js?v=17"></script>
+  <script defer src="/static/swipe.js?v=51"></script>
+  <script defer src="/static/files.js?v=20"></script>
   <script defer src="/static/projects.js?v=26"></script>
-  <script defer src="/static/websocket.js?v=53"></script>
+  <script defer src="/static/websocket.js?v=55"></script>
   <script defer src="/static/upload.js?v=5"></script>
   <script defer src="/static/download.js?v=3"></script>
   <script defer src="/static/history.js?v=12"></script>
   <script defer src="/static/remote-machines.js?v=6"></script>
   <script defer src="/static/ssh-floating-button.js?v=14"></script>
-  <script defer src="/static/ssh-session-manager.js?v=1"></script>
+  <script defer src="/static/ssh-session-manager.js?v=10"></script>
   <script defer src="/static/ssh-terminal.js?v=5"></script>
   <script defer src="/static/monitor.js?v=6"></script>
   <script defer src="/static/scheduled-tasks.js?v=9"></script>
-  <script defer src="/static/app.js?v=31"></script>
+  <script defer src="/static/app.js?v=32"></script>
 </body>
 </html>

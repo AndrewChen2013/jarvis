@@ -585,6 +585,17 @@ class App {
       this.openWorkingDir();
     });
 
+    // 重命名当前 session 按钮
+    const renameSessionBtn = document.getElementById('rename-session-btn');
+    if (renameSessionBtn) {
+      renameSessionBtn.addEventListener('click', () => {
+        this.debugLog('rename-session button clicked');
+        this.renameCurrentSession();
+      });
+    } else {
+      console.warn('rename-session-btn not found');
+    }
+
     // 返回按钮 - 关闭session
     document.getElementById('back-btn').addEventListener('click', () => {
       this.debugLog('back button clicked (close session)');

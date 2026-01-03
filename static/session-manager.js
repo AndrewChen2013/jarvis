@@ -50,6 +50,9 @@ class SessionInstance {
 
     // 主题（每个 session 独立，null 表示使用默认值）
     this.theme = null;
+
+    // 输入框内容（每个 session 独立）
+    this.inputValue = '';
   }
 
   /**
@@ -246,8 +249,14 @@ class SessionManager {
       return;
     }
 
-    // 记录上一个活跃的 session
+    // 保存当前 session 的输入框内容
+    const inputField = document.querySelector('.input-field');
     if (this.activeId && this.activeId !== sessionId) {
+      const currentSession = this.sessions.get(this.activeId);
+      if (currentSession && inputField) {
+        currentSession.inputValue = inputField.value;
+        this.log(`switchTo: saved input for ${this.activeId.substring(0, 8)}: "${currentSession.inputValue.substring(0, 20)}..."`);
+      }
       this.previousId = this.activeId;
     }
 
@@ -272,6 +281,14 @@ class SessionManager {
 
     // 显示目标 session
     this.showSession(session);
+
+    // 恢复目标 session 的输入框内容
+    if (inputField && session.inputValue !== undefined) {
+      inputField.value = session.inputValue;
+      // 触发 input 事件以调整高度
+      inputField.dispatchEvent(new Event('input'));
+      this.log(`switchTo: restored input for ${sessionId.substring(0, 8)}: "${session.inputValue.substring(0, 20)}..."`);
+    }
 
     // 更新悬浮按钮
     if (this.app.floatingButton) {
@@ -311,6 +328,12 @@ class SessionManager {
 
     const session = this.sessions.get(this.activeId);
     if (session) {
+      // 保存输入框内容
+      const inputField = document.querySelector('.input-field');
+      if (inputField) {
+        session.inputValue = inputField.value;
+        this.log(`minimizeCurrent: saved input for ${session.id.substring(0, 8)}: "${session.inputValue.substring(0, 20)}..."`);
+      }
       this.log(`minimizeCurrent: hide session ${session.id}`);
       this.hideSession(session);
     }

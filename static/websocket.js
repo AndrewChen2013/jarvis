@@ -72,6 +72,14 @@ const AppWebSocket = {
       // 恢复 context bar 状态
       this.restoreContextBarState(existingSession);
 
+      // 恢复输入框内容
+      const inputField = document.querySelector('.input-field');
+      if (inputField && existingSession.inputValue !== undefined) {
+        inputField.value = existingSession.inputValue;
+        inputField.dispatchEvent(new Event('input'));
+        this.debugLog(`connectTerminal: restored input: "${existingSession.inputValue.substring(0, 20)}..."`);
+      }
+
       // 更新连接状态显示
       this.updateConnectStatus('connected', '');
       return;
@@ -213,6 +221,14 @@ const AppWebSocket = {
 
       // 恢复 context bar 展开状态
       this.restoreContextBarState(session);
+
+      // 恢复输入框内容（在 showView 之后，确保输入框已创建）
+      const inputField = document.querySelector('.input-field');
+      if (inputField && session.inputValue !== undefined) {
+        inputField.value = session.inputValue;
+        inputField.dispatchEvent(new Event('input'));
+        this.debugLog(`connectSession: restored input for ${sessionId.substring(0, 8)}: "${session.inputValue.substring(0, 20)}..."`);
+      }
 
       // 立即显示缓存的 context（无闪烁）
       const cachedContext = session.getCachedContext();
@@ -1353,6 +1369,51 @@ const AppWebSocket = {
     this._currentPath = workDir;
     this._pathHistory = [];
     this.loadFilesDirectory(workDir);
+  },
+
+  /**
+   * 重命名当前 session
+   */
+  renameCurrentSession() {
+    this.debugLog(`renameCurrentSession called, currentClaudeSessionId=${this.currentClaudeSessionId}, currentSession=${this.currentSession}`);
+
+    const sessionId = this.currentClaudeSessionId;
+    if (!sessionId) {
+      this.debugLog('renameCurrentSession: no sessionId');
+      this.showToast(this.t('terminal.noSession', 'No active session'));
+      return;
+    }
+
+    // 获取当前 session 名称
+    const session = this.sessionManager?.sessions.get(this.currentSession);
+    const currentName = session?.name || '';
+    this.debugLog(`renameCurrentSession: currentName=${currentName}, hasShowRenameDialog=${typeof this.showRenameDialog}`);
+
+    if (typeof this.showRenameDialog !== 'function') {
+      console.error('showRenameDialog is not a function');
+      this.showToast('Error: showRenameDialog not available');
+      return;
+    }
+
+    this.showRenameDialog(sessionId, currentName, (newName) => {
+      // 更新终端标题
+      const titleEl = document.getElementById('terminal-title');
+      if (titleEl) {
+        titleEl.textContent = newName;
+      }
+
+      // 更新 session manager 中的名称
+      if (session) {
+        session.name = newName;
+      }
+
+      // 刷新 pinned sessions
+      if (this.refreshPinnedSessions) {
+        this.refreshPinnedSessions();
+      }
+
+      this.showToast(this.t('sessions.renamed', 'Session renamed'));
+    });
   },
 
   /**

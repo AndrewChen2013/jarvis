@@ -112,6 +112,7 @@ const AppFiles = {
     if (this._currentPreviewPath === undefined) this._currentPreviewPath = null;
     if (this._sortMode === undefined) this._sortMode = 0; // 0=A↓, 1=A↑, 2=T↓, 3=T↑
     if (this._previewFontSize === undefined) this._previewFontSize = 14; // default font size for preview
+    if (this._fileFavorites === undefined) this._fileFavorites = this.loadFileFavorites();
 
     // Bind back button
     const backBtn = document.getElementById('files-back-btn');
@@ -145,6 +146,91 @@ const AppFiles = {
 
     // Update button states
     this.updateFilesButtonStates();
+
+    // Render favorites bar
+    this.renderFileFavorites();
+  },
+
+  /**
+   * Load favorites from localStorage
+   */
+  loadFileFavorites() {
+    try {
+      const data = localStorage.getItem('file_favorites');
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Save favorites to localStorage
+   */
+  saveFileFavorites() {
+    localStorage.setItem('file_favorites', JSON.stringify(this._fileFavorites || []));
+  },
+
+  /**
+   * Add path to favorites
+   */
+  addToFavorites(path, name) {
+    if (!this._fileFavorites) this._fileFavorites = [];
+    // Check if already exists
+    if (this._fileFavorites.some(f => f.path === path)) {
+      this.showToast?.('Already in favorites') || alert('Already in favorites');
+      return;
+    }
+    this._fileFavorites.push({ path, name });
+    this.saveFileFavorites();
+    this.renderFileFavorites();
+    this.showToast?.('Added to favorites') || console.log('Added to favorites');
+  },
+
+  /**
+   * Remove path from favorites
+   */
+  removeFromFavorites(path) {
+    if (!this._fileFavorites) return;
+    this._fileFavorites = this._fileFavorites.filter(f => f.path !== path);
+    this.saveFileFavorites();
+    this.renderFileFavorites();
+  },
+
+  /**
+   * Render favorites bar
+   */
+  renderFileFavorites() {
+    const container = document.getElementById('files-favorites');
+    if (!container) return;
+
+    const favorites = this._fileFavorites || [];
+    if (favorites.length === 0) {
+      container.classList.remove('has-items');
+      container.innerHTML = '';
+      return;
+    }
+
+    container.classList.add('has-items');
+    container.innerHTML = favorites.map(fav => `
+      <div class="files-fav-item" data-path="${this.escapeHtml(fav.path)}">
+        <span class="fav-icon">★</span>
+        <span class="fav-name">${this.escapeHtml(fav.name)}</span>
+        <span class="fav-remove" data-remove="${this.escapeHtml(fav.path)}">×</span>
+      </div>
+    `).join('');
+
+    // Bind events
+    container.querySelectorAll('.files-fav-item').forEach(item => {
+      const path = item.dataset.path;
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('fav-remove')) {
+          e.stopPropagation();
+          this.removeFromFavorites(e.target.dataset.remove);
+        } else {
+          this.loadFilesDirectory(path);
+        }
+      });
+    });
   },
 
   /**
@@ -296,7 +382,7 @@ const AppFiles = {
    * Get file icon based on extension
    */
   getFileIcon(name, isDir) {
-    if (isDir) return '▷';
+    if (isDir) return '<span class="folder-icon"></span>';
     const ext = this.getFileExtension(name);
     return FILE_ICONS[ext] || '─';
   },
@@ -319,6 +405,31 @@ const AppFiles = {
         // Directory: click to enter
         item.addEventListener('click', () => {
           this.loadFilesDirectory(path);
+        });
+
+        // Directory: long press to add to favorites
+        let longPressTimer = null;
+        item.addEventListener('touchstart', (e) => {
+          longPressTimer = setTimeout(() => {
+            e.preventDefault();
+            this.addToFavorites(path, name);
+            // Vibrate if supported
+            if (navigator.vibrate) navigator.vibrate(50);
+          }, 500);
+        }, { passive: true });
+
+        item.addEventListener('touchend', () => {
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
+        });
+
+        item.addEventListener('touchmove', () => {
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
         });
       } else {
         // File: check if previewable
@@ -1008,7 +1119,7 @@ const AppFiles = {
   },
 
   /**
-   * Render image preview with zoom support
+   * Render image preview with zoom, rotate, and pan support
    */
   renderImagePreview(container, data) {
     const wrapper = document.createElement('div');
@@ -1018,16 +1129,147 @@ const AppFiles = {
     img.className = 'preview-image';
     img.src = data.data;
     img.alt = data.name;
+    img.draggable = false;
 
-    // 点击放大/缩小
-    let zoomed = false;
-    img.addEventListener('click', () => {
-      zoomed = !zoomed;
-      img.classList.toggle('zoomed', zoomed);
-      wrapper.classList.toggle('zoomed', zoomed);
+    // State
+    let scale = 1;
+    let rotation = 0;
+    let translateX = 0;
+    let translateY = 0;
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let lastDistance = 0;
+
+    const updateTransform = () => {
+      img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale}) rotate(${rotation}deg)`;
+    };
+
+    // 旋转按钮容器
+    const controls = document.createElement('div');
+    controls.className = 'preview-image-controls';
+    controls.innerHTML = `
+      <button class="preview-ctrl-btn" data-action="rotate-left" title="Rotate Left">↺</button>
+      <button class="preview-ctrl-btn" data-action="rotate-right" title="Rotate Right">↻</button>
+      <button class="preview-ctrl-btn" data-action="zoom-in" title="Zoom In">+</button>
+      <button class="preview-ctrl-btn" data-action="zoom-out" title="Zoom Out">−</button>
+      <button class="preview-ctrl-btn" data-action="reset" title="Reset">⟲</button>
+    `;
+
+    controls.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'rotate-left') {
+        rotation -= 90;
+      } else if (action === 'rotate-right') {
+        rotation += 90;
+      } else if (action === 'zoom-in') {
+        scale = Math.min(scale * 1.5, 10);
+      } else if (action === 'zoom-out') {
+        scale = Math.max(scale / 1.5, 0.1);
+      } else if (action === 'reset') {
+        scale = 1;
+        rotation = 0;
+        translateX = 0;
+        translateY = 0;
+      }
+      updateTransform();
     });
 
+    // 双击重置
+    img.addEventListener('dblclick', () => {
+      scale = 1;
+      rotation = 0;
+      translateX = 0;
+      translateY = 0;
+      updateTransform();
+    });
+
+    // 鼠标拖动
+    wrapper.addEventListener('mousedown', (e) => {
+      if (scale > 1) {
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        wrapper.style.cursor = 'grabbing';
+      }
+    });
+
+    wrapper.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        translateX += e.clientX - lastX;
+        translateY += e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        updateTransform();
+      }
+    });
+
+    wrapper.addEventListener('mouseup', () => {
+      isDragging = false;
+      wrapper.style.cursor = scale > 1 ? 'grab' : 'default';
+    });
+
+    wrapper.addEventListener('mouseleave', () => {
+      isDragging = false;
+      wrapper.style.cursor = 'default';
+    });
+
+    // 触摸支持（双指缩放和拖动）
+    let initialDistance = 0;
+    let initialScale = 1;
+
+    wrapper.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        // 双指缩放
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        initialDistance = Math.sqrt(dx * dx + dy * dy);
+        initialScale = scale;
+      } else if (e.touches.length === 1 && scale > 1) {
+        // 单指拖动
+        isDragging = true;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    wrapper.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2) {
+        // 双指缩放
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        scale = Math.min(Math.max(initialScale * (distance / initialDistance), 0.5), 10);
+        updateTransform();
+        e.preventDefault();
+      } else if (e.touches.length === 1 && isDragging) {
+        // 单指拖动
+        translateX += e.touches[0].clientX - lastX;
+        translateY += e.touches[0].clientY - lastY;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        updateTransform();
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    wrapper.addEventListener('touchend', () => {
+      isDragging = false;
+      initialDistance = 0;
+    }, { passive: true });
+
+    // 鼠标滚轮缩放
+    wrapper.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      scale = Math.min(Math.max(scale * delta, 0.5), 10);
+      updateTransform();
+    }, { passive: false });
+
     wrapper.appendChild(img);
+    wrapper.appendChild(controls);
     container.appendChild(wrapper);
   },
 
@@ -1167,21 +1409,186 @@ const AppFiles = {
   },
 
   /**
-   * Add line numbers to code preview
+   * Add line numbers to code preview with folding support
    */
   addLineNumbers(pre, content) {
     const lines = content.split('\n');
     const lineNumbers = document.createElement('div');
     lineNumbers.className = 'line-numbers';
 
+    // Detect foldable blocks (functions, classes, etc.)
+    const foldableBlocks = this.detectFoldableBlocks(lines);
+
     for (let i = 1; i <= lines.length; i++) {
       const num = document.createElement('span');
-      num.textContent = i;
+      num.dataset.line = i;
+
+      // Check if this line starts a foldable block
+      const block = foldableBlocks.find(b => b.start === i);
+      if (block) {
+        num.innerHTML = `<span class="fold-btn" data-start="${block.start}" data-end="${block.end}">▼</span>${i}`;
+        num.classList.add('has-fold');
+      } else {
+        num.textContent = i;
+      }
+
       lineNumbers.appendChild(num);
     }
 
     pre.insertBefore(lineNumbers, pre.firstChild);
     pre.classList.add('has-line-numbers');
+
+    // Bind fold events
+    this.bindFoldEvents(pre, lineNumbers);
+  },
+
+  /**
+   * Detect foldable code blocks (functions, classes, etc.)
+   */
+  detectFoldableBlocks(lines) {
+    const blocks = [];
+    // Patterns for block start
+    const blockStartPatterns = [
+      /^\s*(function|class|interface|enum)\s+\w+/,           // JS/TS function, class
+      /^\s*(const|let|var)\s+\w+\s*=\s*(async\s+)?(\([^)]*\)|[^=]+)\s*=>\s*\{?\s*$/,  // Arrow function
+      /^\s*(export\s+)?(default\s+)?(async\s+)?function/,    // Export function
+      /^\s*(export\s+)?(default\s+)?class/,                   // Export class
+      /^\s*def\s+\w+\s*\(/,                                    // Python def
+      /^\s*class\s+\w+[\s:(]/,                                  // Python class
+      /^\s*(if|else|elif|for|while|with|try|except|finally)\s*[:(]/,  // Python blocks
+      /^\s*(if|else|for|while|switch|try|catch|finally)\s*\(/,  // JS blocks
+    ];
+
+    const braceStack = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNum = i + 1;
+
+      // Check if line matches a block start pattern
+      const isBlockStart = blockStartPatterns.some(p => p.test(line));
+
+      if (isBlockStart) {
+        // Count braces in this line
+        const openBraces = (line.match(/\{/g) || []).length;
+        const closeBraces = (line.match(/\}/g) || []).length;
+        const netBraces = openBraces - closeBraces;
+
+        if (netBraces > 0 || line.includes('{')) {
+          braceStack.push({ start: lineNum, braceCount: netBraces > 0 ? netBraces : 1 });
+        } else if (line.trim().endsWith(':')) {
+          // Python-style block (indentation based)
+          // Find end by indentation
+          const startIndent = line.search(/\S/);
+          let endLine = lineNum;
+          for (let j = i + 1; j < lines.length; j++) {
+            const nextLine = lines[j];
+            if (nextLine.trim() === '') continue;
+            const nextIndent = nextLine.search(/\S/);
+            if (nextIndent <= startIndent) {
+              endLine = j;
+              break;
+            }
+            endLine = j + 1;
+          }
+          if (endLine > lineNum + 2) {
+            blocks.push({ start: lineNum, end: endLine });
+          }
+        }
+      }
+
+      // Track braces for JS-style blocks
+      if (braceStack.length > 0) {
+        const openBraces = (line.match(/\{/g) || []).length;
+        const closeBraces = (line.match(/\}/g) || []).length;
+
+        for (let b = 0; b < closeBraces && braceStack.length > 0; b++) {
+          const block = braceStack[braceStack.length - 1];
+          block.braceCount--;
+          if (block.braceCount <= 0) {
+            const poppedBlock = braceStack.pop();
+            if (lineNum > poppedBlock.start + 2) {
+              blocks.push({ start: poppedBlock.start, end: lineNum });
+            }
+          }
+        }
+
+        for (let b = 0; b < openBraces && braceStack.length > 0; b++) {
+          braceStack[braceStack.length - 1].braceCount++;
+        }
+      }
+    }
+
+    return blocks;
+  },
+
+  /**
+   * Bind fold/unfold events
+   */
+  bindFoldEvents(pre, lineNumbers) {
+    const code = pre.querySelector('code');
+    if (!code) return;
+
+    lineNumbers.querySelectorAll('.fold-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const start = parseInt(btn.dataset.start);
+        const end = parseInt(btn.dataset.end);
+        const isFolded = btn.classList.contains('folded');
+
+        if (isFolded) {
+          // Unfold
+          btn.classList.remove('folded');
+          btn.textContent = '▼';
+          // Show lines
+          for (let i = start + 1; i <= end; i++) {
+            const lineNumEl = lineNumbers.querySelector(`[data-line="${i}"]`);
+            if (lineNumEl) lineNumEl.style.display = '';
+          }
+          // Show code lines
+          this.toggleCodeLines(code, start, end, true);
+        } else {
+          // Fold
+          btn.classList.add('folded');
+          btn.textContent = '▶';
+          // Hide lines
+          for (let i = start + 1; i <= end; i++) {
+            const lineNumEl = lineNumbers.querySelector(`[data-line="${i}"]`);
+            if (lineNumEl) lineNumEl.style.display = 'none';
+          }
+          // Hide code lines
+          this.toggleCodeLines(code, start, end, false);
+        }
+      });
+    });
+  },
+
+  /**
+   * Toggle visibility of code lines
+   */
+  toggleCodeLines(code, start, end, show) {
+    // Code is rendered as a single text node or with spans from highlighting
+    // We need to wrap lines to control visibility
+    if (!code._linesWrapped) {
+      this.wrapCodeLines(code);
+    }
+
+    const lines = code.querySelectorAll('.code-line');
+    for (let i = start; i < end && i < lines.length; i++) {
+      lines[i].style.display = show ? '' : 'none';
+    }
+  },
+
+  /**
+   * Wrap each line of code in a span for folding support
+   */
+  wrapCodeLines(code) {
+    const html = code.innerHTML;
+    const lines = html.split('\n');
+    code.innerHTML = lines.map((line, i) =>
+      `<span class="code-line" data-line="${i + 1}">${line}</span>`
+    ).join('\n');
+    code._linesWrapped = true;
   },
 
   /**

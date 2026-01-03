@@ -256,6 +256,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': '输入消息...',
       'terminal.noWorkDir': '无工作目录',
+      'terminal.noSession': '无活跃会话',
+      'sessions.renamed': '会话已重命名',
 
       // 调试面板
       'debug.title': '调试日志',
@@ -573,6 +575,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': 'Enter message...',
       'terminal.noWorkDir': 'No working directory',
+      'terminal.noSession': 'No active session',
+      'sessions.renamed': 'Session renamed',
 
       // Debug panel
       'debug.title': 'Debug Log',
@@ -879,6 +883,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': 'メッセージを入力...',
       'terminal.noWorkDir': '作業ディレクトリなし',
+      'terminal.noSession': 'アクティブセッションなし',
+      'sessions.renamed': 'セッション名を変更しました',
 
       // デバッグパネル
       'debug.title': 'デバッグログ',
@@ -1147,6 +1153,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': '메시지 입력...',
       'terminal.noWorkDir': '작업 디렉토리 없음',
+      'terminal.noSession': '활성 세션 없음',
+      'sessions.renamed': '세션 이름 변경됨',
 
       // 디버그 패널
       'debug.title': '디버그 로그',
@@ -1414,6 +1422,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': 'Entrez un message...',
       'terminal.noWorkDir': 'Pas de répertoire de travail',
+      'terminal.noSession': 'Pas de session active',
+      'sessions.renamed': 'Session renommée',
 
       // Panneau de débogage
       'debug.title': 'Journal de débogage',
@@ -1682,6 +1692,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': 'Nachricht eingeben...',
       'terminal.noWorkDir': 'Kein Arbeitsverzeichnis',
+      'terminal.noSession': 'Keine aktive Sitzung',
+      'sessions.renamed': 'Sitzung umbenannt',
 
       // Debug-Panel
       'debug.title': 'Debug-Log',
@@ -1950,6 +1962,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': 'Escriba un mensaje...',
       'terminal.noWorkDir': 'Sin directorio de trabajo',
+      'terminal.noSession': 'Sin sesión activa',
+      'sessions.renamed': 'Sesión renombrada',
 
       // Panel de depuración
       'debug.title': 'Registro de depuración',
@@ -2218,6 +2232,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': 'Введите сообщение...',
       'terminal.noWorkDir': 'Нет рабочего каталога',
+      'terminal.noSession': 'Нет активной сессии',
+      'sessions.renamed': 'Сессия переименована',
 
       // Панель отладки
       'debug.title': 'Журнал отладки',
@@ -2486,6 +2502,8 @@ const i18n = {
 
       'terminal.inputPlaceholder': 'Digite uma mensagem...',
       'terminal.noWorkDir': 'Sem diretório de trabalho',
+      'terminal.noSession': 'Sem sessão ativa',
+      'sessions.renamed': 'Sessão renomeada',
 
       // Painel de depuração
       'debug.title': 'Log de depuração',

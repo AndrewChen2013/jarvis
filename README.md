@@ -5,7 +5,7 @@
 
 **English** | [中文](README_CN.md)
 
-> Your personal AI assistant. Control your computer with natural language, from anywhere.
+> Not a tool. An intelligent assistant that works for you.
 
 <p align="center">
   <img src="screenshots/demo.gif" width="300" alt="Demo">
@@ -13,20 +13,66 @@
 
 ---
 
-## Liberation
+## What is Jarvis?
+
+**Jarvis is not a tool — it's an agent.**
+
+A tool waits for you to operate it. An agent understands your intent, makes plans, and executes autonomously.
 
 ```
-In the feudal age, peasants were bound to the land.
-In the industrial age, workers were bound to the assembly line.
-In the information age, programmers are bound to their desks.
-
-In the AI age, it's time for liberation.
+Tool:    Human → operates → Computer
+Agent:   Human → delegates → Jarvis → commands → Computer
 ```
 
-**Liberate Space** — No longer chained to your workstation
-**Liberate Time** — Even 5-minute fragments become productive
-**Liberate Hands** — Voice input, speak instead of type
-**Liberate Mind** — Focus on creativity, let AI handle execution
+Like Tony Stark's JARVIS, you don't "use" it — you talk to it, assign tasks, and let it work.
+
+---
+
+## Core Capability: Task Delegation
+
+The essence of Jarvis is **delegation** — you give instructions, Jarvis executes.
+
+### Instant Tasks
+
+Assign a task anytime, from anywhere:
+
+```
+You: "Check if the production server has enough disk space"
+Jarvis: [connects to server, runs commands, analyzes results]
+Jarvis: "Server is at 73% capacity. The logs directory is taking 45GB. Should I clean up logs older than 7 days?"
+```
+
+### Scheduled Tasks
+
+Set up recurring tasks that run automatically:
+
+- **Daily briefing**: "Every morning at 8am, summarize my unread emails and Slack messages"
+- **Monitoring**: "Every hour, check if our API response time exceeds 500ms"
+- **Research**: "Every Monday, find and summarize AI news from the past week"
+
+Jarvis executes in the background. You receive results via notification (Feishu/Lark, or other channels via MCP).
+
+### Agent-to-Agent Collaboration
+
+The real power: **one agent can assign tasks to another**.
+
+While working with Claude Code on your computer:
+```
+You: "This refactoring will take a while. Have another agent monitor our Slack for any urgent messages and notify me."
+```
+
+Claude Code → creates a scheduled task → another Jarvis agent monitors Slack → alerts you if needed.
+
+**You're not managing tools. You're commanding a team of AI agents.**
+
+### The Future: Multi-Agent Orchestration
+
+Today's scheduled tasks are just the beginning. The vision:
+
+- **Workflow chains**: Agent A finishes → triggers Agent B → results feed Agent C
+- **Parallel execution**: Multiple agents working on different aspects simultaneously
+- **Specialized agents**: Research agent, coding agent, communication agent — each with their strengths
+- **Collaborative problem-solving**: Agents discussing and iterating together
 
 ---
 
@@ -47,117 +93,96 @@ You → Voice → Jarvis → Execute tasks
         Terminal is just "execution log"
 ```
 
-**The real interaction:**
-- **Frontend**: Your voice / natural language
-- **Middle**: Jarvis understands, plans, decides
-- **Backend**: Claude Code executes (terminal log)
-- **Feedback**: Voice report / only check logs when needed
+You're not "using a computer" — you're "talking to Jarvis". The computer is just Jarvis's hands and feet.
 
-**You're not "using a computer" — you're "talking to Jarvis". The computer is just Jarvis's hands and feet.**
+### The Five Pillars
 
-### AI Execution Bandwidth Crushes Humans
-
-**Human operating a computer:**
-```
-Brain → Nerve signals → Fingers → Keyboard/Mouse → Screen pixels → Eyes → Brain
-```
-
-**AI operating a computer:**
-```
-AI → API/Command line → System executes directly
-```
-
-| Dimension | Human | AI |
-|-----------|-------|-----|
-| Input | Keyboard/mouse (serial) | Commands/API (parallel) |
-| Speed | Seconds | Milliseconds |
-| Accuracy | Typos, mistakes | Precise execution |
-| Concurrency | One thing at a time | Multiple simultaneous |
-| Fatigue | Gets tired, distracted | Never |
-
-**The insight**: Humans and computers are separated by the "body" — a low-bandwidth interface. AI and computers have a "native digital" conversation with no such loss.
-
-### The Five Pillars of Jarvis
-
-| # | Element | Metaphor | What It Solves |
-|---|---------|----------|----------------|
+| # | Element | Role | Function |
+|---|---------|------|----------|
 | 1 | **Computer** | Body | Where work happens |
-| 2 | **Claude** | Soul | Who thinks and executes (knowledgeable + capable external brain) |
-| 3 | **Jarvis** | Mouth | Human → AI command channel (breaks spatial limits) |
-| 4 | **AI-native Human** | Master | Who drives it all |
-| 5 | **Digitized Context** | Memory | AI → understands human (high-bandwidth transfer) |
+| 2 | **Claude** | Soul | Thinks, plans, executes |
+| 3 | **Jarvis** | Voice | Your command channel to AI |
+| 4 | **You** | Commander | Directs, reviews, decides |
+| 5 | **Context** | Memory | Your preferences, history, knowledge |
 
 ### Be AI-Native
 
-**Generational comparison:**
-- **Digital Immigrant**: Learned to use computers (boomers)
-- **Digital Native**: Born knowing computers (millennials, gen-z)
-- **AI-Native**: Treats AI as an extension of their own capabilities
+**Generational shift:**
+- **Digital Immigrant**: Learned to use computers
+- **Digital Native**: Born knowing computers
+- **AI-Native**: Treats AI as an extension of self
 
-**Characteristics of AI-native people:**
-- Mindset shift: "I'll have Jarvis handle this, I'll just review"
-- Capability boundary: Your skills + AI's skills
-- Work mode: From executor to commander + reviewer
-
-**Definition**: Not "someone who learned to use AI tools", but "someone who restructured their work around AI"
+**AI-native mindset:**
+- "I'll have Jarvis handle this, I'll just review"
+- Your capabilities = Your skills + AI's skills
+- Work mode: Commander + Reviewer, not Executor
 
 ---
 
-## Vibe Coding
+## Use Cases
 
-A new way of programming:
+Jarvis is a general-purpose assistant. Programming is just one of many things it can do.
 
-- **Think** → **Speak** → **Walk away** → **Come back to results**
-- Your job: ideas, decisions, creativity
-- Claude's job: execution, translation, implementation
+### 🤖 Personal Assistant
 
-### Fragment Time Programming
+| Task | Example |
+|------|---------|
+| Information gathering | "Summarize today's AI news" |
+| Email triage | "Find urgent emails and draft responses" |
+| Research | "Compare the top 5 project management tools" |
+| Reminders | "Every Friday, remind me to submit my timesheet" |
 
-Traditional programming requires large time blocks — at least 1-2 hours to "get in the zone."
+### 💻 Software Development
 
-With Jarvis:
-- **5 minutes** is enough to make progress
-- Waiting for elevator? Check the progress
-- Waiting for food delivery? Give feedback
-- On the subway? Send a new instruction
-- **No "getting in the zone" needed** — Claude maintains the context
+| Task | Example |
+|------|---------|
+| Coding | "Add error handling to the upload function" |
+| Code review | "Review this PR and suggest improvements" |
+| Debugging | "Find why the login test is failing" |
+| Documentation | "Generate API docs for this module" |
 
-Fragment time adds up to **real productivity**.
+### 🖥️ System Administration
 
-### Multi-Session Parallel
+| Task | Example |
+|------|---------|
+| Monitoring | "Alert me if CPU exceeds 80%" |
+| Maintenance | "Clean up Docker images older than 30 days" |
+| Deployment | "Deploy the latest build to staging" |
+| Troubleshooting | "Check why the service is slow" |
 
-Claude spends 70% of the time outputting. Waiting is waste.
+### 📊 Data & Analysis
 
-<img src="screenshots/multi-session.jpg" width="300" alt="Multi-Session">
+| Task | Example |
+|------|---------|
+| Data processing | "Parse these logs and find error patterns" |
+| Reporting | "Generate weekly metrics report" |
+| Automation | "Every day, backup the database to S3" |
 
-Run 3-4 tasks simultaneously:
-- Session A is generating → Switch to Session B, give instructions
-- Session B is thinking → Switch to Session C, review output
-- Session C done → Back to Session A, continue
+---
 
-**One person, 3-4x efficiency.**
+## Access Methods
 
-### Voice-Driven
+### 📱 Mobile (Primary)
 
-Your phone's keyboard has voice input built-in.
+Control Jarvis from your phone — the most natural way to delegate:
 
-- Speak instead of type
-- Eyes closed, lying down, still coding
-- "Add form validation to the login page" → Send → Done
+- **Voice input**: Speak your instructions
+- **Anywhere access**: On the subway, in bed, during a walk
+- **Fragment time**: 5 minutes is enough to assign a task
 
-**Truly hands-free.**
+### 🖥️ Desktop
 
-### Built with Itself
+Full terminal experience when you need it:
 
-This project was developed using Jarvis. After the core features were complete, all subsequent development was done via voice input on a phone — during commutes, while walking, in bed.
+- **Multi-session**: Run multiple agents in parallel
+- **Direct interaction**: For complex, interactive tasks
 
-**Everything you see here was created by Claude Code:**
-- 📝 This README — written and translated
-- 🎬 The demo GIF — frames extracted from screen recording, composed automatically
-- 🖼️ All screenshots — extracted, cropped, and sensitive info masked
-- 🌍 9 language translations — i18n files with 200+ entries each
+### 🔌 API / MCP
 
-Proof that vibe coding works.
+Programmatic access for automation:
+
+- **MCP Server**: Integrate with Claude Code and other MCP clients
+- **REST API**: Build your own integrations
 
 ---
 
@@ -337,118 +362,15 @@ Connect to remote servers via SSH:
 
 ---
 
-## Use Cases
-
-| Scenario | Example |
-|----------|---------|
-| **Continue coding** | "Add error handling to the upload function" |
-| **Check progress** | "Show me what you've done so far" |
-| **System admin** | "Check if the server has enough disk space" |
-| **File operations** | "Find all TODO comments in the project" |
-| **Git operations** | "Create a branch for this feature and commit" |
-| **Quick queries** | "What's the structure of the config file?" |
-| **Scheduled monitoring** | Set up hourly news monitoring with Feishu alerts |
-| **Remote server** | SSH into your server and run commands |
-| **File transfer** | Upload config files from your phone |
-
----
-
 ## Features
 
-### 📱 Mobile-Optimized Experience
-
-- **Touch Scroll** — Smooth momentum scrolling, feels like a native app
-- **Virtual Keyboard** — Terminal shortcuts without switching input methods
-- **Font Scaling** — A+/A- buttons, each session remembers its size
-- **Pull to Refresh** — Light pull refreshes data, heavy pull reloads page
-- **Keyboard Adaptation** — Toolbar stays visible when soft keyboard opens
-
-### 🔀 Multi-Session Management
-
-- **Background Sessions** — Switch sessions without disconnecting, Claude keeps running
-- **Floating Switch Button** — Quick jump between active sessions
-- **Minimize to Background** — Leave temporarily, resume anytime
-- **Rename Sessions** — Give sessions memorable names
-- **Delete Sessions** — Clean up old history
-
-### ⌨️ Shortcuts
-
-**Common Keys**
-
-| Key | Function |
-|-----|----------|
-| TAB | Auto-complete |
-| ↑ ↓ | Command history |
-| ESC | Stop current operation |
-| ⤒ ⤓ | Scroll to top/bottom (hold for continuous) |
-
-**Combo Keys**
-
-| Key | Function |
-|-----|----------|
-| ^L | Clear screen |
-| ^O | Verbose output |
-| ^B | Background task |
-| ESC×2 | Rollback last action |
-| ⇧Tab | Switch mode |
-
-**Slash Commands**
-
-| Command | Function |
-|---------|----------|
-| /resume | Resume session |
-| /clear | Clear conversation |
-| /compact | Compact context |
-| /memory | View memory |
-| /help | Help info |
-
-### 📊 Usage Monitoring
-
-<img src="screenshots/context-info.jpg" width="300" alt="Context Info">
-
-- **Real-time Usage** — View 5-hour and 7-day cycle utilization
-- **Sonnet Quota** — Separate display for Sonnet model usage
-- **Context Info** — Token consumption, remaining space, distance to compact
-- **Account Info** — Shows plan type and connection status
-
-### 🌐 Multi-Language Support
-
-- 9 languages: Chinese, English, Japanese, Korean, French, German, Spanish, Russian, Portuguese
-- Switch anytime, settings auto-saved
-
-### ⏰ Scheduled Tasks & MCP Server
-
-- **Cron-based scheduling** — Run tasks hourly, daily, weekly, or custom schedules
-- **Feishu/Lark notifications** — Automatically send task results to your chat
-- **MCP integration** — Manage tasks from Claude Code with the built-in MCP server
-- **Execution history** — View past runs, outputs, and status
-- **Session linking** — Each task can create a dedicated Claude Code session
-
-### 📊 System Monitor
-
-- **Live CPU & Memory** — Real-time usage with visual gauges
-- **Process List** — Top processes sorted by CPU or memory
-- **Disk Usage** — Monitor all mounted volumes
-- **Jarvis Stats** — See all related processes and their resource usage
-
-### 🖥️ SSH Remote Machines
-
-- **Saved connections** — Store SSH host, port, username, and key path
-- **Quick connect** — One-tap to open terminal session
-- **Integrated terminal** — Full xterm.js terminal experience
-
-### 📁 File Management
-
-- **File browser** — Navigate your filesystem
-- **File upload** — Upload files from mobile to any directory
-- **Upload history** — Track recent uploads with quick copy path
-- **File download** — Download files directly to your device
-
-### 🔐 Secure Access
-
-- **Token Auth** — Random access token generated on first run
-- **Change Password** — Update access token anytime
-- **Remote Access** — Cloudflare Tunnel for secure exposure
+| Category | Capabilities |
+|----------|--------------|
+| **Task Execution** | Scheduled tasks, MCP integration, Feishu notifications, execution history |
+| **Multi-Session** | Background sessions, parallel agents, session switching |
+| **Mobile Experience** | Touch scroll, virtual keyboard, voice input, font scaling |
+| **System Tools** | System monitor, SSH remote machines, file management |
+| **Integrations** | 9 languages, Cloudflare Tunnel, token auth |
 
 ---
 
@@ -565,6 +487,6 @@ Bill Chen
 ---
 
 <p align="center">
-  <i>Programming is thinking, not typing.<br>
-  Let your mind roam free.</i>
+  <i>Don't operate. Delegate.<br>
+  Your AI team is ready.</i>
 </p>
