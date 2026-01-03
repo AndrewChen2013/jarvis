@@ -51,28 +51,42 @@ async def get_pinned_sessions(_: str = Depends(verify_token)):
     try:
         pinned = db.get_pinned_sessions()
 
-        # 为每个置顶会话补充 context 信息
+        # 为每个置顶会话补充信息
         enriched = []
         for p in pinned:
             session_data = dict(p)  # 复制数据库数据
+            session_type = p.get("type") or "claude"  # 默认是 claude 类型
 
-            # 尝试获取完整的 session 信息（包含 context）
-            try:
-                full_session = claude_projects.get_session(
-                    p["working_dir"],
-                    p["session_id"]
-                )
-                if full_session:
-                    session_data["context_used"] = full_session.context_used
-                    session_data["context_max"] = full_session.context_max
-                    session_data["context_percentage"] = full_session.context_percentage
-                    session_data["context_free"] = full_session.context_free
-                    session_data["context_until_compact"] = full_session.context_until_compact
-                    session_data["total_tokens"] = full_session.total_tokens
-                    # 添加 session 的最后活动时间
-                    session_data["updated_at"] = full_session.updated_at.isoformat()
-            except Exception as e:
-                logger.debug(f"Could not get context for {p['session_id']}: {e}")
+            if session_type == "ssh":
+                # SSH 会话 - 获取远程机器信息
+                machine_id = p.get("machine_id")
+                if machine_id:
+                    machine = db.get_remote_machine(machine_id)
+                    if machine:
+                        session_data["machine_host"] = machine["host"]
+                        session_data["machine_port"] = machine["port"]
+                        session_data["machine_username"] = machine["username"]
+                    else:
+                        # 机器已被删除
+                        session_data["machine_deleted"] = True
+            else:
+                # Claude 会话 - 尝试获取完整的 session 信息（包含 context）
+                try:
+                    full_session = claude_projects.get_session(
+                        p["working_dir"],
+                        p["session_id"]
+                    )
+                    if full_session:
+                        session_data["context_used"] = full_session.context_used
+                        session_data["context_max"] = full_session.context_max
+                        session_data["context_percentage"] = full_session.context_percentage
+                        session_data["context_free"] = full_session.context_free
+                        session_data["context_until_compact"] = full_session.context_until_compact
+                        session_data["total_tokens"] = full_session.total_tokens
+                        # 添加 session 的最后活动时间
+                        session_data["updated_at"] = full_session.updated_at.isoformat()
+                except Exception as e:
+                    logger.debug(f"Could not get context for {p['session_id']}: {e}")
 
             enriched.append(session_data)
 

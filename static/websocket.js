@@ -58,6 +58,9 @@ const AppWebSocket = {
         titleEl.textContent = this.currentSessionName;
       }
 
+      // 获取并显示 git 分支
+      this.fetchGitBranch(existingSession.workDir);
+
       // 恢复 context bar 状态
       this.restoreContextBarState(existingSession);
 
@@ -86,6 +89,9 @@ const AppWebSocket = {
     if (titleEl && this.currentSessionName) {
       titleEl.textContent = this.currentSessionName;
     }
+
+    // 获取并显示 git 分支
+    this.fetchGitBranch(workDir);
 
     // 恢复 context bar 状态（新建 session 默认收起）
     this.restoreContextBarState(session);
@@ -1247,6 +1253,75 @@ const AppWebSocket = {
 
     // 更新主题按钮显示（可选：显示当前主题颜色）
     this.updateThemeButton(nextTheme);
+  },
+
+  /**
+   * 打开当前工作目录（跳转到 Files 页面）
+   */
+  openWorkingDir() {
+    const workDir = this.currentWorkDir;
+    if (!workDir) {
+      this.showToast(this.t('terminal.noWorkDir', 'No working directory'));
+      return;
+    }
+
+    this.debugLog(`openWorkingDir: ${workDir}`);
+
+    // 隐藏 terminal，返回 sessions 视图
+    this.showView('sessions');
+
+    // 获取 Files 页面在当前顺序中的位置（Files 的 pageId = 2）
+    const pageOrder = this.getPageOrder();
+    const filesPageIndex = pageOrder.indexOf(2);
+    if (filesPageIndex >= 0) {
+      this.goToPage(filesPageIndex);
+    }
+
+    // 加载工作目录
+    this._currentPath = workDir;
+    this._pathHistory = [];
+    this.loadFilesDirectory(workDir);
+  },
+
+  /**
+   * 获取并显示 git 分支（显示在 toolbar 内 session 名下方）
+   */
+  async fetchGitBranch(workDir) {
+    console.log('[GitBranch] fetchGitBranch called, workDir:', workDir);
+    const branchEl = document.getElementById('git-branch');
+    if (!branchEl) {
+      console.log('[GitBranch] Element not found');
+      return;
+    }
+
+    // 先清空（CSS 会自动隐藏空元素）
+    branchEl.textContent = '';
+
+    if (!workDir) {
+      console.log('[GitBranch] No workDir provided');
+      return;
+    }
+
+    try {
+      const url = `/api/git/branch?path=${encodeURIComponent(workDir)}`;
+      console.log('[GitBranch] Fetching:', url);
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+
+      console.log('[GitBranch] Response status:', response.status);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[GitBranch] Data:', data);
+        if (data.branch) {
+          branchEl.textContent = `⎇ ${data.branch}`;
+          console.log('[GitBranch] Branch displayed:', data.branch);
+        }
+      }
+    } catch (e) {
+      console.error('[GitBranch] Error:', e.message);
+      this.debugLog(`fetchGitBranch error: ${e.message}`);
+    }
   },
 
   /**

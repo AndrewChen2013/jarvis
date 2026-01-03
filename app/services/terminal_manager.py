@@ -179,6 +179,8 @@ class TerminalManager:
             cmd = f"claude{skip_perm_flag}"
             logger.info(f"[Terminal] NEW mode (cwd: {working_dir}, root: {is_root})")
 
+        logger.info(f"[Terminal] Executing command: {cmd}")
+
         # 创建 PTY
         pid, master_fd = pty.fork()
 

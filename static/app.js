@@ -73,6 +73,15 @@ class App {
       window.i18n.init();
     }
 
+    // 初始化远程机器模块
+    if (window.RemoteMachines) {
+      window.RemoteMachines.init();
+    }
+
+    // 防止浏览器边缘滑动后退（iOS Safari）
+    // 通过 History API 拦截 popstate 事件
+    this.initBackGesturePrevention();
+
     // 绑定事件（包括登录表单）
     this.bindEvents();
 
@@ -129,6 +138,26 @@ class App {
 
     // 初始化软键盘适配（防止工具栏被顶走）
     this.initKeyboardHandler();
+  }
+
+  /**
+   * 初始化防止浏览器后退手势
+   * 使用 History API 拦截 popstate 事件，阻止 iOS Safari 边缘滑动后退
+   */
+  initBackGesturePrevention() {
+    // 推入一个初始状态，确保有历史记录可以"后退"到
+    if (!window.history.state || !window.history.state.preventBack) {
+      window.history.pushState({ preventBack: true, index: 1 }, '');
+    }
+
+    // 监听 popstate 事件（当用户尝试后退时触发）
+    window.addEventListener('popstate', (e) => {
+      // 当用户触发后退时，立即推入新状态来阻止真正的后退
+      window.history.pushState({ preventBack: true, index: 1 }, '');
+      console.log('[BackGesture] Prevented back navigation');
+    });
+
+    console.log('[BackGesture] Back gesture prevention initialized');
   }
 
   /**
@@ -193,17 +222,62 @@ class App {
         await this.loadPinnedSessions();
       }
     );
+
+    // Files 页面 - 移动整个 files-browser 容器（包括标题栏）
+    this.initPullRefreshForPage(
+      'page-files',
+      'pull-refresh-files',
+      'files-list',
+      async () => {
+        if (this.refreshFilesPage) {
+          this.refreshFilesPage();
+        }
+      },
+      'files-browser'  // 移动整个浏览器容器
+    );
+
+    // Monitor 页面
+    this.initPullRefreshForPage(
+      'page-monitor',
+      'pull-refresh-monitor',
+      'monitor-content',
+      async () => {
+        if (window.AppMonitor) {
+          await window.AppMonitor.loadMonitorData();
+        }
+      }
+    );
+
+    // Remote Machines 页面
+    this.initPullRefreshForPage(
+      'page-remote',
+      'pull-refresh-remote',
+      'remote-machines-list',
+      async () => {
+        if (window.RemoteMachines) {
+          await window.RemoteMachines.loadMachines();
+        }
+      },
+      'remote-machines-content'  // 移动整个容器（包括添加按钮）
+    );
   }
 
   /**
    * 为单个页面初始化下拉刷新
+   * @param {string} pageId - 页面容器 ID
+   * @param {string} pullRefreshId - 下拉刷新指示器 ID
+   * @param {string} listId - 用于检测滚动位置的列表 ID
+   * @param {Function} refreshCallback - 刷新回调函数
+   * @param {string} [contentId] - 可选，要移动的内容容器 ID（如果与 listId 不同）
    */
-  initPullRefreshForPage(pageId, pullRefreshId, listId, refreshCallback) {
+  initPullRefreshForPage(pageId, pullRefreshId, listId, refreshCallback, contentId = null) {
     const page = document.getElementById(pageId);
     const pullRefresh = document.getElementById(pullRefreshId);
     const list = document.getElementById(listId);
+    // 如果指定了 contentId，移动整个 content 容器；否则只移动 list
+    const content = contentId ? document.getElementById(contentId) : list;
 
-    if (!page || !pullRefresh || !list) return;
+    if (!page || !pullRefresh || !list || !content) return;
 
     let startY = 0;
     let currentY = 0;
@@ -211,14 +285,18 @@ class App {
     let refreshing = false;
 
     page.addEventListener('touchstart', (e) => {
+      // 每次触摸开始时先重置 pulling 状态，防止状态残留
+      pulling = false;
+
       // 编辑模式下禁用下拉刷新（拖动卡片时）
       const grid = document.getElementById('all-sessions-grid');
       if (grid && grid.classList.contains('edit-mode')) {
-        pulling = false;
         return;
       }
-      // 只在滚动到顶部时才启用下拉刷新
-      if (page.scrollTop <= 0 && !refreshing) {
+      // 只在滚动到顶部时才启用下拉刷新（检查 page 和 list 的 scrollTop）
+      const pageAtTop = page.scrollTop <= 0;
+      const listAtTop = list.scrollTop <= 0;
+      if (pageAtTop && listAtTop && !refreshing) {
         startY = e.touches[0].clientY;
         pulling = true;
       }
@@ -230,20 +308,22 @@ class App {
       currentY = e.touches[0].clientY;
       const deltaY = currentY - startY;
 
-      // 只处理向下拉
-      if (deltaY > 0 && page.scrollTop <= 0) {
+      // 只处理向下拉（检查 page 和 list 都在顶部）
+      const pageAtTop = page.scrollTop <= 0;
+      const listAtTop = list.scrollTop <= 0;
+      if (deltaY > 0 && pageAtTop && listAtTop) {
         e.preventDefault();
 
         // 拖拽时禁用过渡动画
         pullRefresh.classList.add('dragging');
-        list.classList.add('dragging');
+        content.classList.add('dragging');
 
         // 计算下拉距离（带阻尼效果）
         const pullDistance = Math.min(deltaY * 0.5, this.pullRefresh.maxPull);
 
         // 更新 UI
         pullRefresh.style.transform = `translateY(${pullDistance}px)`;
-        list.style.transform = `translateY(${pullDistance}px)`;
+        content.style.transform = `translateY(${pullDistance}px)`;
 
         // 更新状态 - 两段式提示
         const textEl = pullRefresh.querySelector('.pull-refresh-text');
@@ -272,7 +352,7 @@ class App {
 
       // 移除 dragging 类，启用过渡动画
       pullRefresh.classList.remove('dragging');
-      list.classList.remove('dragging');
+      content.classList.remove('dragging');
 
       if (pullDistance >= this.pullRefresh.reloadThreshold && !refreshing) {
         // 大幅下拉 - 刷新整个页面
@@ -286,7 +366,7 @@ class App {
 
         // 先立即回弹
         pullRefresh.style.transform = '';
-        list.style.transform = '';
+        content.style.transform = '';
         pullRefresh.classList.remove('pulling', 'reload-mode');
 
         // 异步加载数据
@@ -301,7 +381,7 @@ class App {
       } else {
         // 未达到阈值，恢复位置（带动画）
         pullRefresh.style.transform = '';
-        list.style.transform = '';
+        content.style.transform = '';
         pullRefresh.classList.remove('pulling', 'reload-mode');
       }
 
@@ -315,9 +395,9 @@ class App {
       pulling = false;
 
       pullRefresh.classList.remove('dragging');
-      list.classList.remove('dragging');
+      content.classList.remove('dragging');
       pullRefresh.style.transform = '';
-      list.style.transform = '';
+      content.style.transform = '';
       pullRefresh.classList.remove('pulling', 'reload-mode');
 
       startY = 0;
@@ -330,51 +410,6 @@ class App {
     document.getElementById('login-form').addEventListener('submit', (e) => {
       e.preventDefault();
       this.handleLogin();
-    });
-
-    // 传输按钮 - 打开传输模态框
-    document.getElementById('transfer-btn').addEventListener('click', () => {
-      this.openTransferModal();
-    });
-
-    // 关闭传输模态框
-    document.getElementById('transfer-modal-close').addEventListener('click', () => {
-      this.closeTransferModal();
-    });
-
-    // 点击传输模态框背景关闭
-    document.getElementById('transfer-modal').addEventListener('click', (e) => {
-      if (e.target.id === 'transfer-modal') {
-        this.closeTransferModal();
-      }
-    });
-
-    // 传输菜单项 - 上传文件
-    document.getElementById('menu-upload-quick').addEventListener('click', () => {
-      this.closeTransferModal();
-      document.getElementById('file-input').value = '';
-      document.getElementById('file-input').click();
-    });
-
-    // 传输菜单项 - 下载文件
-    document.getElementById('menu-download-quick').addEventListener('click', () => {
-      this.closeTransferModal();
-      this.openSettingsModal();
-      this.showFileBrowser();
-    });
-
-    // 传输菜单项 - 上传历史
-    document.getElementById('menu-upload-history-quick').addEventListener('click', () => {
-      this.closeTransferModal();
-      this.openSettingsModal();
-      this.showUploadHistory();
-    });
-
-    // 传输菜单项 - 下载历史
-    document.getElementById('menu-download-history-quick').addEventListener('click', () => {
-      this.closeTransferModal();
-      this.openSettingsModal();
-      this.showDownloadHistory();
     });
 
     // 退出按钮（现在在设置菜单中）
@@ -531,6 +566,12 @@ class App {
       this.toggleContextPanel();
     });
 
+    // 工作目录按钮 - 打开 Files 页面
+    document.getElementById('workdir-btn').addEventListener('click', () => {
+      this.debugLog('workdir button clicked');
+      this.openWorkingDir();
+    });
+
     // 返回按钮 - 关闭session
     document.getElementById('back-btn').addEventListener('click', () => {
       this.debugLog('back button clicked (close session)');
@@ -569,6 +610,16 @@ class App {
       this.initSwipe();
     }
 
+    // 初始化文件浏览器
+    if (this.initFiles) {
+      this.initFiles();
+    }
+
+    // 初始化系统监控
+    if (window.AppMonitor && window.AppMonitor.initMonitor) {
+      window.AppMonitor.initMonitor();
+    }
+
   }
 
   // ==================== 认证相关 ====================
@@ -601,6 +652,18 @@ class App {
           this.loadSystemInfo(),
           this.loadAccountInfo()
         ]).catch(e => console.error('Load info error:', e));
+        // 恢复保存的页面位置
+        requestAnimationFrame(() => {
+          const container = document.getElementById('swipe-container');
+          if (container && this._currentPage !== undefined) {
+            const pageWidth = container.offsetWidth;
+            container.scrollTo({ left: pageWidth * this._currentPage, behavior: 'instant' });
+          }
+        });
+        // 触发当前页面的懒加载
+        if (this._onPageChange && this._currentPage !== undefined) {
+          this._onPageChange(this._currentPage);
+        }
       } else {
         // token 无效，清除并显示登录页
         this.clearAuth();
@@ -612,6 +675,18 @@ class App {
       // 网络错误，尝试使用缓存的 token
       // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
       this.showView('sessions');
+      // 恢复保存的页面位置
+      requestAnimationFrame(() => {
+        const container = document.getElementById('swipe-container');
+        if (container && this._currentPage !== undefined) {
+          const pageWidth = container.offsetWidth;
+          container.scrollTo({ left: pageWidth * this._currentPage, behavior: 'instant' });
+        }
+      });
+      // 触发当前页面的懒加载
+      if (this._onPageChange && this._currentPage !== undefined) {
+        this._onPageChange(this._currentPage);
+      }
     }
   }
 
@@ -657,6 +732,18 @@ class App {
           this.loadSystemInfo(),
           this.loadAccountInfo()
         ]).catch(e => console.error('Load info error:', e));
+        // 登录成功后，恢复保存的页面位置（因为 initSwipe 在登录前执行时 container 可能还没布局好）
+        requestAnimationFrame(() => {
+          const container = document.getElementById('swipe-container');
+          if (container && this._currentPage !== undefined) {
+            const pageWidth = container.offsetWidth;
+            container.scrollTo({ left: pageWidth * this._currentPage, behavior: 'instant' });
+          }
+        });
+        // 登录成功后，触发当前页面的懒加载（因为 initSwipe 在登录前就执行了）
+        if (this._onPageChange && this._currentPage !== undefined) {
+          this._onPageChange(this._currentPage);
+        }
       } else {
         this.showLoginError(this.t('login.tokenInvalid'));
       }
@@ -791,16 +878,19 @@ function mixinModule(module) {
 }
 
 // 混入所有模块
+// Note: AppMonitor must be before AppSwipe (swipe calls monitor methods on page change)
 if (window.AppUtils) mixinModule(window.AppUtils);
 if (window.AppDebug) mixinModule(window.AppDebug);
 if (window.AppDialogs) mixinModule(window.AppDialogs);
 if (window.AppSettings) mixinModule(window.AppSettings);
+if (window.AppMonitor) mixinModule(window.AppMonitor);
 if (window.AppSwipe) mixinModule(window.AppSwipe);
 if (window.AppProjects) mixinModule(window.AppProjects);
 if (window.AppWebSocket) mixinModule(window.AppWebSocket);
 if (window.AppUpload) mixinModule(window.AppUpload);
 if (window.AppDownload) mixinModule(window.AppDownload);
 if (window.AppHistory) mixinModule(window.AppHistory);
+if (window.AppFiles) mixinModule(window.AppFiles);
 
 // 页面加载完成后初始化
 window.addEventListener('DOMContentLoaded', () => {

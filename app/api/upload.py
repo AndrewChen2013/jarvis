@@ -192,15 +192,17 @@ async def upload_file(
 @router.get("/uploads")
 async def get_upload_history(
     limit: int = 50,
+    offset: int = 0,
     _: str = Depends(verify_token)
 ):
     """获取上传历史记录
 
     Args:
         limit: 返回记录数量限制
+        offset: 分页偏移量
 
     Returns:
         上传历史列表
     """
-    history = db.get_upload_history(limit)
+    history = db.get_upload_history(limit, offset)
     return JSONResponse(content={"uploads": history})

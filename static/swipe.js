@@ -18,9 +18,14 @@
  * Swipe Module
  * Handles horizontal swipe navigation and pinned sessions grid
  */
+// Page constants (accessible to all methods)
+const SWIPE_PAGE_IDS = ['page-projects', 'page-all-sessions', 'page-files', 'page-remote', 'page-monitor'];
+const SWIPE_PAGE_NAMES = { 'page-projects': 'Projects', 'page-all-sessions': 'Sessions', 'page-files': 'Files', 'page-remote': 'Remote', 'page-monitor': 'Monitor' };
+
 const AppSwipe = {
-  // Current page index
-  _currentPage: 0,
+
+  // Current page index (default to middle page for optimal navigation)
+  _currentPage: 2,
   // Pinned sessions data
   _pinnedSessions: [],
   // Sessions loaded flag
@@ -33,26 +38,56 @@ const AppSwipe = {
   _previewMode: false,
 
   /**
-   * Get page order from localStorage (0=projects first, 1=sessions first)
+   * Get page order from localStorage as array [0,1,2]
+   * Supports migration from old format (0 or 1)
    */
   getPageOrder() {
-    return parseInt(localStorage.getItem('pageOrder') || '0');
+    const saved = localStorage.getItem('pageOrder');
+
+    // Migration from old binary format
+    if (saved === '0' || saved === null || saved === undefined) {
+      return [0, 1, 2, 3, 4]; // Projects, Sessions, Files, Remote, Monitor
+    }
+    if (saved === '1') {
+      return [1, 0, 2, 3, 4]; // Sessions, Projects, Files, Remote, Monitor
+    }
+
+    // New array format
+    try {
+      const order = JSON.parse(saved);
+      if (Array.isArray(order)) {
+        // Migration: 3 pages -> 5 pages
+        if (order.length === 3) {
+          return [...order, 3, 4];
+        }
+        // Migration: 4 pages -> 5 pages
+        if (order.length === 4) {
+          return [...order, 4];
+        }
+        if (order.length === 5) {
+          return order;
+        }
+      }
+    } catch (e) {}
+
+    return [0, 1, 2, 3, 4]; // Default
   },
 
   /**
-   * Set page order to localStorage
+   * Set page order to localStorage as JSON array
    */
   setPageOrder(order) {
-    localStorage.setItem('pageOrder', order.toString());
+    localStorage.setItem('pageOrder', JSON.stringify(order));
     this.applyPageOrder();
   },
 
   /**
-   * Toggle page order
+   * Swap two pages in the order array
    */
-  togglePageOrder() {
-    const current = this.getPageOrder();
-    this.setPageOrder(current === 0 ? 1 : 0);
+  swapPageOrder(indexA, indexB) {
+    const order = this.getPageOrder();
+    [order[indexA], order[indexB]] = [order[indexB], order[indexA]];
+    this.setPageOrder(order);
   },
 
   /**
@@ -74,23 +109,19 @@ const AppSwipe = {
     overlay.id = 'preview-overlay';
     overlay.className = 'preview-overlay';
 
-    // Get current page order and build previews
+    // Get current page order and build previews (now supports 3 pages)
     const order = this.getPageOrder();
-    const pages = [
-      { id: 'page-projects', name: this.t('swipe.projects', 'Projects') },
-      { id: 'page-all-sessions', name: this.t('swipe.sessions', 'Sessions') }
-    ];
-
-    // Reorder based on current order
-    if (order === 1) {
-      pages.reverse();
-    }
+    const pages = order.map((pageIdx, orderIdx) => ({
+      id: SWIPE_PAGE_IDS[pageIdx],
+      name: this.t(`swipe.${SWIPE_PAGE_IDS[pageIdx].replace('page-', '').replace('-', '')}`, SWIPE_PAGE_NAMES[SWIPE_PAGE_IDS[pageIdx]]),
+      orderIndex: orderIdx
+    }));
 
     // Create preview containers with page clones
     let previewHtml = '<div class="preview-container">';
-    pages.forEach((page, index) => {
+    pages.forEach((page) => {
       previewHtml += `
-        <div class="preview-item" data-page-id="${page.id}" data-index="${index}" draggable="true">
+        <div class="preview-item" data-page-id="${page.id}" data-order-index="${page.orderIndex}" draggable="true">
           <div class="preview-frame">
             <div class="preview-content" id="preview-${page.id}"></div>
           </div>
@@ -104,14 +135,14 @@ const AppSwipe = {
     overlay.innerHTML = previewHtml;
     main.appendChild(overlay);
 
-    // Copy scaled content into previews
+    // Copy scaled content into previews (scale for 3 items)
     pages.forEach(page => {
       const originalPage = document.getElementById(page.id);
       const previewContent = document.getElementById(`preview-${page.id}`);
       if (originalPage && previewContent) {
         const clone = originalPage.cloneNode(true);
         clone.id = '';
-        clone.style.cssText = 'transform: scale(0.35); transform-origin: top left; width: 285.7%; height: 285.7%; pointer-events: none;';
+        clone.style.cssText = 'transform: scale(0.28); transform-origin: top left; width: 357%; height: 357%; pointer-events: none;';
         previewContent.appendChild(clone);
       }
     });
@@ -119,10 +150,53 @@ const AppSwipe = {
     // Setup drag and drop for preview items
     this._setupPreviewDragDrop(overlay);
 
-    // Click on overlay background to exit
+    // Get the preview container for bounds checking
+    const previewContainer = overlay.querySelector('.preview-container');
+
+    // Click handler - exit when clicking on side margins, hint, or lower area
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay || e.target.classList.contains('preview-hint')) {
-        this.exitPreviewMode();
+      // Clicking on preview items is handled separately
+      if (e.target.closest('.preview-item')) return;
+
+      // Get container bounds
+      if (previewContainer) {
+        const containerRect = previewContainer.getBoundingClientRect();
+        const clickX = e.clientX;
+        const clickY = e.clientY;
+
+        // Exit if clicking below the preview container (hint area and below)
+        if (clickY > containerRect.bottom) {
+          this.exitPreviewMode();
+          return;
+        }
+
+        // Exit if clicking on the true side margins (outside container horizontally)
+        // Upper blank area should not exit (allow scrolling)
+        const isInVerticalRange = clickY >= containerRect.top - 50 && clickY <= containerRect.bottom;
+        const isOutsideHorizontally = clickX < containerRect.left - 20 || clickX > containerRect.right + 20;
+
+        if (isOutsideHorizontally && isInVerticalRange) {
+          this.exitPreviewMode();
+          return;
+        }
+      }
+    });
+
+    // Add swipe down gesture to exit preview mode
+    let touchStartY = 0;
+    overlay.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    overlay.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length === 1) {
+        const deltaY = e.changedTouches[0].clientY - touchStartY;
+        // Swipe down more than 100px to exit
+        if (deltaY > 100) {
+          this.exitPreviewMode();
+        }
       }
     });
 
@@ -130,13 +204,10 @@ const AppSwipe = {
     overlay.querySelectorAll('.preview-item').forEach(item => {
       item.addEventListener('click', (e) => {
         if (item.classList.contains('dragging')) return;
-        const pageId = item.dataset.pageId;
+        const orderIndex = parseInt(item.dataset.orderIndex);
         this.exitPreviewMode();
         // Navigate to the clicked page
-        const pageIndex = pageId === 'page-projects'
-          ? (this.getPageOrder() === 0 ? 0 : 1)
-          : (this.getPageOrder() === 0 ? 1 : 0);
-        this.goToPage(pageIndex);
+        this.goToPage(orderIndex);
       });
     });
   },
@@ -158,121 +229,335 @@ const AppSwipe = {
   },
 
   /**
-   * Setup drag and drop for preview items
+   * Setup drag and drop for preview items (iOS-style with real-time shifting)
    */
   _setupPreviewDragDrop(overlay) {
     const container = overlay.querySelector('.preview-container');
     if (!container) return;
 
-    const items = container.querySelectorAll('.preview-item');
     let draggedItem = null;
     let dragStartX = 0;
-    let initialLeft = 0;
+    let dragStartScrollLeft = 0;
+    let autoScrollRAF = null;
+    let currentScrollSpeed = 0;
+    let lastTouchX = 0;
+    let originalIndex = -1;
+    let currentTargetIndex = -1;
+    let itemPositions = []; // Store original positions of all items
+    const self = this;
 
-    items.forEach(item => {
-      // Touch events for mobile
+    // Get all items as array
+    const getItems = () => Array.from(container.querySelectorAll('.preview-item'));
+
+    // Calculate item width including gap
+    const getItemWidth = () => {
+      const items = getItems();
+      if (items.length < 2) return 0;
+      const rect0 = items[0].getBoundingClientRect();
+      const rect1 = items[1].getBoundingClientRect();
+      return rect1.left - rect0.left;
+    };
+
+    // Update dragged item visual position
+    const updateDraggedItemPosition = () => {
+      if (!draggedItem) return;
+      const fingerDelta = lastTouchX - dragStartX;
+      const scrollDelta = container.scrollLeft - dragStartScrollLeft;
+      const totalDelta = fingerDelta + scrollDelta;
+      draggedItem.style.transform = `translateX(${totalDelta}px) scale(1.05)`;
+    };
+
+    // Calculate target index based on finger position
+    // Uses midpoints between item centers as slot boundaries
+    const calculateTargetIndex = () => {
+      if (!draggedItem || itemPositions.length === 0) return originalIndex;
+
+      const fingerX = lastTouchX;
+      const scrollDelta = container.scrollLeft - dragStartScrollLeft;
+      const n = itemPositions.length;
+
+      // Find which slot the finger is in
+      // Slot boundaries are midpoints between adjacent item centers
+      for (let i = 0; i < n; i++) {
+        const centerX = itemPositions[i].centerX - scrollDelta;
+
+        if (i < n - 1) {
+          // Calculate right boundary (midpoint to next item)
+          const nextCenterX = itemPositions[i + 1].centerX - scrollDelta;
+          const rightBoundary = (centerX + nextCenterX) / 2;
+
+          if (fingerX <= rightBoundary) {
+            return i;
+          }
+        } else {
+          // Last item: if we reached here, finger is in the last slot
+          return i;
+        }
+      }
+
+      return originalIndex;
+    };
+
+    // Shift items based on target index (iOS-style)
+    const updateItemShifts = (targetIdx) => {
+      if (targetIdx === currentTargetIndex) return;
+      currentTargetIndex = targetIdx;
+
+      const items = getItems();
+      const itemWidth = getItemWidth();
+
+      items.forEach((item, idx) => {
+        if (item === draggedItem) return;
+
+        let shiftAmount = 0;
+
+        if (originalIndex < targetIdx) {
+          // Moving right: items after original and up to target shift left
+          if (idx > originalIndex && idx <= targetIdx) {
+            shiftAmount = -itemWidth;
+          }
+        } else if (originalIndex > targetIdx) {
+          // Moving left: items from target to before original shift right
+          if (idx >= targetIdx && idx < originalIndex) {
+            shiftAmount = itemWidth;
+          }
+        }
+
+        // Apply smooth transition
+        item.style.transition = 'transform 0.2s ease-out';
+        item.style.transform = shiftAmount !== 0 ? `translateX(${shiftAmount}px)` : '';
+      });
+
+      // Haptic feedback on target change
+      if (navigator.vibrate && targetIdx !== originalIndex) {
+        navigator.vibrate(10);
+      }
+    };
+
+    // Auto-scroll with acceleration based on edge proximity
+    const updateAutoScroll = () => {
+      const edgeThreshold = 80;
+      const screenWidth = window.innerWidth;
+      const maxSpeed = 35;
+      const minSpeed = 12;
+
+      // Calculate scroll boundaries
+      // Use a conservative limit to ensure left items remain partially visible when dragging right
+      const fullMaxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+      // Limit scroll to keep at least 60px of content visible on the left side
+      const conservativeMaxScroll = Math.max(0, fullMaxScrollLeft - 60);
+      const atLeftBoundary = container.scrollLeft <= 1;
+      const atRightBoundary = container.scrollLeft >= conservativeMaxScroll - 1;
+
+      let targetSpeed = 0;
+
+      if (lastTouchX < edgeThreshold && !atLeftBoundary) {
+        // Scroll left, but only if not at the start
+        const proximity = 1 - (lastTouchX / edgeThreshold);
+        targetSpeed = -(minSpeed + (maxSpeed - minSpeed) * proximity * proximity);
+      } else if (lastTouchX > screenWidth - edgeThreshold && !atRightBoundary) {
+        // Scroll right, but only if not at the end
+        const proximity = 1 - ((screenWidth - lastTouchX) / edgeThreshold);
+        targetSpeed = minSpeed + (maxSpeed - minSpeed) * proximity * proximity;
+      }
+
+      // At boundary, immediately stop rather than gradually slow down
+      if ((targetSpeed < 0 && atLeftBoundary) || (targetSpeed > 0 && atRightBoundary)) {
+        targetSpeed = 0;
+        currentScrollSpeed = 0;
+      } else {
+        currentScrollSpeed += (targetSpeed - currentScrollSpeed) * 0.3;
+      }
+
+      if (Math.abs(currentScrollSpeed) > 0.5 || Math.abs(targetSpeed) > 0) {
+        // Apply scroll with conservative boundary limits
+        const newScrollLeft = container.scrollLeft + currentScrollSpeed;
+        container.scrollLeft = Math.max(0, Math.min(conservativeMaxScroll, newScrollLeft));
+
+        updateDraggedItemPosition();
+        // Recalculate target as we scroll
+        const newTarget = calculateTargetIndex();
+        updateItemShifts(newTarget);
+        autoScrollRAF = requestAnimationFrame(updateAutoScroll);
+      } else {
+        currentScrollSpeed = 0;
+        autoScrollRAF = null;
+      }
+    };
+
+    const startAutoScroll = (touchX) => {
+      lastTouchX = touchX;
+      if (!autoScrollRAF) {
+        autoScrollRAF = requestAnimationFrame(updateAutoScroll);
+      }
+    };
+
+    const stopAutoScroll = () => {
+      if (autoScrollRAF) {
+        cancelAnimationFrame(autoScrollRAF);
+        autoScrollRAF = null;
+      }
+      currentScrollSpeed = 0;
+    };
+
+    // Reset all item transforms
+    const resetAllTransforms = () => {
+      getItems().forEach(item => {
+        item.style.transition = '';
+        item.style.transform = '';
+      });
+    };
+
+    getItems().forEach((item) => {
       item.addEventListener('touchstart', (e) => {
         draggedItem = item;
         draggedItem.classList.add('dragging');
-        const rect = item.getBoundingClientRect();
         dragStartX = e.touches[0].clientX;
-        initialLeft = rect.left;
+        lastTouchX = dragStartX;
+        dragStartScrollLeft = container.scrollLeft;
+        // Calculate current position dynamically (not captured at binding time)
+        // This ensures correct index even after previous drags reordered the DOM
+        originalIndex = getItems().indexOf(item);
+        currentTargetIndex = originalIndex;
+
+        // Disable scroll-snap during drag to allow smooth auto-scroll
+        container.style.scrollSnapType = 'none';
+
+        // Store original positions of all items
+        itemPositions = getItems().map(it => {
+          const rect = it.getBoundingClientRect();
+          return {
+            left: rect.left,
+            right: rect.right,
+            centerX: rect.left + rect.width / 2
+          };
+        });
+
         if (navigator.vibrate) navigator.vibrate(20);
       }, { passive: true });
 
       item.addEventListener('touchmove', (e) => {
         if (!draggedItem) return;
         e.preventDefault();
-        const deltaX = e.touches[0].clientX - dragStartX;
-        draggedItem.style.transform = `translateX(${deltaX}px) scale(1.05)`;
+
+        const currentX = e.touches[0].clientX;
+        lastTouchX = currentX;
+
+        // Update dragged item position
+        updateDraggedItemPosition();
         draggedItem.style.zIndex = '10';
 
-        // Check if we should swap
-        items.forEach(other => {
-          if (other === draggedItem) return;
-          const otherRect = other.getBoundingClientRect();
-          const currentX = e.touches[0].clientX;
-          if (currentX > otherRect.left && currentX < otherRect.right) {
-            other.classList.add('swap-target');
-          } else {
-            other.classList.remove('swap-target');
-          }
-        });
-      });
+        // Calculate and update target position
+        const newTarget = calculateTargetIndex();
+        updateItemShifts(newTarget);
 
-      item.addEventListener('touchend', (e) => {
-        if (!draggedItem) return;
+        // Auto-scroll when near screen edges
+        const edgeThreshold = 80;
+        const screenWidth = window.innerWidth;
 
-        // Check if we need to swap
-        let swapped = false;
-        items.forEach(other => {
-          if (other !== draggedItem && other.classList.contains('swap-target')) {
-            // Swap positions
-            this._swapPreviewItems(draggedItem, other, container);
-            swapped = true;
-          }
-          other.classList.remove('swap-target');
-        });
-
-        // Reset styles
-        draggedItem.style.transform = '';
-        draggedItem.style.zIndex = '';
-        draggedItem.classList.remove('dragging');
-        draggedItem = null;
-
-        if (swapped) {
-          // Toggle page order
-          this.togglePageOrder();
-          this.showToast(this.t('swipe.orderChanged', 'Page order changed'));
-          if (navigator.vibrate) navigator.vibrate(50);
+        if (currentX < edgeThreshold || currentX > screenWidth - edgeThreshold) {
+          startAutoScroll(currentX);
+        } else {
+          stopAutoScroll();
         }
       });
 
+      item.addEventListener('touchend', () => {
+        stopAutoScroll();
+        if (!draggedItem) return;
+
+        const finalTargetIndex = currentTargetIndex;
+        const items = getItems();
+
+        // Reset all transforms with animation
+        items.forEach(it => {
+          if (it !== draggedItem) {
+            it.style.transition = 'transform 0.2s ease-out';
+            it.style.transform = '';
+          }
+        });
+
+        // Animate dragged item back
+        draggedItem.style.transition = 'transform 0.2s ease-out';
+        draggedItem.style.transform = '';
+        draggedItem.style.zIndex = '';
+        draggedItem.classList.remove('dragging');
+
+        // Clear transitions after animation
+        setTimeout(() => {
+          resetAllTransforms();
+        }, 200);
+
+        // Perform actual DOM reorder if position changed
+        if (finalTargetIndex !== originalIndex) {
+          // Reorder the DOM
+          const allItems = getItems();
+          if (finalTargetIndex > originalIndex) {
+            // Moving right: insert after target
+            const targetItem = allItems[finalTargetIndex];
+            container.insertBefore(draggedItem, targetItem.nextSibling);
+          } else {
+            // Moving left: insert before target
+            const targetItem = allItems[finalTargetIndex];
+            container.insertBefore(draggedItem, targetItem);
+          }
+
+          // Update data-order-index attributes
+          getItems().forEach((it, i) => {
+            it.dataset.orderIndex = i;
+          });
+
+          // Update order in storage
+          const order = self.getPageOrder();
+          const [movedPage] = order.splice(originalIndex, 1);
+          order.splice(finalTargetIndex, 0, movedPage);
+          self.setPageOrder(order);
+
+          self.showToast(self.t('swipe.orderChanged', 'Page order changed'));
+          if (navigator.vibrate) navigator.vibrate(50);
+        }
+
+        // Restore scroll-snap after drag
+        container.style.scrollSnapType = '';
+
+        draggedItem = null;
+        originalIndex = -1;
+        currentTargetIndex = -1;
+        itemPositions = [];
+      });
+
       item.addEventListener('touchcancel', () => {
+        stopAutoScroll();
         if (draggedItem) {
           draggedItem.style.transform = '';
           draggedItem.style.zIndex = '';
           draggedItem.classList.remove('dragging');
         }
+        resetAllTransforms();
+        // Restore scroll-snap after drag
+        container.style.scrollSnapType = '';
         draggedItem = null;
-        items.forEach(other => other.classList.remove('swap-target'));
+        originalIndex = -1;
+        currentTargetIndex = -1;
+        itemPositions = [];
       });
     });
   },
 
   /**
-   * Swap two preview items visually
-   */
-  _swapPreviewItems(item1, item2, container) {
-    const items = Array.from(container.children);
-    const index1 = items.indexOf(item1);
-    const index2 = items.indexOf(item2);
-
-    if (index1 < index2) {
-      container.insertBefore(item2, item1);
-    } else {
-      container.insertBefore(item1, item2);
-    }
-  },
-
-  /**
-   * Apply page order (reorder DOM elements)
+   * Apply page order (reorder DOM elements for 3 pages)
    */
   applyPageOrder() {
     const container = document.getElementById('swipe-container');
-    const projectsPage = document.getElementById('page-projects');
-    const sessionsPage = document.getElementById('page-all-sessions');
-
-    if (!container || !projectsPage || !sessionsPage) return;
+    if (!container) return;
 
     const order = this.getPageOrder();
-    if (order === 1) {
-      // Sessions first
-      container.insertBefore(sessionsPage, projectsPage);
-    } else {
-      // Projects first (default)
-      container.insertBefore(projectsPage, sessionsPage);
-    }
+
+    // Get all pages by their IDs
+    const pages = order.map(pageIdx => document.getElementById(SWIPE_PAGE_IDS[pageIdx])).filter(p => p);
+
+    // Append pages in order (this reorders them)
+    pages.forEach(page => container.appendChild(page));
 
     // Update page indicator
     this.updatePageIndicator();
@@ -290,6 +575,37 @@ const AppSwipe = {
     // Apply saved page order
     this.applyPageOrder();
 
+    // Restore last visited page from localStorage, default to middle page (2)
+    const savedPage = localStorage.getItem('currentPageIndex');
+    const initialPage = savedPage !== null ? parseInt(savedPage) : 2;
+    // Clamp to valid range (0-4)
+    this._currentPage = Math.max(0, Math.min(4, initialPage));
+
+    // Scroll to saved page without animation on initial load
+    // 使用 requestAnimationFrame 确保布局完成后再滚动
+    // 注意：必须使用 scrollTo() 而不是 scrollLeft 赋值，后者在某些情况下不生效
+    requestAnimationFrame(() => {
+      const pageWidth = container.offsetWidth;
+      container.scrollTo({ left: pageWidth * this._currentPage, behavior: 'instant' });
+    });
+    this.updatePageIndicator();
+
+    // Trigger lazy loading for the initial page
+    const order = this.getPageOrder();
+    const initialPageId = SWIPE_PAGE_IDS[order[this._currentPage]];
+    if (initialPageId === 'page-all-sessions' && !this._sessionsLoaded) {
+      this.loadPinnedSessions();
+    }
+    if (initialPageId === 'page-files' && this.loadFilesPage) {
+      this.loadFilesPage();
+    }
+    if (initialPageId === 'page-monitor' && window.AppMonitor) {
+      window.AppMonitor.loadMonitorPage();
+    }
+    if (initialPageId === 'page-remote' && window.RemoteMachines) {
+      window.RemoteMachines.loadMachines();
+    }
+
     // Listen for scroll to update indicator
     container.addEventListener('scroll', () => {
       const pageWidth = container.offsetWidth;
@@ -299,12 +615,7 @@ const AppSwipe = {
       if (newPage !== this._currentPage) {
         this._currentPage = newPage;
         this.updatePageIndicator();
-
-        // Load pinned sessions when switching to sessions page
-        const sessionsPageIndex = this.getPageOrder() === 1 ? 0 : 1;
-        if (newPage === sessionsPageIndex && !this._sessionsLoaded) {
-          this.loadPinnedSessions();
-        }
+        this._onPageChange(newPage);
       }
     });
 
@@ -362,13 +673,6 @@ const AppSwipe = {
     container.addEventListener('touchcancel', () => {
       pinchStartDistance = null;
     });
-
-    // Load pinned sessions if sessions page is first (visible on load)
-    const sessionsFirst = this.getPageOrder() === 1;
-    if (sessionsFirst) {
-      // Sessions page is at index 0, which is visible on initial load
-      this.loadPinnedSessions();
-    }
   },
 
   /**
@@ -383,6 +687,50 @@ const AppSwipe = {
       left: pageWidth * pageIndex,
       behavior: 'smooth'
     });
+
+    // Directly trigger page change logic (scroll event may not fire reliably)
+    if (pageIndex !== this._currentPage) {
+      this._currentPage = pageIndex;
+      this.updatePageIndicator();
+      this._onPageChange(pageIndex);
+    }
+  },
+
+  /**
+   * Handle page change - load data for the new page
+   */
+  _onPageChange(pageIndex) {
+    // Save current page index to localStorage
+    localStorage.setItem('currentPageIndex', pageIndex.toString());
+
+    const order = this.getPageOrder();
+    const currentPageId = SWIPE_PAGE_IDS[order[pageIndex]];
+
+    // Lazy load sessions page
+    if (currentPageId === 'page-all-sessions' && !this._sessionsLoaded) {
+      this.loadPinnedSessions();
+    }
+
+    // Lazy load files page
+    if (currentPageId === 'page-files' && this.loadFilesPage) {
+      this.loadFilesPage();
+    }
+
+    // Lazy load remote machines page
+    if (currentPageId === 'page-remote' && window.RemoteMachines) {
+      window.RemoteMachines.loadMachines();
+    }
+
+    // Monitor page: start/stop polling
+    if (currentPageId === 'page-monitor') {
+      if (window.AppMonitor && window.AppMonitor.startMonitorPolling) {
+        window.AppMonitor.startMonitorPolling();
+      }
+    } else {
+      if (window.AppMonitor && window.AppMonitor.stopMonitorPolling) {
+        window.AppMonitor.stopMonitorPolling();
+      }
+    }
   },
 
   /**
@@ -462,10 +810,12 @@ const AppSwipe = {
 
     let html = '';
     for (const session of this._pinnedSessions) {
+      const sessionType = session.type || 'claude';
+      const isSSH = sessionType === 'ssh';
+
       const isBackendActive = activeSessionIds.includes(session.session_id);
       const isFrontendConnected = frontendConnectedIds.has(session.session_id);
       const timeStr = this.formatRelativeTime(session.updated_at || session.created_at);
-      const projectName = this.getProjectDisplayName(session.working_dir);
 
       // Status class: frontend-connected (blue) > backend-active (green)
       let statusClass = '';
@@ -475,41 +825,68 @@ const AppSwipe = {
         statusClass = 'is-backend-active';
       }
 
-      // Context info (if available)
-      let contextHtml = '';
-      if (session.context_used > 0) {
-        const usedK = Math.round(session.context_used / 1000);
-        const maxK = Math.round((session.context_max || 200000) / 1000);
-        const pct = session.context_percentage || 0;
-        contextHtml = `<span class="session-grid-context">⛁ ${usedK}k/${maxK}k (${pct}%)</span>`;
-      }
+      if (isSSH) {
+        // SSH session card
+        const machineId = session.machine_id;
+        const displayName = session.display_name || 'SSH';
+        const hostInfo = session.machine_deleted
+          ? this.t('ssh.deleted', 'Machine deleted')
+          : `${session.machine_username || ''}@${session.machine_host || ''}`;
 
-      // Token count (if available)
-      let tokenHtml = '';
-      if (session.total_tokens > 0) {
-        const tokens = session.total_tokens;
-        let tokenStr;
-        if (tokens >= 1000000) {
-          tokenStr = (tokens / 1000000).toFixed(1) + 'M';
-        } else if (tokens >= 1000) {
-          tokenStr = (tokens / 1000).toFixed(1) + 'k';
-        } else {
-          tokenStr = tokens.toString();
+        html += `
+          <div class="session-grid-item session-grid-ssh ${statusClass}"
+               data-session-id="${session.session_id}"
+               data-session-type="ssh"
+               data-machine-id="${machineId}"
+               data-machine-name="${this.escapeHtml(displayName)}"
+               draggable="true">
+            <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
+            <div class="session-grid-name"><span class="ssh-icon">⌨</span> ${this.escapeHtml(displayName)}</div>
+            <div class="session-grid-project"><span class="project-name ssh-host">${this.escapeHtml(hostInfo)}</span></div>
+            <div class="session-grid-meta"><span class="session-grid-time">${timeStr}</span></div>
+          </div>
+        `;
+      } else {
+        // Claude session card
+        const projectName = this.getProjectDisplayName(session.working_dir);
+
+        // Context info (if available)
+        let contextHtml = '';
+        if (session.context_used > 0) {
+          const usedK = Math.round(session.context_used / 1000);
+          const maxK = Math.round((session.context_max || 200000) / 1000);
+          const pct = session.context_percentage || 0;
+          contextHtml = `<span class="session-grid-context">⛁ ${usedK}k/${maxK}k (${pct}%)</span>`;
         }
-        tokenHtml = `<span class="session-grid-tokens">${tokenStr} tokens</span>`;
-      }
 
-      html += `
-        <div class="session-grid-item ${statusClass}"
-             data-session-id="${session.session_id}"
-             data-working-dir="${session.working_dir}"
-             draggable="true">
-          <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
-          <div class="session-grid-name">${this.escapeHtml(session.display_name || session.session_id.substring(0, 8))}</div>
-          <div class="session-grid-project"><span class="project-name">${this.escapeHtml(projectName)}</span>${tokenHtml}</div>
-          <div class="session-grid-meta">${contextHtml}<span class="session-grid-time">${timeStr}</span></div>
-        </div>
-      `;
+        // Token count (if available)
+        let tokenHtml = '';
+        if (session.total_tokens > 0) {
+          const tokens = session.total_tokens;
+          let tokenStr;
+          if (tokens >= 1000000) {
+            tokenStr = (tokens / 1000000).toFixed(1) + 'M';
+          } else if (tokens >= 1000) {
+            tokenStr = (tokens / 1000).toFixed(1) + 'k';
+          } else {
+            tokenStr = tokens.toString();
+          }
+          tokenHtml = `<span class="session-grid-tokens">${tokenStr} tokens</span>`;
+        }
+
+        html += `
+          <div class="session-grid-item ${statusClass}"
+               data-session-id="${session.session_id}"
+               data-session-type="claude"
+               data-working-dir="${session.working_dir}"
+               draggable="true">
+            <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
+            <div class="session-grid-name">${this.escapeHtml(session.display_name || session.session_id.substring(0, 8))}</div>
+            <div class="session-grid-project"><span class="project-name">${this.escapeHtml(projectName)}</span>${tokenHtml}</div>
+            <div class="session-grid-meta">${contextHtml}<span class="session-grid-time">${timeStr}</span></div>
+          </div>
+        `;
+      }
     }
 
     grid.innerHTML = html;
@@ -526,10 +903,27 @@ const AppSwipe = {
           return;
         }
 
-        const sessionId = item.dataset.sessionId;
-        const workingDir = item.dataset.workingDir;
-        const displayName = item.querySelector('.session-grid-name')?.textContent || sessionId;
-        this.connectTerminal(workingDir, sessionId, displayName);
+        const sessionType = item.dataset.sessionType || 'claude';
+
+        if (sessionType === 'ssh') {
+          // Open SSH terminal
+          const machineId = parseInt(item.dataset.machineId, 10);
+          const machineName = item.dataset.machineName || 'SSH';
+          if (window.SSHTerminal && machineId) {
+            window.SSHTerminal.connect({
+              id: machineId,
+              name: machineName
+            });
+          } else {
+            console.error('SSHTerminal not available or invalid machine_id');
+          }
+        } else {
+          // Open Claude terminal
+          const sessionId = item.dataset.sessionId;
+          const workingDir = item.dataset.workingDir;
+          const displayName = item.querySelector('.session-grid-name')?.textContent || sessionId;
+          this.connectTerminal(workingDir, sessionId, displayName);
+        }
       });
 
       // Unpin button
@@ -688,7 +1082,8 @@ const AppSwipe = {
       this._sessionsLoaded = false;
 
       // Refresh if on sessions page
-      const sessionsPageIndex = this.getPageOrder() === 1 ? 0 : 1;
+      const order = this.getPageOrder();
+      const sessionsPageIndex = order.indexOf(1); // 1 = sessions page
       if (this._currentPage === sessionsPageIndex) {
         this.loadPinnedSessions();
       }
@@ -889,10 +1284,19 @@ const AppSwipe = {
    */
   refreshPinnedSessions() {
     this._sessionsLoaded = false;
-    const sessionsPageIndex = this.getPageOrder() === 1 ? 0 : 1;
+    const order = this.getPageOrder();
+    const sessionsPageIndex = order.indexOf(1); // 1 = sessions page
     if (this._currentPage === sessionsPageIndex) {
       this.loadPinnedSessions();
     }
+  },
+
+  /**
+   * Get the current page index of Files page
+   */
+  getFilesPageIndex() {
+    const order = this.getPageOrder();
+    return order.indexOf(2); // 2 = files page
   }
 };
 

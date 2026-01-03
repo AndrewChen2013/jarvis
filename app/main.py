@@ -30,8 +30,10 @@ import os
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.terminal_manager import terminal_manager
-from app.api import auth, projects, system, upload, download, history, pinned
+from app.services.ssh_manager import ssh_manager
+from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor
 from app.api.terminal import handle_terminal_websocket
+from app.api.ssh_terminal import handle_ssh_websocket
 
 
 @asynccontextmanager
@@ -42,12 +44,16 @@ async def lifespan(app: FastAPI):
     # 启动终端管理器
     await terminal_manager.start()
 
+    # 启动 SSH 管理器
+    await ssh_manager.start()
+
     logger.info(f"Application started successfully")
 
     yield
 
     # 清理
     logger.info("Application shutting down...")
+    await ssh_manager.stop()
     await terminal_manager.stop()
     logger.info("Application stopped")
 
@@ -75,6 +81,8 @@ app.include_router(upload.router)
 app.include_router(download.router)
 app.include_router(history.router)
 app.include_router(pinned.router)
+app.include_router(remote_machines.router)
+app.include_router(monitor.router)
 
 # 挂载静态文件
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -128,6 +136,31 @@ async def websocket_terminal(
         websocket=websocket,
         working_dir=working_dir,
         session_id=session_id,
+        rows=rows,
+        cols=cols
+    )
+
+
+@app.websocket("/ws/ssh")
+async def websocket_ssh(
+    websocket: WebSocket,
+    machine_id: int = Query(...),
+    rows: int = Query(default=None),
+    cols: int = Query(default=None)
+):
+    """SSH 终端 WebSocket 端点
+
+    Args:
+        machine_id: 远程机器 ID（必填）
+        rows: 前端期望的终端行数（可选）
+        cols: 前端期望的终端列数（可选）
+
+    Note:
+        认证通过连接后的第一条消息完成：{ type: "auth", token: "xxx" }
+    """
+    await handle_ssh_websocket(
+        websocket=websocket,
+        machine_id=machine_id,
         rows=rows,
         cols=cols
     )

@@ -188,6 +188,8 @@ class Database:
                         working_dir TEXT NOT NULL,
                         display_name TEXT,
                         position INTEGER DEFAULT 0,
+                        type TEXT DEFAULT 'claude',
+                        machine_id INTEGER,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
@@ -196,7 +198,46 @@ class Database:
                     ON pinned_sessions(position ASC)
                 """)
 
+                # 远程机器表（SSH 连接管理）
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS remote_machines (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        host TEXT NOT NULL,
+                        port INTEGER DEFAULT 22,
+                        username TEXT NOT NULL,
+                        password TEXT,
+                        auth_type TEXT DEFAULT 'password',
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_remote_machines_name
+                    ON remote_machines(name)
+                """)
+
+                # 迁移：为 pinned_sessions 添加新列（如果不存在）
+                self._migrate_pinned_sessions(cursor)
+
                 logger.info("Database initialized")
+
+    def _migrate_pinned_sessions(self, cursor):
+        """为 pinned_sessions 表添加新列（向后兼容）"""
+        try:
+            # 检查是否存在 type 列
+            cursor.execute("PRAGMA table_info(pinned_sessions)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'type' not in columns:
+                cursor.execute("ALTER TABLE pinned_sessions ADD COLUMN type TEXT DEFAULT 'claude'")
+                logger.info("Added 'type' column to pinned_sessions")
+
+            if 'machine_id' not in columns:
+                cursor.execute("ALTER TABLE pinned_sessions ADD COLUMN machine_id INTEGER")
+                logger.info("Added 'machine_id' column to pinned_sessions")
+        except Exception as e:
+            logger.error(f"Migration error: {e}")
 
     def _migrate_from_json(self):
         """从 JSON 文件迁移数据"""
@@ -494,7 +535,7 @@ class Database:
                         UPDATE upload_history SET {', '.join(updates)} WHERE id = ?
                     """, params)
 
-    def get_upload_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_upload_history(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         """获取上传历史"""
         with self._lock:
             with self._get_conn() as conn:
@@ -503,8 +544,8 @@ class Database:
                     SELECT id, filename, path, size, status, duration, error, created_at
                     FROM upload_history
                     ORDER BY created_at DESC
-                    LIMIT ?
-                """, (limit,))
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
                 return [dict(row) for row in cursor.fetchall()]
 
     # ==================== 下载历史 ====================
@@ -527,7 +568,7 @@ class Database:
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (filename, path, size, status, duration, error))
 
-    def get_download_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_download_history(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         """获取下载历史"""
         with self._lock:
             with self._get_conn() as conn:
@@ -536,8 +577,8 @@ class Database:
                     SELECT id, filename, path, size, status, duration, error, created_at
                     FROM download_history
                     ORDER BY created_at DESC
-                    LIMIT ?
-                """, (limit,))
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
                 return [dict(row) for row in cursor.fetchall()]
 
     # ==================== 终端历史 ====================
@@ -614,7 +655,8 @@ class Database:
             with self._get_conn() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT id, session_id, working_dir, display_name, position, created_at
+                    SELECT id, session_id, working_dir, display_name, position,
+                           type, machine_id, created_at
                     FROM pinned_sessions
                     ORDER BY position ASC
                 """)
@@ -673,6 +715,254 @@ class Database:
                     SELECT 1 FROM pinned_sessions WHERE session_id = ?
                 """, (session_id,))
                 return cursor.fetchone() is not None
+
+    def add_ssh_pinned_session(self, machine_id: int,
+                               machine_name: str) -> Optional[int]:
+        """添加 SSH 置顶会话，返回新记录ID"""
+        # SSH 会话使用特殊的 session_id 格式
+        session_id = f"ssh_{machine_id}"
+
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                # 获取最大位置
+                cursor.execute("SELECT MAX(position) FROM pinned_sessions")
+                max_pos = cursor.fetchone()[0] or 0
+                try:
+                    cursor.execute("""
+                        INSERT INTO pinned_sessions
+                        (session_id, working_dir, display_name, position, type, machine_id)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (session_id, "", machine_name, max_pos + 1, "ssh", machine_id))
+                    logger.info(f"Pinned SSH session: {machine_name} (machine_id={machine_id})")
+                    return cursor.lastrowid
+                except sqlite3.IntegrityError:
+                    # 已存在
+                    return None
+
+    def is_ssh_session_pinned(self, machine_id: int) -> bool:
+        """检查 SSH 会话是否已置顶"""
+        session_id = f"ssh_{machine_id}"
+        return self.is_session_pinned(session_id)
+
+    # ==================== 远程机器管理 ====================
+
+    def get_remote_machines(self) -> List[Dict[str, Any]]:
+        """获取所有远程机器列表"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, name, host, port, username, auth_type, created_at, updated_at
+                    FROM remote_machines
+                    ORDER BY created_at DESC
+                """)
+                return [dict(row) for row in cursor.fetchall()]
+
+    def get_remote_machine(self, machine_id: int) -> Optional[Dict[str, Any]]:
+        """获取单个远程机器（包含密码）"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, name, host, port, username, password, auth_type,
+                           created_at, updated_at
+                    FROM remote_machines
+                    WHERE id = ?
+                """, (machine_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
+    def _encrypt_password(self, password: str) -> str:
+        """使用 AUTH_TOKEN 加密密码"""
+        import base64
+        import hashlib
+        from app.core.config import settings
+
+        if not password:
+            return ""
+
+        # 从 AUTH_TOKEN 派生密钥
+        key = hashlib.sha256(settings.AUTH_TOKEN.encode()).digest()
+
+        # XOR 加密
+        password_bytes = password.encode('utf-8')
+        encrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(password_bytes))
+
+        # Base64 编码
+        return base64.b64encode(encrypted).decode()
+
+    def _decrypt_password(self, encrypted: str) -> str:
+        """使用 AUTH_TOKEN 解密密码"""
+        import base64
+        import hashlib
+        from app.core.config import settings
+
+        if not encrypted:
+            return ""
+
+        try:
+            # 从 AUTH_TOKEN 派生密钥
+            key = hashlib.sha256(settings.AUTH_TOKEN.encode()).digest()
+
+            # Base64 解码
+            encrypted_bytes = base64.b64decode(encrypted)
+
+            # XOR 解密（XOR 是对称的）
+            decrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(encrypted_bytes))
+
+            return decrypted.decode('utf-8')
+        except Exception as e:
+            logger.error(f"Decrypt password error: {e}")
+            return ""
+
+    def add_remote_machine(
+        self,
+        name: str,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        auth_type: str = "password"
+    ) -> int:
+        """添加远程机器，返回新记录ID"""
+        # 使用 AUTH_TOKEN 加密密码
+        encoded_password = self._encrypt_password(password) if password else None
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO remote_machines (name, host, port, username, password, auth_type)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (name, host, port, username, encoded_password, auth_type))
+                logger.info(f"Added remote machine: {name} ({username}@{host}:{port})")
+                return cursor.lastrowid
+
+    def update_remote_machine(
+        self,
+        machine_id: int,
+        name: str = None,
+        host: str = None,
+        port: int = None,
+        username: str = None,
+        password: str = None,
+        auth_type: str = None
+    ) -> bool:
+        """更新远程机器信息"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                updates = ["updated_at = CURRENT_TIMESTAMP"]
+                params = []
+                if name is not None:
+                    updates.append("name = ?")
+                    params.append(name)
+                if host is not None:
+                    updates.append("host = ?")
+                    params.append(host)
+                if port is not None:
+                    updates.append("port = ?")
+                    params.append(port)
+                if username is not None:
+                    updates.append("username = ?")
+                    params.append(username)
+                if password is not None:
+                    # 使用 AUTH_TOKEN 加密密码
+                    encoded = self._encrypt_password(password)
+                    updates.append("password = ?")
+                    params.append(encoded)
+                if auth_type is not None:
+                    updates.append("auth_type = ?")
+                    params.append(auth_type)
+
+                params.append(machine_id)
+                cursor.execute(f"""
+                    UPDATE remote_machines SET {', '.join(updates)} WHERE id = ?
+                """, params)
+                if cursor.rowcount > 0:
+                    logger.info(f"Updated remote machine id={machine_id}")
+                    return True
+                return False
+
+    def delete_remote_machine(self, machine_id: int) -> bool:
+        """删除远程机器"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM remote_machines WHERE id = ?",
+                    (machine_id,)
+                )
+                if cursor.rowcount > 0:
+                    logger.info(f"Deleted remote machine id={machine_id}")
+                    return True
+                return False
+
+    def get_remote_machine_password(self, machine_id: int) -> Optional[str]:
+        """获取远程机器密码（解密后）"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT password FROM remote_machines WHERE id = ?",
+                    (machine_id,)
+                )
+                row = cursor.fetchone()
+                if row and row["password"]:
+                    return self._decrypt_password(row["password"])
+                return None
+
+    def reencrypt_all_passwords(self, old_token: str, new_token: str) -> int:
+        """当 AUTH_TOKEN 变更时，重新加密所有密码
+
+        Args:
+            old_token: 旧的 AUTH_TOKEN
+            new_token: 新的 AUTH_TOKEN
+
+        Returns:
+            重新加密的密码数量
+        """
+        import base64
+        import hashlib
+
+        # 派生旧密钥
+        old_key = hashlib.sha256(old_token.encode()).digest()
+        # 派生新密钥
+        new_key = hashlib.sha256(new_token.encode()).digest()
+
+        count = 0
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, password FROM remote_machines WHERE password IS NOT NULL AND password != ''")
+                rows = cursor.fetchall()
+
+                for row in rows:
+                    machine_id = row["id"]
+                    encrypted = row["password"]
+
+                    try:
+                        # 用旧密钥解密
+                        encrypted_bytes = base64.b64decode(encrypted)
+                        decrypted = bytes(b ^ old_key[i % len(old_key)] for i, b in enumerate(encrypted_bytes))
+                        password = decrypted.decode('utf-8')
+
+                        # 用新密钥加密
+                        password_bytes = password.encode('utf-8')
+                        new_encrypted = bytes(b ^ new_key[i % len(new_key)] for i, b in enumerate(password_bytes))
+                        new_encoded = base64.b64encode(new_encrypted).decode()
+
+                        # 更新数据库
+                        cursor.execute(
+                            "UPDATE remote_machines SET password = ? WHERE id = ?",
+                            (new_encoded, machine_id)
+                        )
+                        count += 1
+                    except Exception as e:
+                        logger.error(f"Reencrypt password for machine {machine_id} failed: {e}")
+
+        logger.info(f"Reencrypted {count} passwords")
+        return count
 
     # ==================== 清理 ====================
 

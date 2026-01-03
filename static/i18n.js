@@ -130,6 +130,7 @@ const i18n = {
       'terminal.help.fontSize': '字体缩放',
       'terminal.help.theme': '切换终端主题',
       'terminal.help.context': 'Context（点击刷新并滚底）',
+      'terminal.help.workdir': '打开工作目录',
       'terminal.help.switchSession': '切换会话 / 长按选择',
       'terminal.help.historyBtn': '终端历史（滚动加载/下拉刷新）',
       'terminal.help.tip': '点击 ⋯ 展开组合键和斜杠命令',
@@ -165,6 +166,27 @@ const i18n = {
       'common.rename': '重命名',
       'common.close': '关闭',
       'common.retry': '重试',
+      'common.loading': '加载中...',
+
+      // 文件浏览器
+      'files.empty': '空文件夹',
+      'files.goHome': '返回主目录',
+      'files.goToRoot': '根目录',
+      'files.uploadFile': '上传文件',
+      'files.showHidden': '显示隐藏文件',
+      'files.hideHidden': '隐藏隐藏文件',
+      'files.sortByName': '按名称排序',
+      'files.sortByTime': '按时间排序',
+      'files.uploadHistory': '上传历史',
+      'files.downloadHistory': '下载历史',
+      'files.noUploads': '无上传记录',
+      'files.noDownloads': '无下载记录',
+      'files.recentUploads': '最近上传',
+      'files.recentDownloads': '最近下载',
+      'files.historyFailed': '加载历史失败',
+      'files.downloadStarted': '下载已开始',
+      'files.downloadFailed': '下载失败',
+      'files.download': '下载',
 
       // Session 卡片
       'session.running': '运行中',
@@ -228,6 +250,7 @@ const i18n = {
       'time.hoursAgo': '小时前',
 
       'terminal.inputPlaceholder': '输入消息...',
+      'terminal.noWorkDir': '无工作目录',
 
       // 调试面板
       'debug.title': '调试日志',
@@ -280,6 +303,50 @@ const i18n = {
       // 终端工具栏
       'terminal.historyBtn': '历史',
       'common.loading': '加载中...',
+
+      // 远程机器
+      'remote.title': '远程机器',
+      'remote.noMachines': '暂无远程机器',
+      'remote.addMachine': '添加远程机器',
+      'remote.editMachine': '编辑远程机器',
+      'remote.name': '名称',
+      'remote.namePlaceholder': '我的服务器',
+      'remote.host': '主机地址',
+      'remote.hostPlaceholder': '192.168.1.100 或 example.com',
+      'remote.port': '端口',
+      'remote.username': '用户名',
+      'remote.password': '密码',
+      'remote.passwordPlaceholder': '留空保持现有密码',
+      'remote.testConnection': '测试连接',
+      'remote.testing': '正在测试连接...',
+      'remote.testSuccess': '连接成功！',
+      'remote.testFailed': '连接失败',
+      'remote.save': '保存',
+      'remote.edit': '编辑',
+      'remote.delete': '删除',
+      'remote.fillRequired': '请填写所有必填字段',
+      'remote.saveFailed': '保存失败',
+      'remote.deleteFailed': '删除失败',
+      'remote.confirmDelete': '确定要删除',
+      'remote.connecting': '正在连接...',
+      'remote.connected': '已连接',
+      'remote.disconnected': '已断开',
+
+      // SSH 终端
+      'ssh.back': '返回',
+      'ssh.minimize': '最小化',
+      'ssh.disconnect': '断开连接',
+      'ssh.pin': '固定到会话列表',
+      'ssh.pinSuccess': '已固定到会话列表',
+      'ssh.pinFailed': '固定失败',
+      'ssh.alreadyPinned': '已固定',
+      'ssh.deleted': '机器已删除',
+
+      // 系统监控
+      'monitor.title': '系统监控',
+      'monitor.memory': '内存',
+      'monitor.disk': '磁盘',
+      'monitor.topProcesses': '进程排行',
     },
 
     en: {
@@ -375,6 +442,7 @@ const i18n = {
       'terminal.help.fontSize': 'Font size',
       'terminal.help.theme': 'Switch terminal theme',
       'terminal.help.context': 'Context (tap to refresh & scroll)',
+      'terminal.help.workdir': 'Open working directory',
       'terminal.help.switchSession': 'Switch session / hold to select',
       'terminal.help.historyBtn': 'Terminal history (scroll / pull refresh)',
       'terminal.help.tip': 'Click ⋯ for combo keys and slash commands',
@@ -410,6 +478,27 @@ const i18n = {
       'common.rename': 'Rename',
       'common.close': 'Close',
       'common.retry': 'Retry',
+      'common.loading': 'Loading...',
+
+      // File browser
+      'files.empty': 'Empty folder',
+      'files.goHome': 'Go Home',
+      'files.goToRoot': 'Go to Root',
+      'files.uploadFile': 'Upload File',
+      'files.showHidden': 'Show Hidden Files',
+      'files.hideHidden': 'Hide Hidden Files',
+      'files.sortByName': 'Sort by Name',
+      'files.sortByTime': 'Sort by Time',
+      'files.uploadHistory': 'Upload History',
+      'files.downloadHistory': 'Download History',
+      'files.noUploads': 'No upload history',
+      'files.noDownloads': 'No download history',
+      'files.recentUploads': 'Recent Uploads',
+      'files.recentDownloads': 'Recent Downloads',
+      'files.historyFailed': 'Failed to load history',
+      'files.downloadStarted': 'Download started',
+      'files.downloadFailed': 'Download failed',
+      'files.download': 'Download',
 
       // Session card
       'session.running': 'Running',
@@ -473,6 +562,7 @@ const i18n = {
       'time.hoursAgo': 'hr ago',
 
       'terminal.inputPlaceholder': 'Enter message...',
+      'terminal.noWorkDir': 'No working directory',
 
       // Debug panel
       'debug.title': 'Debug Log',
@@ -525,6 +615,50 @@ const i18n = {
       // Terminal Toolbar
       'terminal.historyBtn': 'History',
       'common.loading': 'Loading...',
+
+      // Remote Machines
+      'remote.title': 'Remote Machines',
+      'remote.noMachines': 'No remote machines configured',
+      'remote.addMachine': 'Add Remote Machine',
+      'remote.editMachine': 'Edit Remote Machine',
+      'remote.name': 'Name',
+      'remote.namePlaceholder': 'My Server',
+      'remote.host': 'Host',
+      'remote.hostPlaceholder': '192.168.1.100 or example.com',
+      'remote.port': 'Port',
+      'remote.username': 'Username',
+      'remote.password': 'Password',
+      'remote.passwordPlaceholder': 'Leave empty to keep current password',
+      'remote.testConnection': 'Test Connection',
+      'remote.testing': 'Testing connection...',
+      'remote.testSuccess': 'Connection successful!',
+      'remote.testFailed': 'Connection failed',
+      'remote.save': 'Save',
+      'remote.edit': 'Edit',
+      'remote.delete': 'Delete',
+      'remote.fillRequired': 'Please fill in all required fields',
+      'remote.saveFailed': 'Save failed',
+      'remote.deleteFailed': 'Delete failed',
+      'remote.confirmDelete': 'Are you sure you want to delete',
+      'remote.connecting': 'Connecting...',
+      'remote.connected': 'Connected',
+      'remote.disconnected': 'Disconnected',
+
+      // SSH Terminal
+      'ssh.back': 'Back',
+      'ssh.minimize': 'Minimize',
+      'ssh.disconnect': 'Disconnect',
+      'ssh.pin': 'Pin to Sessions',
+      'ssh.pinSuccess': 'Pinned to sessions',
+      'ssh.pinFailed': 'Pin failed',
+      'ssh.alreadyPinned': 'Already pinned',
+      'ssh.deleted': 'Machine deleted',
+
+      // Monitor
+      'monitor.title': 'Monitor',
+      'monitor.memory': 'Memory',
+      'monitor.disk': 'Disk',
+      'monitor.topProcesses': 'Top Processes',
     },
 
     ja: {
@@ -620,6 +754,7 @@ const i18n = {
       'terminal.help.fontSize': 'フォントサイズ',
       'terminal.help.theme': 'テーマ切替',
       'terminal.help.context': 'Context（タップで更新&最下部へ）',
+      'terminal.help.workdir': '作業ディレクトリを開く',
       'terminal.help.switchSession': '切替 / 長押しで選択',
       'terminal.help.historyBtn': 'ターミナル履歴（スクロール/プルリフレッシュ）',
       'terminal.help.tip': '⋯をクリックで詳細表示',
@@ -648,6 +783,27 @@ const i18n = {
       'common.rename': '名前変更',
       'common.close': '閉じる',
       'common.retry': '再試行',
+      'common.loading': '読み込み中...',
+
+      // ファイルブラウザ
+      'files.empty': '空のフォルダ',
+      'files.goHome': 'ホームへ',
+      'files.goToRoot': 'ルートへ',
+      'files.uploadFile': 'ファイルをアップロード',
+      'files.showHidden': '隠しファイルを表示',
+      'files.hideHidden': '隠しファイルを非表示',
+      'files.sortByName': '名前順',
+      'files.sortByTime': '日時順',
+      'files.uploadHistory': 'アップロード履歴',
+      'files.downloadHistory': 'ダウンロード履歴',
+      'files.noUploads': 'アップロード履歴なし',
+      'files.noDownloads': 'ダウンロード履歴なし',
+      'files.recentUploads': '最近のアップロード',
+      'files.recentDownloads': '最近のダウンロード',
+      'files.historyFailed': '履歴の読み込みに失敗',
+      'files.downloadStarted': 'ダウンロード開始',
+      'files.downloadFailed': 'ダウンロード失敗',
+      'files.download': 'ダウンロード',
 
       // セッションカード
       'session.running': '実行中',
@@ -711,6 +867,7 @@ const i18n = {
       'time.hoursAgo': '時間前',
 
       'terminal.inputPlaceholder': 'メッセージを入力...',
+      'terminal.noWorkDir': '作業ディレクトリなし',
 
       // デバッグパネル
       'debug.title': 'デバッグログ',
@@ -763,6 +920,12 @@ const i18n = {
       // ターミナルツールバー
       'terminal.historyBtn': '履歴',
       'common.loading': '読み込み中...',
+
+      // モニター
+      'monitor.title': 'モニター',
+      'monitor.memory': 'メモリ',
+      'monitor.disk': 'ディスク',
+      'monitor.topProcesses': 'プロセス一覧',
     },
 
     ko: {
@@ -858,6 +1021,7 @@ const i18n = {
       'terminal.help.fontSize': '글꼴 크기',
       'terminal.help.theme': '테마 전환',
       'terminal.help.context': 'Context（탭하여 새로고침&하단）',
+      'terminal.help.workdir': '작업 디렉토리 열기',
       'terminal.help.switchSession': '전환 / 길게 눌러 선택',
       'terminal.help.historyBtn': '터미널 기록 (스크롤/당겨서 새로고침)',
       'terminal.help.tip': '⋯를 클릭하여 더 보기',
@@ -886,6 +1050,27 @@ const i18n = {
       'common.rename': '이름 변경',
       'common.close': '닫기',
       'common.retry': '재시도',
+      'common.loading': '로딩 중...',
+
+      // 파일 브라우저
+      'files.empty': '빈 폴더',
+      'files.goHome': '홈으로',
+      'files.goToRoot': '루트로',
+      'files.uploadFile': '파일 업로드',
+      'files.showHidden': '숨김 파일 표시',
+      'files.hideHidden': '숨김 파일 숨기기',
+      'files.sortByName': '이름순 정렬',
+      'files.sortByTime': '시간순 정렬',
+      'files.uploadHistory': '업로드 기록',
+      'files.downloadHistory': '다운로드 기록',
+      'files.noUploads': '업로드 기록 없음',
+      'files.noDownloads': '다운로드 기록 없음',
+      'files.recentUploads': '최근 업로드',
+      'files.recentDownloads': '최근 다운로드',
+      'files.historyFailed': '기록 로드 실패',
+      'files.downloadStarted': '다운로드 시작됨',
+      'files.downloadFailed': '다운로드 실패',
+      'files.download': '다운로드',
 
       // 세션 카드
       'session.running': '실행 중',
@@ -949,6 +1134,7 @@ const i18n = {
       'time.hoursAgo': '시간 전',
 
       'terminal.inputPlaceholder': '메시지 입력...',
+      'terminal.noWorkDir': '작업 디렉토리 없음',
 
       // 디버그 패널
       'debug.title': '디버그 로그',
@@ -1001,6 +1187,12 @@ const i18n = {
       // 터미널 도구모음
       'terminal.historyBtn': '기록',
       'common.loading': '로딩 중...',
+
+      // 모니터
+      'monitor.title': '모니터',
+      'monitor.memory': '메모리',
+      'monitor.disk': '디스크',
+      'monitor.topProcesses': '프로세스 목록',
     },
 
     fr: {
@@ -1096,6 +1288,7 @@ const i18n = {
       'terminal.help.fontSize': 'Taille police',
       'terminal.help.theme': 'Changer thème',
       'terminal.help.context': 'Context（appuyer pour rafraîchir）',
+      'terminal.help.workdir': 'Ouvrir répertoire de travail',
       'terminal.help.switchSession': 'Changer / maintenir pour choisir',
       'terminal.help.historyBtn': 'Historique terminal (défiler / tirer)',
       'terminal.help.tip': 'Cliquez sur ⋯ pour plus',
@@ -1124,6 +1317,27 @@ const i18n = {
       'common.rename': 'Renommer',
       'common.close': 'Fermer',
       'common.retry': 'Réessayer',
+      'common.loading': 'Chargement...',
+
+      // Navigateur de fichiers
+      'files.empty': 'Dossier vide',
+      'files.goHome': 'Accueil',
+      'files.goToRoot': 'Racine',
+      'files.uploadFile': 'Télécharger un fichier',
+      'files.showHidden': 'Afficher les fichiers cachés',
+      'files.hideHidden': 'Masquer les fichiers cachés',
+      'files.sortByName': 'Trier par nom',
+      'files.sortByTime': 'Trier par date',
+      'files.uploadHistory': 'Historique des téléversements',
+      'files.downloadHistory': 'Historique des téléchargements',
+      'files.noUploads': 'Aucun téléversement',
+      'files.noDownloads': 'Aucun téléchargement',
+      'files.recentUploads': 'Téléversements récents',
+      'files.recentDownloads': 'Téléchargements récents',
+      'files.historyFailed': 'Échec du chargement',
+      'files.downloadStarted': 'Téléchargement commencé',
+      'files.downloadFailed': 'Échec du téléchargement',
+      'files.download': 'Télécharger',
 
       // Carte de session
       'session.running': 'En cours',
@@ -1187,6 +1401,7 @@ const i18n = {
       'time.hoursAgo': 'h',
 
       'terminal.inputPlaceholder': 'Entrez un message...',
+      'terminal.noWorkDir': 'Pas de répertoire de travail',
 
       // Panneau de débogage
       'debug.title': 'Journal de débogage',
@@ -1239,6 +1454,12 @@ const i18n = {
       // Barre outils terminal
       'terminal.historyBtn': 'Historique',
       'common.loading': 'Chargement...',
+
+      // Moniteur
+      'monitor.title': 'Moniteur',
+      'monitor.memory': 'Mémoire',
+      'monitor.disk': 'Disque',
+      'monitor.topProcesses': 'Processus',
     },
 
     de: {
@@ -1334,6 +1555,7 @@ const i18n = {
       'terminal.help.fontSize': 'Schriftgröße',
       'terminal.help.theme': 'Thema wechseln',
       'terminal.help.context': 'Context（tippen zum Aktualisieren）',
+      'terminal.help.workdir': 'Arbeitsverzeichnis öffnen',
       'terminal.help.switchSession': 'Wechseln / halten zum Auswählen',
       'terminal.help.historyBtn': 'Terminal-Verlauf (Scrollen / Ziehen)',
       'terminal.help.tip': 'Klicken Sie auf ⋯ für mehr',
@@ -1362,6 +1584,27 @@ const i18n = {
       'common.rename': 'Umbenennen',
       'common.close': 'Schließen',
       'common.retry': 'Wiederholen',
+      'common.loading': 'Laden...',
+
+      // Dateibrowser
+      'files.empty': 'Leerer Ordner',
+      'files.goHome': 'Startseite',
+      'files.goToRoot': 'Stammverzeichnis',
+      'files.uploadFile': 'Datei hochladen',
+      'files.showHidden': 'Versteckte Dateien anzeigen',
+      'files.hideHidden': 'Versteckte Dateien ausblenden',
+      'files.sortByName': 'Nach Name sortieren',
+      'files.sortByTime': 'Nach Zeit sortieren',
+      'files.uploadHistory': 'Upload-Verlauf',
+      'files.downloadHistory': 'Download-Verlauf',
+      'files.noUploads': 'Kein Upload-Verlauf',
+      'files.noDownloads': 'Kein Download-Verlauf',
+      'files.recentUploads': 'Letzte Uploads',
+      'files.recentDownloads': 'Letzte Downloads',
+      'files.historyFailed': 'Laden fehlgeschlagen',
+      'files.downloadStarted': 'Download gestartet',
+      'files.downloadFailed': 'Download fehlgeschlagen',
+      'files.download': 'Herunterladen',
 
       // Sitzungskarte
       'session.running': 'Läuft',
@@ -1425,6 +1668,7 @@ const i18n = {
       'time.hoursAgo': 'Std.',
 
       'terminal.inputPlaceholder': 'Nachricht eingeben...',
+      'terminal.noWorkDir': 'Kein Arbeitsverzeichnis',
 
       // Debug-Panel
       'debug.title': 'Debug-Log',
@@ -1477,6 +1721,12 @@ const i18n = {
       // Terminal-Symbolleiste
       'terminal.historyBtn': 'Verlauf',
       'common.loading': 'Laden...',
+
+      // Monitor
+      'monitor.title': 'Monitor',
+      'monitor.memory': 'Speicher',
+      'monitor.disk': 'Festplatte',
+      'monitor.topProcesses': 'Prozesse',
     },
 
     es: {
@@ -1577,6 +1827,7 @@ const i18n = {
       'terminal.help.tip': 'Clic en ⋯ para más',
       'terminal.help.tipDebug': 'Clic en título para logs',
       'terminal.help.tipFont': '¿Salida desordenada? Ajusta el tamaño',
+      'terminal.help.workdir': 'Abrir directorio de trabajo',
       'terminal.keys.combo': 'Combinaciones',
       'terminal.keys.clear': 'Limpiar',
       'terminal.keys.verbose': 'Detallado',
@@ -1600,6 +1851,27 @@ const i18n = {
       'common.rename': 'Renombrar',
       'common.close': 'Cerrar',
       'common.retry': 'Reintentar',
+      'common.loading': 'Cargando...',
+
+      // Explorador de archivos
+      'files.empty': 'Carpeta vacía',
+      'files.goHome': 'Inicio',
+      'files.goToRoot': 'Raíz',
+      'files.uploadFile': 'Subir archivo',
+      'files.showHidden': 'Mostrar archivos ocultos',
+      'files.hideHidden': 'Ocultar archivos ocultos',
+      'files.sortByName': 'Ordenar por nombre',
+      'files.sortByTime': 'Ordenar por fecha',
+      'files.uploadHistory': 'Historial de subidas',
+      'files.downloadHistory': 'Historial de descargas',
+      'files.noUploads': 'Sin historial de subidas',
+      'files.noDownloads': 'Sin historial de descargas',
+      'files.recentUploads': 'Subidas recientes',
+      'files.recentDownloads': 'Descargas recientes',
+      'files.historyFailed': 'Error al cargar historial',
+      'files.downloadStarted': 'Descarga iniciada',
+      'files.downloadFailed': 'Descarga fallida',
+      'files.download': 'Descargar',
 
       // Tarjeta de sesión
       'session.running': 'Ejecutando',
@@ -1663,6 +1935,7 @@ const i18n = {
       'time.hoursAgo': 'h',
 
       'terminal.inputPlaceholder': 'Escriba un mensaje...',
+      'terminal.noWorkDir': 'Sin directorio de trabajo',
 
       // Panel de depuración
       'debug.title': 'Registro de depuración',
@@ -1715,6 +1988,12 @@ const i18n = {
       // Barra de herramientas
       'terminal.historyBtn': 'Historial',
       'common.loading': 'Cargando...',
+
+      // Monitor
+      'monitor.title': 'Monitor',
+      'monitor.memory': 'Memoria',
+      'monitor.disk': 'Disco',
+      'monitor.topProcesses': 'Procesos',
     },
 
     ru: {
@@ -1815,6 +2094,7 @@ const i18n = {
       'terminal.help.tip': 'Нажмите ⋯ для большего',
       'terminal.help.tipDebug': 'Нажмите на заголовок для логов',
       'terminal.help.tipFont': 'Вывод сбился? Измените размер шрифта',
+      'terminal.help.workdir': 'Открыть рабочий каталог',
       'terminal.keys.combo': 'Комбинации',
       'terminal.keys.clear': 'Очистить',
       'terminal.keys.verbose': 'Подробно',
@@ -1838,6 +2118,27 @@ const i18n = {
       'common.rename': 'Переименовать',
       'common.close': 'Закрыть',
       'common.retry': 'Повторить',
+      'common.loading': 'Загрузка...',
+
+      // Файловый браузер
+      'files.empty': 'Пустая папка',
+      'files.goHome': 'Домой',
+      'files.goToRoot': 'Корень',
+      'files.uploadFile': 'Загрузить файл',
+      'files.showHidden': 'Показать скрытые файлы',
+      'files.hideHidden': 'Скрыть скрытые файлы',
+      'files.sortByName': 'По имени',
+      'files.sortByTime': 'По времени',
+      'files.uploadHistory': 'История загрузок',
+      'files.downloadHistory': 'История скачиваний',
+      'files.noUploads': 'Нет загрузок',
+      'files.noDownloads': 'Нет скачиваний',
+      'files.recentUploads': 'Последние загрузки',
+      'files.recentDownloads': 'Последние скачивания',
+      'files.historyFailed': 'Ошибка загрузки истории',
+      'files.downloadStarted': 'Загрузка начата',
+      'files.downloadFailed': 'Ошибка загрузки',
+      'files.download': 'Скачать',
 
       // Карточка сессии
       'session.running': 'Работает',
@@ -1901,6 +2202,7 @@ const i18n = {
       'time.hoursAgo': 'ч.',
 
       'terminal.inputPlaceholder': 'Введите сообщение...',
+      'terminal.noWorkDir': 'Нет рабочего каталога',
 
       // Панель отладки
       'debug.title': 'Журнал отладки',
@@ -1953,6 +2255,12 @@ const i18n = {
       // Панель инструментов
       'terminal.historyBtn': 'История',
       'common.loading': 'Загрузка...',
+
+      // Монитор
+      'monitor.title': 'Монитор',
+      'monitor.memory': 'Память',
+      'monitor.disk': 'Диск',
+      'monitor.topProcesses': 'Процессы',
     },
 
     pt: {
@@ -2053,6 +2361,7 @@ const i18n = {
       'terminal.help.tip': 'Clique em ⋯ para mais',
       'terminal.help.tipDebug': 'Clique no título para logs',
       'terminal.help.tipFont': 'Saída bagunçada? Ajuste o tamanho',
+      'terminal.help.workdir': 'Abrir diretório de trabalho',
       'terminal.keys.combo': 'Combinações',
       'terminal.keys.clear': 'Limpar',
       'terminal.keys.verbose': 'Detalhado',
@@ -2076,6 +2385,27 @@ const i18n = {
       'common.rename': 'Renomear',
       'common.close': 'Fechar',
       'common.retry': 'Tentar novamente',
+      'common.loading': 'Carregando...',
+
+      // Navegador de arquivos
+      'files.empty': 'Pasta vazia',
+      'files.goHome': 'Início',
+      'files.goToRoot': 'Raiz',
+      'files.uploadFile': 'Carregar arquivo',
+      'files.showHidden': 'Mostrar arquivos ocultos',
+      'files.hideHidden': 'Ocultar arquivos ocultos',
+      'files.sortByName': 'Ordenar por nome',
+      'files.sortByTime': 'Ordenar por data',
+      'files.uploadHistory': 'Histórico de uploads',
+      'files.downloadHistory': 'Histórico de downloads',
+      'files.noUploads': 'Sem histórico de uploads',
+      'files.noDownloads': 'Sem histórico de downloads',
+      'files.recentUploads': 'Uploads recentes',
+      'files.recentDownloads': 'Downloads recentes',
+      'files.historyFailed': 'Falha ao carregar histórico',
+      'files.downloadStarted': 'Download iniciado',
+      'files.downloadFailed': 'Falha no download',
+      'files.download': 'Baixar',
 
       // Cartão de sessão
       'session.running': 'Executando',
@@ -2139,6 +2469,7 @@ const i18n = {
       'time.hoursAgo': 'h',
 
       'terminal.inputPlaceholder': 'Digite uma mensagem...',
+      'terminal.noWorkDir': 'Sem diretório de trabalho',
 
       // Painel de depuração
       'debug.title': 'Log de depuração',
@@ -2191,6 +2522,12 @@ const i18n = {
       // Barra de ferramentas
       'terminal.historyBtn': 'Histórico',
       'common.loading': 'Carregando...',
+
+      // Monitor
+      'monitor.title': 'Monitor',
+      'monitor.memory': 'Memória',
+      'monitor.disk': 'Disco',
+      'monitor.topProcesses': 'Processos',
     }
   },
 

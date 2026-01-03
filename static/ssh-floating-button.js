@@ -15,19 +15,20 @@
  */
 
 /**
- * Floating Button - 可拖拽悬浮按钮
- * 用于多 Session 快速切换
+ * SSH Floating Button - SSH 悬浮球
+ * 完全独立于 Claude 悬浮球
+ * 用于 SSH 多终端快速切换
  * 支持扇形展开菜单
  */
 
-class FloatingButton {
-  constructor(app) {
-    this.app = app;
+class SSHFloatingButton {
+  constructor(manager) {
+    this.manager = manager; // SSHSessionManager
     this.element = null;
     this.menu = null;
     this.isDragging = false;
     this.isLongPress = false;
-    this.isMenuActive = false;  // 菜单是否激活
+    this.isMenuActive = false;
     this.longPressTimer = null;
     this.startX = 0;
     this.startY = 0;
@@ -37,29 +38,22 @@ class FloatingButton {
     this.offsetY = 0;
 
     // 扇形菜单相关
-    this.menuItems = [];        // 菜单项位置信息 [{x, y, session, element}]
-    this.selectedItem = null;   // 当前选中的菜单项
-    this.menuCenterX = 0;       // 菜单中心 X
-    this.menuCenterY = 0;       // 菜单中心 Y
+    this.menuItems = [];
+    this.selectedItem = null;
+    this.menuCenterX = 0;
+    this.menuCenterY = 0;
 
-    this.LONG_PRESS_DURATION = 500; // 长按阈值
-    this.DRAG_THRESHOLD = 10; // 拖拽阈值
-    this.RADIAL_RADIUS = 80; // 扇形展开半径
-    this.ITEM_SIZE = 44; // 菜单项大小
-    this.SELECT_THRESHOLD = 30; // 选中判定半径
+    this.LONG_PRESS_DURATION = 500;
+    this.DRAG_THRESHOLD = 10;
+    this.RADIAL_RADIUS = 80;
+    this.ITEM_SIZE = 44;
+    this.SELECT_THRESHOLD = 30;
 
     this.init();
   }
 
-  /**
-   * 调试日志
-   */
   log(msg) {
-    if (this.app && this.app.debugLog) {
-      this.app.debugLog('[FloatBtn] ' + msg);
-    } else {
-      console.log('[FloatBtn] ' + msg);
-    }
+    console.log('[SSHFloatBtn] ' + msg);
   }
 
   init() {
@@ -67,7 +61,7 @@ class FloatingButton {
     this.createRadialMenu();
     this.bindEvents();
     this.loadPosition();
-    this.update();
+    this.hide();
   }
 
   /**
@@ -75,9 +69,9 @@ class FloatingButton {
    */
   createElement() {
     this.element = document.createElement('div');
-    this.element.id = 'floating-btn';
-    this.element.className = 'floating-btn';
-    this.element.innerHTML = '<span class="floating-btn-count">0</span>';
+    this.element.id = 'ssh-floating-btn';
+    this.element.className = 'ssh-floating-btn';
+    this.element.innerHTML = '<span class="ssh-floating-btn-count">0</span>';
 
     document.body.appendChild(this.element);
   }
@@ -87,12 +81,11 @@ class FloatingButton {
    */
   createRadialMenu() {
     this.menu = document.createElement('div');
-    this.menu.id = 'radial-menu';
-    this.menu.className = 'radial-menu';
+    this.menu.id = 'ssh-radial-menu';
+    this.menu.className = 'ssh-radial-menu';
 
-    // 添加遮罩层
     const overlay = document.createElement('div');
-    overlay.className = 'radial-menu-overlay';
+    overlay.className = 'ssh-radial-menu-overlay';
     overlay.addEventListener('click', () => this.hideRadialMenu());
     this.menu.appendChild(overlay);
 
@@ -103,13 +96,13 @@ class FloatingButton {
    * 绑定事件
    */
   bindEvents() {
-    // Touch 事件 - 在按钮上开始，在 document 上追踪
+    // Touch 事件
     this.element.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
     document.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
     document.addEventListener('touchend', (e) => this.onTouchEnd(e));
     document.addEventListener('touchcancel', (e) => this.onTouchEnd(e));
 
-    // Mouse 事件（桌面端）
+    // Mouse 事件
     this.element.addEventListener('mousedown', (e) => this.onMouseDown(e));
     document.addEventListener('mousemove', (e) => this.onMouseMove(e));
     document.addEventListener('mouseup', (e) => this.onMouseUp(e));
@@ -118,7 +111,6 @@ class FloatingButton {
   // ==================== Touch 事件 ====================
 
   onTouchStart(e) {
-    this.log('onTouchStart');
     if (e.touches.length !== 1) return;
     e.preventDefault();
 
@@ -127,19 +119,16 @@ class FloatingButton {
     this.startY = touch.clientY;
     this.isDragging = false;
     this.isLongPress = false;
-    this.touchActive = true;  // 标记触摸激活
+    this.touchActive = true;
 
     const rect = this.element.getBoundingClientRect();
     this.offsetX = touch.clientX - rect.left - rect.width / 2;
     this.offsetY = touch.clientY - rect.top - rect.height / 2;
 
-    // 启动长按计时器
     this.longPressTimer = setTimeout(() => {
-      this.log('longPress timer fired, isDragging=' + this.isDragging);
       if (!this.isDragging && this.touchActive) {
         this.isLongPress = true;
         this.isMenuActive = true;
-        this.log('triggering showRadialMenu');
         this.showRadialMenu();
         this.vibrate();
       }
@@ -154,7 +143,6 @@ class FloatingButton {
 
     const touch = e.touches[0];
 
-    // 如果菜单已激活，追踪手指位置选择菜单项
     if (this.isMenuActive) {
       e.preventDefault();
       this.updateMenuSelection(touch.clientX, touch.clientY);
@@ -164,7 +152,6 @@ class FloatingButton {
     const deltaX = Math.abs(touch.clientX - this.startX);
     const deltaY = Math.abs(touch.clientY - this.startY);
 
-    // 超过阈值，判定为拖拽（菜单未激活时）
     if (deltaX > this.DRAG_THRESHOLD || deltaY > this.DRAG_THRESHOLD) {
       this.isDragging = true;
       clearTimeout(this.longPressTimer);
@@ -178,62 +165,6 @@ class FloatingButton {
     }
   }
 
-  /**
-   * 更新菜单选中状态
-   */
-  updateMenuSelection(touchX, touchY) {
-    let closestItem = null;
-    let closestDistance = Infinity;
-
-    // 计算手指与中心的距离
-    const distFromCenter = Math.sqrt(
-      Math.pow(touchX - this.menuCenterX, 2) +
-      Math.pow(touchY - this.menuCenterY, 2)
-    );
-
-    // 如果手指太靠近中心，不选中任何菜单项
-    if (distFromCenter < 40) {
-      this.clearMenuSelection();
-      return;
-    }
-
-    // 找到最近的菜单项
-    for (const item of this.menuItems) {
-      const distance = Math.sqrt(
-        Math.pow(touchX - item.x, 2) +
-        Math.pow(touchY - item.y, 2)
-      );
-
-      if (distance < closestDistance && distance < this.SELECT_THRESHOLD + 20) {
-        closestDistance = distance;
-        closestItem = item;
-      }
-    }
-
-    // 更新选中状态
-    if (closestItem !== this.selectedItem) {
-      this.clearMenuSelection();
-      if (closestItem) {
-        closestItem.element.classList.add('hover');
-        this.selectedItem = closestItem;
-        // 轻微震动反馈
-        if (navigator.vibrate) {
-          navigator.vibrate(10);
-        }
-      }
-    }
-  }
-
-  /**
-   * 清除菜单选中状态
-   */
-  clearMenuSelection() {
-    if (this.selectedItem) {
-      this.selectedItem.element.classList.remove('hover');
-      this.selectedItem = null;
-    }
-  }
-
   onTouchEnd(e) {
     if (!this.touchActive) return;
 
@@ -241,16 +172,12 @@ class FloatingButton {
     this.element.classList.remove('pressed');
     this.touchActive = false;
 
-    // 如果菜单激活，处理选择
     if (this.isMenuActive) {
       if (this.selectedItem) {
-        // 有选中项，执行切换
         const session = this.selectedItem.session;
-        this.log(`selected session: ${session.name}`);
         this.vibrate();
-        this.app.connectSession(session.id, session.name);
+        this.manager.switchTo(session.id);
       }
-      // 无论是否选中，都关闭菜单
       this.hideRadialMenu();
       this.clearMenuSelection();
       this.isMenuActive = false;
@@ -259,11 +186,9 @@ class FloatingButton {
     }
 
     if (this.isDragging) {
-      // 拖拽结束，吸附到边缘
       this.snapToEdge();
       this.savePosition();
     } else if (!this.isLongPress) {
-      // 单击：快速切换
       this.onSingleClick();
     }
 
@@ -299,7 +224,6 @@ class FloatingButton {
   onMouseMove(e) {
     if (!this.mouseDown) return;
 
-    // 如果菜单已激活，追踪鼠标位置选择菜单项
     if (this.isMenuActive) {
       this.updateMenuSelection(e.clientX, e.clientY);
       return;
@@ -327,12 +251,10 @@ class FloatingButton {
     clearTimeout(this.longPressTimer);
     this.element.classList.remove('pressed');
 
-    // 如果菜单激活，处理选择
     if (this.isMenuActive) {
       if (this.selectedItem) {
         const session = this.selectedItem.session;
-        this.log(`mouse selected session: ${session.name}`);
-        this.app.connectSession(session.id, session.name);
+        this.manager.switchTo(session.id);
       }
       this.hideRadialMenu();
       this.clearMenuSelection();
@@ -359,72 +281,97 @@ class FloatingButton {
    */
   onSingleClick() {
     this.log('onSingleClick');
-    if (!this.app.sessionManager) {
-      this.log('onSingleClick: no sessionManager');
+
+    const previousId = this.manager.previousId;
+    const activeId = this.manager.activeId;
+    const sessionsSize = this.manager.sessions.size;
+
+    // 如果有上一个 session，切换到它
+    if (previousId && previousId !== activeId && this.manager.sessions.has(previousId)) {
+      this.vibrate();
+      this.manager.switchTo(previousId);
       return;
     }
 
-    // 获取要切换到的 session
-    let targetSession = null;
-
-    const previousId = this.app.sessionManager.previousId;
-    const sessionsSize = this.app.sessionManager.sessions.size;
-    const activeId = this.app.sessionManager.activeId;
-    this.log(`onSingleClick: previousId=${previousId}, sessionsSize=${sessionsSize}, activeId=${activeId}`);
-
-    // 确保 previousId 不是当前活跃的 session
-    if (previousId && previousId !== activeId && this.app.sessionManager.sessions.has(previousId)) {
-      targetSession = this.app.sessionManager.sessions.get(previousId);
-      this.log(`onSingleClick: using previousId`);
-    } else {
-      // previousId 无效或等于 activeId，切换到最近活跃的后台 session
-      if (previousId === activeId) {
-        this.log(`onSingleClick: previousId equals activeId, skipping`);
-      }
-      const backgrounds = this.app.sessionManager.getBackgroundSessions();
-      this.log(`onSingleClick: background sessions=${backgrounds.length}`);
-      if (backgrounds.length > 0) {
-        targetSession = backgrounds[0];
-      }
+    // 否则切换到最近活跃的后台 session
+    const backgrounds = this.manager.getBackgroundSessions();
+    if (backgrounds.length > 0) {
+      this.vibrate();
+      this.manager.switchTo(backgrounds[0].id);
+      return;
     }
 
-    if (targetSession) {
-      this.log(`onSingleClick: switch to ${targetSession.id}`);
+    // 如果只有一个 session，切换到它
+    if (sessionsSize === 1) {
+      const session = this.manager.getAllSessions()[0];
       this.vibrate();
-      // 使用 connectSession 确保 app 状态正确更新
-      this.app.connectSession(targetSession.id, targetSession.name);
-    } else {
-      this.log('onSingleClick: no target, sessions.size=' + sessionsSize);
-      // 没有可切换的 session
-      if (sessionsSize === 0) {
-        // 没有后台 session，提示用户
-        if (this.app.showToast) {
-          this.app.showToast('没有后台会话');
-        }
-      } else {
-        // 有 session 但找不到目标，展开菜单
-        this.showRadialMenu();
-      }
+      this.manager.switchTo(session.id);
+      return;
+    }
+
+    // 没有可切换的 session
+    if (sessionsSize > 1) {
+      this.showRadialMenu();
     }
   }
 
-  /**
-   * 震动反馈
-   */
   vibrate() {
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
   }
 
+  // ==================== 菜单选择 ====================
+
+  updateMenuSelection(touchX, touchY) {
+    let closestItem = null;
+    let closestDistance = Infinity;
+
+    const distFromCenter = Math.sqrt(
+      Math.pow(touchX - this.menuCenterX, 2) +
+      Math.pow(touchY - this.menuCenterY, 2)
+    );
+
+    if (distFromCenter < 40) {
+      this.clearMenuSelection();
+      return;
+    }
+
+    for (const item of this.menuItems) {
+      const distance = Math.sqrt(
+        Math.pow(touchX - item.x, 2) +
+        Math.pow(touchY - item.y, 2)
+      );
+
+      if (distance < closestDistance && distance < this.SELECT_THRESHOLD + 20) {
+        closestDistance = distance;
+        closestItem = item;
+      }
+    }
+
+    if (closestItem !== this.selectedItem) {
+      this.clearMenuSelection();
+      if (closestItem) {
+        closestItem.element.classList.add('hover');
+        this.selectedItem = closestItem;
+        if (navigator.vibrate) {
+          navigator.vibrate(10);
+        }
+      }
+    }
+  }
+
+  clearMenuSelection() {
+    if (this.selectedItem) {
+      this.selectedItem.element.classList.remove('hover');
+      this.selectedItem = null;
+    }
+  }
+
   // ==================== 位置控制 ====================
 
-  /**
-   * 更新按钮位置
-   */
   updatePosition() {
-    // 限制在屏幕范围内
-    const btnSize = 50;
+    const btnSize = 44;
     const maxX = window.innerWidth - btnSize / 2;
     const maxY = window.innerHeight - btnSize / 2;
     const minX = btnSize / 2;
@@ -439,15 +386,12 @@ class FloatingButton {
     this.element.style.bottom = 'auto';
   }
 
-  /**
-   * 吸附到屏幕边缘
-   */
   snapToEdge() {
     const screenWidth = window.innerWidth;
-    const btnSize = 50;
-    const margin = 15;
+    const btnSize = 44;
+    const margin = 15; // 和 Claude 悬浮球对齐
 
-    // 判断靠左还是靠右
+    // 吸附到边缘
     if (this.currentX < screenWidth / 2) {
       this.currentX = margin + btnSize / 2;
     } else {
@@ -467,21 +411,15 @@ class FloatingButton {
     }, 350);
   }
 
-  /**
-   * 保存位置到 localStorage
-   */
   savePosition() {
-    localStorage.setItem('floating-btn-pos', JSON.stringify({
+    localStorage.setItem('ssh-floating-btn-pos', JSON.stringify({
       x: this.currentX,
       y: this.currentY
     }));
   }
 
-  /**
-   * 从 localStorage 加载位置
-   */
   loadPosition() {
-    const saved = localStorage.getItem('floating-btn-pos');
+    const saved = localStorage.getItem('ssh-floating-btn-pos');
     if (saved) {
       try {
         const pos = JSON.parse(saved);
@@ -497,30 +435,25 @@ class FloatingButton {
   }
 
   /**
-   * 设置默认位置（右下角）
+   * 设置默认位置（左下角，和 Claude 悬浮球对齐）
    */
   setDefaultPosition() {
-    this.currentX = window.innerWidth - 65;
+    const btnSize = 44;
+    const margin = 15;
+    this.currentX = margin + btnSize / 2;
     this.currentY = window.innerHeight - 180;
     this.updatePosition();
   }
 
-  // ==================== 扇形菜单控制 ====================
+  // ==================== 扇形菜单 ====================
 
-  /**
-   * 计算展开方向和角度范围
-   * 根据按钮在屏幕中的位置，智能决定扇形展开方向
-   */
   calculateExpandDirection() {
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     const btnX = this.currentX;
     const btnY = this.currentY;
-
-    // 边缘阈值
     const edgeThreshold = 100;
 
-    // 判断位置
     const isLeft = btnX < edgeThreshold;
     const isRight = btnX > screenWidth - edgeThreshold;
     const isTop = btnY < edgeThreshold;
@@ -529,146 +462,75 @@ class FloatingButton {
     let startAngle, endAngle;
 
     if (isLeft && isTop) {
-      // 左上角 → 向右下展开
-      startAngle = 0;
-      endAngle = 90;
+      startAngle = 0; endAngle = 90;
     } else if (isRight && isTop) {
-      // 右上角 → 向左下展开
-      startAngle = 90;
-      endAngle = 180;
+      startAngle = 90; endAngle = 180;
     } else if (isRight && isBottom) {
-      // 右下角 → 向左上展开
-      startAngle = 180;
-      endAngle = 270;
+      startAngle = 180; endAngle = 270;
     } else if (isLeft && isBottom) {
-      // 左下角 → 向右上展开
-      startAngle = 270;
-      endAngle = 360;
+      startAngle = 270; endAngle = 360;
     } else if (isLeft) {
-      // 左边缘 → 向右展开（半圆）
-      startAngle = -60;
-      endAngle = 60;
+      startAngle = -60; endAngle = 60;
     } else if (isRight) {
-      // 右边缘 → 向左展开（半圆）
-      startAngle = 120;
-      endAngle = 240;
+      startAngle = 120; endAngle = 240;
     } else if (isTop) {
-      // 上边缘 → 向下展开（半圆）
-      startAngle = 30;
-      endAngle = 150;
+      startAngle = 30; endAngle = 150;
     } else if (isBottom) {
-      // 下边缘 → 向上展开（半圆）
-      startAngle = 210;
-      endAngle = 330;
+      startAngle = 210; endAngle = 330;
     } else {
-      // 中间位置 → 完整半圆（向主要空间展开）
       if (btnX < screenWidth / 2) {
-        startAngle = -90;
-        endAngle = 90;
+        startAngle = -90; endAngle = 90;
       } else {
-        startAngle = 90;
-        endAngle = 270;
+        startAngle = 90; endAngle = 270;
       }
     }
 
     return { startAngle, endAngle };
   }
 
-  /**
-   * 获取 session 名称的缩写（用于显示在圆形按钮上）
-   */
   getSessionInitials(name) {
     if (!name) return '?';
-
-    // 移除常见前缀
-    name = name.replace(/^(session|会话|セッション)\s*/i, '');
-
-    // 如果是纯数字，直接返回
-    if (/^\d+$/.test(name)) {
-      return name.substring(0, 2);
-    }
-
-    // 如果是中文，取前两个字
-    if (/[\u4e00-\u9fa5]/.test(name)) {
-      return name.substring(0, 2);
-    }
-
-    // 如果是英文，取首字母
+    name = name.replace(/^\[SSH\]\s*/i, '');
+    if (/^\d+$/.test(name)) return name.substring(0, 2);
+    if (/[\u4e00-\u9fa5]/.test(name)) return name.substring(0, 2);
     const words = name.split(/[\s_-]+/);
     if (words.length >= 2) {
       return (words[0][0] + words[1][0]).toUpperCase();
     }
-
     return name.substring(0, 2).toUpperCase();
   }
 
-  /**
-   * 计算 tooltip 位置
-   */
-  getTooltipPosition(angle) {
-    // tooltip 显示在菜单项的外侧
-    const normalizedAngle = ((angle % 360) + 360) % 360;
-
-    if (normalizedAngle >= 315 || normalizedAngle < 45) {
-      return { left: '60px', top: '50%', transform: 'translateY(-50%)' };
-    } else if (normalizedAngle >= 45 && normalizedAngle < 135) {
-      return { left: '50%', top: '60px', transform: 'translateX(-50%)' };
-    } else if (normalizedAngle >= 135 && normalizedAngle < 225) {
-      return { right: '60px', top: '50%', transform: 'translateY(-50%)', left: 'auto' };
-    } else {
-      return { left: '50%', bottom: '60px', transform: 'translateX(-50%)', top: 'auto' };
-    }
-  }
-
-  /**
-   * 显示扇形菜单
-   */
   showRadialMenu() {
-    this.log('showRadialMenu called');
+    this.log('showRadialMenu');
 
-    if (!this.app.sessionManager) {
-      this.log('showRadialMenu: no sessionManager');
-      return;
-    }
-
-    const sessions = this.app.sessionManager.getAllSessions();
-    this.log(`showRadialMenu: ${sessions.length} sessions`);
-    const activeId = this.app.sessionManager.activeId;
-
-    // 清除旧的菜单项（保留遮罩）
-    const overlay = this.menu.querySelector('.radial-menu-overlay');
-    this.menu.innerHTML = '';
-    this.menu.appendChild(overlay);
-
-    // 重置菜单项列表
-    this.menuItems = [];
-    this.selectedItem = null;
-
+    const sessions = this.manager.getAllSessions();
     if (sessions.length === 0) {
-      // 没有 session，显示提示
-      this.log('showRadialMenu: no sessions, hiding');
       this.hideRadialMenu();
       return;
     }
 
-    // 计算展开方向
+    const activeId = this.manager.activeId;
+
+    // 清除旧菜单项
+    const overlay = this.menu.querySelector('.ssh-radial-menu-overlay');
+    this.menu.innerHTML = '';
+    this.menu.appendChild(overlay);
+
+    this.menuItems = [];
+    this.selectedItem = null;
+
     const { startAngle, endAngle } = this.calculateExpandDirection();
     const angleRange = endAngle - startAngle;
     const itemCount = sessions.length;
-
-    // 计算每个项目的角度间隔
     const angleStep = itemCount > 1 ? angleRange / (itemCount - 1) : 0;
 
-    // 按钮中心位置（保存供滑动选择使用）
     this.menuCenterX = this.currentX;
     this.menuCenterY = this.currentY;
 
-    // 创建菜单项
     sessions.forEach((session, index) => {
       const item = document.createElement('div');
-      item.className = 'radial-menu-item';
+      item.className = 'ssh-radial-menu-item';
 
-      // 添加状态类
       if (session.id === activeId) {
         item.classList.add('current');
       }
@@ -676,7 +538,6 @@ class FloatingButton {
         item.classList.add('connected');
       }
 
-      // 计算位置
       const angle = itemCount > 1
         ? startAngle + angleStep * index
         : (startAngle + endAngle) / 2;
@@ -687,117 +548,69 @@ class FloatingButton {
       item.style.left = `${x}px`;
       item.style.top = `${y}px`;
 
-      // 保存菜单项位置信息（用于滑动选择）
-      this.menuItems.push({
-        x: x,
-        y: y,
-        session: session,
-        element: item
-      });
+      this.menuItems.push({ x, y, session, element: item });
 
-      // 显示名称缩写
       const text = document.createElement('span');
-      text.className = 'radial-menu-item-text';
+      text.className = 'ssh-radial-menu-item-text';
       text.textContent = this.getSessionInitials(session.name);
       item.appendChild(text);
 
-      // 添加 tooltip（滑动时显示完整名称）
       const tooltip = document.createElement('div');
-      tooltip.className = 'radial-menu-item-tooltip';
-      tooltip.textContent = session.name || 'Session';
-      const tooltipPos = this.getTooltipPosition(angle);
-      Object.assign(tooltip.style, tooltipPos);
+      tooltip.className = 'ssh-radial-menu-item-tooltip';
+      tooltip.textContent = session.name;
       item.appendChild(tooltip);
 
       this.menu.appendChild(item);
     });
 
-    // 不再需要关闭按钮，滑回中心松开即可取消
-
-    // 显示菜单
     this.menu.classList.add('active');
-    this.log('radial menu activated, items: ' + this.menuItems.length);
   }
 
-  /**
-   * 隐藏扇形菜单
-   */
   hideRadialMenu() {
     this.menu.classList.remove('active');
   }
 
-  // 兼容旧方法名
-  showMenu() {
-    this.showRadialMenu();
-  }
-
-  hideMenu() {
-    this.hideRadialMenu();
-  }
-
   // ==================== 状态更新 ====================
 
-  /**
-   * 更新按钮显示
-   */
   update() {
-    this.log('update');
-    if (!this.app.sessionManager) {
-      this.log('update: no sessionManager, hide');
-      this.hide();
-      return;
-    }
+    const count = this.manager.getBackgroundCount();
+    const activeId = this.manager.activeId;
+    const sessionsSize = this.manager.sessions.size;
+    const countEl = this.element.querySelector('.ssh-floating-btn-count');
 
-    const count = this.app.sessionManager.getBackgroundCount();
-    const activeId = this.app.sessionManager.activeId;
-    const sessionsSize = this.app.sessionManager.sessions.size;
-    const previousId = this.app.sessionManager.previousId;
-    this.log(`update: bgCount=${count}, activeId=${activeId}, sessionsSize=${sessionsSize}, previousId=${previousId}`);
-    const countEl = this.element.querySelector('.floating-btn-count');
+    // 检查是否在 SSH 终端页面
+    const isSSHViewActive = document.getElementById('ssh-terminal-view')?.classList.contains('active');
 
-    if (count > 0) {
-      countEl.textContent = count;
-      this.log('update: show, count=' + count);
-      this.show();
-    } else if (activeId) {
-      // 有活跃 session 但没有后台 session，显示 0
-      countEl.textContent = '0';
-      this.log('update: show, count=0');
-      this.show();
+    if (sessionsSize > 0) {
+      // 有 SSH session 时显示
+      if (isSSHViewActive && count > 0) {
+        // 在 SSH 页面，且有后台 session
+        countEl.textContent = count;
+        this.show();
+      } else if (!isSSHViewActive && sessionsSize > 0) {
+        // 不在 SSH 页面，但有 SSH session
+        countEl.textContent = sessionsSize;
+        this.show();
+      } else if (isSSHViewActive && count === 0) {
+        // 在 SSH 页面，但没有后台 session
+        this.hide();
+      } else {
+        this.hide();
+      }
     } else {
-      this.log('update: hide');
       this.hide();
     }
   }
 
-  /**
-   * 显示按钮
-   */
   show() {
     this.element.classList.add('visible');
   }
 
-  /**
-   * 隐藏按钮
-   */
   hide() {
     this.element.classList.remove('visible');
     this.hideRadialMenu();
   }
 
-  /**
-   * HTML 转义
-   */
-  escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  /**
-   * 销毁
-   */
   destroy() {
     if (this.element) {
       this.element.remove();
@@ -809,4 +622,4 @@ class FloatingButton {
 }
 
 // 导出
-window.FloatingButton = FloatingButton;
+window.SSHFloatingButton = SSHFloatingButton;

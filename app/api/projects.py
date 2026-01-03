@@ -192,20 +192,6 @@ async def set_session_name(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/projects/session/{session_id}/name")
-async def delete_session_name(
-    session_id: str,
-    _: str = Depends(verify_token)
-):
-    """删除会话的自定义名称"""
-    try:
-        naming_store.delete_name(session_id)
-        return {"success": True}
-    except Exception as e:
-        logger.error(f"Delete session name error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ==================== Delete API ====================
 
 @router.delete("/projects/session/{session_id}")

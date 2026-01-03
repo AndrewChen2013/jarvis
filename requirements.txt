@@ -8,3 +8,4 @@ pydantic-settings==2.1.0
 python-multipart==0.0.6
 msgpack==1.0.7
 psutil==5.9.7
+asyncssh==2.14.2

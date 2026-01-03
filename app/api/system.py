@@ -20,12 +20,12 @@
 import socket
 import json
 import getpass
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query
 
 from app.api.auth import verify_token
-from app.services.usage_tracker import usage_tracker
 from app.services.terminal_manager import terminal_manager
 from app.services.anthropic_oauth import anthropic_oauth
 from app.core.logging import logger
@@ -70,41 +70,6 @@ async def get_active_sessions(_: str = Depends(verify_token)):
         return terminal_manager.get_active_sessions()
     except Exception as e:
         logger.error(f"Get active sessions error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/usage/summary")
-async def get_usage_summary(_: str = Depends(verify_token)):
-    """获取 Claude Code 用量摘要"""
-    try:
-        summary = usage_tracker.to_dict()
-        return summary
-    except Exception as e:
-        logger.error(f"Get usage summary error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/usage/history")
-async def get_usage_history(
-    days: int = Query(default=7, ge=1, le=30, description="历史天数"),
-    _: str = Depends(verify_token)
-):
-    """获取历史用量趋势"""
-    try:
-        history = usage_tracker.calculate_daily_history(days=days)
-        return {"history": history, "days": days}
-    except Exception as e:
-        logger.error(f"Get usage history error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/terminals/stats")
-async def get_terminals_stats(_: str = Depends(verify_token)):
-    """获取终端统计信息"""
-    try:
-        return terminal_manager.get_stats()
-    except Exception as e:
-        logger.error(f"Get terminals stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -284,6 +249,39 @@ async def get_profile(_: str = Depends(verify_token)):
     except Exception as e:
         logger.error(f"Get profile error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/git/branch")
+async def get_git_branch(
+    path: str = Query(..., description="工作目录路径"),
+    _: str = Depends(verify_token)
+):
+    """获取指定目录的 git 分支名"""
+    try:
+        # 检查目录是否存在
+        if not Path(path).is_dir():
+            return {"branch": None}
+
+        # 执行 git rev-parse 获取当前分支
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            branch = result.stdout.strip()
+            return {"branch": branch if branch else None}
+        else:
+            return {"branch": None}
+
+    except subprocess.TimeoutExpired:
+        return {"branch": None}
+    except Exception as e:
+        logger.error(f"Get git branch error: {e}")
+        return {"branch": None}
 
 
 # /api/context 已废弃，请使用 /api/projects/session/{session_id} 获取 context 信息

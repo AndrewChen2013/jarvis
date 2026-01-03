@@ -144,6 +144,12 @@ async def change_password(
         # 更新配置文件
         _update_env_file("AUTH_TOKEN", req.new_password)
 
+        # 重新加密所有远程机器的密码
+        from app.services.database import db
+        reencrypted = db.reencrypt_all_passwords(old_token, req.new_password)
+        if reencrypted > 0:
+            logger.info(f"Reencrypted {reencrypted} remote machine passwords")
+
         logger.info("Password changed successfully")
         return {"success": True, "message": "密码修改成功，请重新登录"}
 
