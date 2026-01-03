@@ -15,7 +15,7 @@
  */
 
 /**
- * Claude Remote - 主应用
+ * Jarvis - 主应用
  *
  * 模块化架构：
  * - utils.js: 工具函数
