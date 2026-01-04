@@ -458,8 +458,82 @@ const AppDebug = {
     if (panel) {
       panel.remove();
     }
+  },
+
+  /**
+   * 设置全局异常捕获
+   */
+  setupGlobalErrorHandler() {
+    // 捕获同步错误
+    window.onerror = (message, source, lineno, colno, error) => {
+      const errorInfo = `JS Error: ${message} at ${source}:${lineno}:${colno}`;
+      this.debugLog(`[ERROR] ${errorInfo}`);
+
+      // 异常时强制用 HTTP 发送，确保不丢失
+      this._sendErrorViaHttp({
+        type: 'error',
+        message: String(message),
+        source: source,
+        line: lineno,
+        column: colno,
+        stack: error?.stack || '',
+        timestamp: new Date().toISOString(),
+        clientId: this._generateClientId?.() || 'unknown'
+      });
+
+      return false; // 继续默认处理
+    };
+
+    // 捕获未处理的 Promise rejection
+    window.onunhandledrejection = (event) => {
+      const reason = event.reason;
+      const message = reason?.message || String(reason);
+      const stack = reason?.stack || '';
+
+      this.debugLog(`[UNHANDLED REJECTION] ${message}`);
+
+      this._sendErrorViaHttp({
+        type: 'unhandledrejection',
+        message: message,
+        stack: stack,
+        timestamp: new Date().toISOString(),
+        clientId: this._generateClientId?.() || 'unknown'
+      });
+    };
+
+    console.log('[Debug] Global error handler installed');
+  },
+
+  /**
+   * 通过 HTTP 直接发送错误（绕过缓冲区，确保不丢失）
+   */
+  async _sendErrorViaHttp(errorData) {
+    try {
+      await fetch('/api/debug/logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token || ''}`
+        },
+        body: JSON.stringify({
+          clientId: errorData.clientId,
+          logs: [{
+            timestamp: errorData.timestamp,
+            level: 'error',
+            message: JSON.stringify(errorData),
+            clientId: errorData.clientId
+          }]
+        })
+      });
+    } catch (e) {
+      // 发送失败也不能抛错，避免死循环
+      console.warn('[Debug] Failed to send error to backend:', e);
+    }
   }
 };
 
 // 导出到全局
 window.AppDebug = AppDebug;
+
+// 立即安装全局异常捕获（尽早捕获错误）
+AppDebug.setupGlobalErrorHandler();
