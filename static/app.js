@@ -709,12 +709,12 @@ class App {
       } else {
         // 其他错误（500/502/503/504 等）是服务器/网络问题，不是认证问题
         // 继续使用缓存的 token，显示会话列表
-        console.warn('Auth verify failed with status:', response.status);
+        this.debugLog(`Auth verify failed with status: ${response.status}, using cached token`);
         this.showView('sessions');
         this.showToast(this.t('status.serverError', 'Server error, please try again later'), 'warning');
       }
     } catch (error) {
-      console.error('Auth check error:', error);
+      this.debugLog(`Auth check network error: ${error.message}, using cached token`);
       // 网络错误，尝试使用缓存的 token
       // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
       this.showView('sessions');
