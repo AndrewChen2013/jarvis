@@ -74,6 +74,9 @@ const AppSettings = {
       this.renderLanguageList();
     } else if (page === 'password') {
       document.getElementById('settings-modal-title').textContent = this.t('settings.title');
+    } else if (page === 'theme') {
+      document.getElementById('settings-modal-title').textContent = this.t('settings.theme');
+      this.initThemePage();
     }
   },
 
@@ -546,6 +549,140 @@ const AppSettings = {
     updateCountdown();
     // 每秒更新
     this.countdownInterval = setInterval(updateCountdown, 1000);
+  },
+
+  // ========== 主题管理 ==========
+
+  /**
+   * 初始化主题（页面加载时调用）
+   */
+  initTheme() {
+    const saved = this.getSavedTheme();
+    this.applyTheme(saved.mode, saved.color, saved.fontSize);
+
+    // 监听系统主题变化
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        const saved = this.getSavedTheme();
+        if (saved.mode === 'system') {
+          this.applyTheme('system', saved.color, saved.fontSize);
+        }
+      });
+    }
+  },
+
+  /**
+   * 获取保存的主题设置
+   */
+  getSavedTheme() {
+    try {
+      const saved = localStorage.getItem('jarvis_theme');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to load theme:', e);
+    }
+    return { mode: 'dark', color: 'blue', fontSize: 'medium' };
+  },
+
+  /**
+   * 保存主题设置
+   */
+  saveTheme(mode, color, fontSize) {
+    try {
+      localStorage.setItem('jarvis_theme', JSON.stringify({ mode, color, fontSize }));
+    } catch (e) {
+      console.error('Failed to save theme:', e);
+    }
+  },
+
+  /**
+   * 应用主题
+   */
+  applyTheme(mode, color, fontSize) {
+    const root = document.documentElement;
+
+    // 处理颜色模式
+    let effectiveMode = mode;
+    if (mode === 'system') {
+      effectiveMode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    // 设置 data 属性
+    if (effectiveMode === 'light') {
+      root.setAttribute('data-theme', 'light');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+
+    // 设置主色调
+    if (color && color !== 'blue') {
+      root.setAttribute('data-primary', color);
+    } else {
+      root.removeAttribute('data-primary');
+    }
+
+    // 设置字体大小
+    if (fontSize === 'small') {
+      root.setAttribute('data-font-size', 'small');
+    } else if (fontSize === 'large') {
+      root.setAttribute('data-font-size', 'large');
+    } else {
+      root.removeAttribute('data-font-size');
+    }
+  },
+
+  /**
+   * 初始化主题设置页面
+   */
+  initThemePage() {
+    const saved = this.getSavedTheme();
+
+    // 设置当前选中状态
+    const modeInput = document.querySelector(`input[name="theme-mode"][value="${saved.mode}"]`);
+    if (modeInput) modeInput.checked = true;
+
+    const colorInput = document.querySelector(`input[name="theme-color"][value="${saved.color}"]`);
+    if (colorInput) colorInput.checked = true;
+
+    const sizeInput = document.querySelector(`input[name="theme-size"][value="${saved.fontSize}"]`);
+    if (sizeInput) sizeInput.checked = true;
+
+    // 绑定事件（如果未绑定）
+    if (!this._themeEventsBound) {
+      this._themeEventsBound = true;
+
+      // 颜色模式变化
+      document.querySelectorAll('input[name="theme-mode"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const saved = this.getSavedTheme();
+          saved.mode = e.target.value;
+          this.saveTheme(saved.mode, saved.color, saved.fontSize);
+          this.applyTheme(saved.mode, saved.color, saved.fontSize);
+        });
+      });
+
+      // 主色调变化
+      document.querySelectorAll('input[name="theme-color"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const saved = this.getSavedTheme();
+          saved.color = e.target.value;
+          this.saveTheme(saved.mode, saved.color, saved.fontSize);
+          this.applyTheme(saved.mode, saved.color, saved.fontSize);
+        });
+      });
+
+      // 字体大小变化
+      document.querySelectorAll('input[name="theme-size"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const saved = this.getSavedTheme();
+          saved.fontSize = e.target.value;
+          this.saveTheme(saved.mode, saved.color, saved.fontSize);
+          this.applyTheme(saved.mode, saved.color, saved.fontSize);
+        });
+      });
+    }
   },
 
 };

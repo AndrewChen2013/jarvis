@@ -73,6 +73,9 @@ class App {
       window.i18n.init();
     }
 
+    // 初始化主题
+    this.initTheme();
+
     // 初始化远程机器模块
     if (window.RemoteMachines) {
       window.RemoteMachines.init();
@@ -456,6 +459,11 @@ class App {
     // 设置菜单项点击 - 修改密码
     document.getElementById('menu-password').addEventListener('click', () => {
       this.showSettingsPage('password');
+    });
+
+    // 设置菜单项点击 - 主题
+    document.getElementById('menu-theme').addEventListener('click', () => {
+      this.showSettingsPage('theme');
     });
 
     // 设置返回按钮

@@ -58,7 +58,7 @@ async def handle_terminal_websocket(
 
     # 等待认证消息（连接后第一条消息必须是 auth）
     try:
-        auth_message = await asyncio.wait_for(websocket.receive(), timeout=10.0)
+        auth_message = await asyncio.wait_for(websocket.receive(), timeout=60.0)
 
         data = None
         if "bytes" in auth_message:
@@ -77,7 +77,7 @@ async def handle_terminal_websocket(
             logger.warning("WebSocket: invalid token")
             return
 
-        logger.debug("WebSocket: auth successful")
+        logger.info("WebSocket: auth successful")
 
     except asyncio.TimeoutError:
         await websocket.close(code=1008, reason="Auth timeout")
@@ -185,6 +185,7 @@ async def handle_terminal_websocket(
             "session_id": session_id,
             "pid": terminal.pid
         })
+        logger.info(f"[Terminal:{terminal_id[:8]}] Sent connected message (pid={terminal.pid})")
 
         # 发送历史输出
         history = terminal.get_output_history()

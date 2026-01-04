@@ -21,6 +21,7 @@ Claude Projects 扫描服务
 import os
 import json
 import shutil
+import time
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -183,6 +184,14 @@ class ClaudeProjectsScanner:
                 # 检查是否有实际对话（与 list_sessions 使用相同逻辑）
                 metadata = self._parse_session_metadata(filepath)
                 if not metadata["has_messages"]:
+                    # 检查文件创建时间，5 分钟内的新 session 不删除
+                    try:
+                        file_age = time.time() - os.path.getctime(filepath)
+                        if file_age < 300:  # 5 分钟 = 300 秒
+                            # 新创建的 session，跳过但不计入 session_count
+                            continue
+                    except OSError:
+                        pass
                     # 自动清理空 session
                     self._cleanup_empty_session(project_path, session_id)
                     continue

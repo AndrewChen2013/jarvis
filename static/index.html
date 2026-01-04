@@ -27,7 +27,7 @@
   <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="stylesheet" href="/static/styles.css?v=112">
+  <link rel="stylesheet" href="/static/styles.css?v=123">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -36,22 +36,21 @@
   <div id="login-view" class="view active">
     <div class="login-container">
       <div class="login-card">
-        <div class="login-logo">J</div>
         <h1 class="login-title">Jarvis</h1>
-        <p class="login-subtitle" data-i18n="login.subtitle">Enter access token</p>
+        <p class="login-subtitle" data-i18n="login.subtitle">Ready to assist.</p>
         <form id="login-form" class="login-form">
           <input
             type="password"
             id="login-token"
             class="login-input"
             data-i18n-placeholder="login.placeholder"
-            placeholder="Access token"
+            placeholder="······"
             autocomplete="current-password"
             required
           >
           <div id="login-error" class="login-error"></div>
           <button type="submit" id="login-btn" class="btn btn-primary btn-block" data-i18n="login.button">
-            Login
+            Enter
           </button>
         </form>
       </div>
@@ -469,6 +468,10 @@
               <span class="settings-menu-arrow">›</span>
             </div>
           </div>
+          <div class="settings-menu-item" id="menu-theme">
+            <span data-i18n="settings.theme">Theme</span>
+            <span class="settings-menu-arrow">›</span>
+          </div>
           <div class="settings-menu-item" id="menu-password">
             <span data-i18n="settings.title">Change Password</span>
             <span class="settings-menu-arrow">›</span>
@@ -482,6 +485,89 @@
 
         <!-- 语言设置页 (动态生成) -->
         <div id="settings-language" class="settings-page"></div>
+
+        <!-- 主题设置页 -->
+        <div id="settings-theme" class="settings-page">
+          <div class="settings-section">
+            <div class="settings-section-title" data-i18n="theme.colorMode">Color Mode</div>
+            <div class="theme-options theme-modes">
+              <label class="theme-option">
+                <input type="radio" name="theme-mode" value="dark" checked>
+                <span class="theme-option-box">
+                  <span class="theme-option-icon">🌙</span>
+                  <span class="theme-option-label" data-i18n="theme.dark">Dark</span>
+                </span>
+              </label>
+              <label class="theme-option">
+                <input type="radio" name="theme-mode" value="light">
+                <span class="theme-option-box">
+                  <span class="theme-option-icon">☀️</span>
+                  <span class="theme-option-label" data-i18n="theme.light">Light</span>
+                </span>
+              </label>
+              <label class="theme-option">
+                <input type="radio" name="theme-mode" value="system">
+                <span class="theme-option-box">
+                  <span class="theme-option-icon">💻</span>
+                  <span class="theme-option-label" data-i18n="theme.system">System</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-section-title" data-i18n="theme.primaryColor">Primary Color</div>
+            <div class="theme-options theme-colors">
+              <label class="theme-color-option">
+                <input type="radio" name="theme-color" value="blue" checked>
+                <span class="theme-color-box" style="--option-color: #4a9eff;"></span>
+              </label>
+              <label class="theme-color-option">
+                <input type="radio" name="theme-color" value="green">
+                <span class="theme-color-box" style="--option-color: #10b981;"></span>
+              </label>
+              <label class="theme-color-option">
+                <input type="radio" name="theme-color" value="purple">
+                <span class="theme-color-box" style="--option-color: #8b5cf6;"></span>
+              </label>
+              <label class="theme-color-option">
+                <input type="radio" name="theme-color" value="orange">
+                <span class="theme-color-box" style="--option-color: #f59e0b;"></span>
+              </label>
+              <label class="theme-color-option">
+                <input type="radio" name="theme-color" value="pink">
+                <span class="theme-color-box" style="--option-color: #ec4899;"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-section-title" data-i18n="theme.fontSize">Font Size</div>
+            <div class="theme-options theme-sizes">
+              <label class="theme-option">
+                <input type="radio" name="theme-size" value="small">
+                <span class="theme-option-box">
+                  <span class="theme-option-icon" style="font-size: 14px;">A</span>
+                  <span class="theme-option-label" data-i18n="theme.small">Small</span>
+                </span>
+              </label>
+              <label class="theme-option">
+                <input type="radio" name="theme-size" value="medium" checked>
+                <span class="theme-option-box">
+                  <span class="theme-option-icon" style="font-size: 16px;">A</span>
+                  <span class="theme-option-label" data-i18n="theme.medium">Medium</span>
+                </span>
+              </label>
+              <label class="theme-option">
+                <input type="radio" name="theme-size" value="large">
+                <span class="theme-option-box">
+                  <span class="theme-option-icon" style="font-size: 18px;">A</span>
+                  <span class="theme-option-label" data-i18n="theme.large">Large</span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
 
         <!-- 修改密码页 -->
         <div id="settings-password" class="settings-page">
@@ -684,12 +770,12 @@
   <script defer src="/static/terminal.js?v=12"></script>
   <script defer src="/static/session-manager.js?v=12"></script>
   <script defer src="/static/floating-button.js"></script>
-  <script defer src="/static/i18n.js?v=32"></script>
+  <script defer src="/static/i18n.js?v=34"></script>
   <!-- App 模块 -->
   <script defer src="/static/utils.js?v=3"></script>
   <script defer src="/static/debug.js?v=3"></script>
   <script defer src="/static/dialogs.js?v=24"></script>
-  <script defer src="/static/settings.js?v=15"></script>
+  <script defer src="/static/settings.js?v=16"></script>
   <script defer src="/static/swipe.js?v=51"></script>
   <script defer src="/static/files.js?v=20"></script>
   <script defer src="/static/projects.js?v=26"></script>
@@ -703,6 +789,6 @@
   <script defer src="/static/ssh-terminal.js?v=5"></script>
   <script defer src="/static/monitor.js?v=6"></script>
   <script defer src="/static/scheduled-tasks.js?v=9"></script>
-  <script defer src="/static/app.js?v=32"></script>
+  <script defer src="/static/app.js?v=33"></script>
 </body>
 </html>

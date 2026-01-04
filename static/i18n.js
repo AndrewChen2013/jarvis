@@ -39,9 +39,9 @@ const i18n = {
   translations: {
     zh: {
       // 登录页
-      'login.subtitle': '请输入访问令牌',
-      'login.placeholder': '访问令牌',
-      'login.button': '登录',
+      'login.subtitle': '随时待命',
+      'login.placeholder': '······',
+      'login.button': '进入',
 
       // Session 列表页
       'sessions.usage': '用量统计',
@@ -112,6 +112,18 @@ const i18n = {
       'settings.newPasswordHint': '至少6位',
       'settings.confirmPassword': '确认新密码',
       'settings.confirm': '确认修改',
+      'settings.theme': '主题',
+
+      // 主题设置
+      'theme.colorMode': '颜色模式',
+      'theme.dark': '深色',
+      'theme.light': '浅色',
+      'theme.system': '跟随系统',
+      'theme.primaryColor': '主色调',
+      'theme.fontSize': '字体大小',
+      'theme.small': '小',
+      'theme.medium': '中',
+      'theme.large': '大',
 
       // 终端页
       'terminal.title': '终端',
@@ -358,9 +370,9 @@ const i18n = {
 
     en: {
       // Login
-      'login.subtitle': 'Enter access token',
-      'login.placeholder': 'Access token',
-      'login.button': 'Login',
+      'login.subtitle': 'Ready to assist.',
+      'login.placeholder': '······',
+      'login.button': 'Enter',
 
       // Sessions list
       'sessions.usage': 'Usage',
@@ -431,6 +443,18 @@ const i18n = {
       'settings.newPasswordHint': 'At least 6 characters',
       'settings.confirmPassword': 'Confirm password',
       'settings.confirm': 'Confirm',
+      'settings.theme': 'Theme',
+
+      // Theme settings
+      'theme.colorMode': 'Color Mode',
+      'theme.dark': 'Dark',
+      'theme.light': 'Light',
+      'theme.system': 'System',
+      'theme.primaryColor': 'Primary Color',
+      'theme.fontSize': 'Font Size',
+      'theme.small': 'Small',
+      'theme.medium': 'Medium',
+      'theme.large': 'Large',
 
       // Terminal
       'terminal.title': 'Terminal',
@@ -677,9 +701,9 @@ const i18n = {
 
     ja: {
       // ログイン
-      'login.subtitle': 'アクセストークンを入力',
-      'login.placeholder': 'アクセストークン',
-      'login.button': 'ログイン',
+      'login.subtitle': 'お手伝いします',
+      'login.placeholder': '······',
+      'login.button': '入る',
 
       // セッション一覧
       'sessions.usage': '使用量',
@@ -750,6 +774,18 @@ const i18n = {
       'settings.newPasswordHint': '6文字以上',
       'settings.confirmPassword': '新しいパスワード（確認）',
       'settings.confirm': '確認',
+      'settings.theme': 'テーマ',
+
+      // テーマ設定
+      'theme.colorMode': 'カラーモード',
+      'theme.dark': 'ダーク',
+      'theme.light': 'ライト',
+      'theme.system': 'システム',
+      'theme.primaryColor': 'メインカラー',
+      'theme.fontSize': 'フォントサイズ',
+      'theme.small': '小',
+      'theme.medium': '中',
+      'theme.large': '大',
 
       // ターミナル
       'terminal.title': 'ターミナル',
@@ -947,9 +983,9 @@ const i18n = {
 
     ko: {
       // 로그인
-      'login.subtitle': '액세스 토큰을 입력하세요',
-      'login.placeholder': '액세스 토큰',
-      'login.button': '로그인',
+      'login.subtitle': '도움을 드리겠습니다',
+      'login.placeholder': '······',
+      'login.button': '입장',
 
       // 세션 목록
       'sessions.usage': '사용량',
@@ -1020,6 +1056,18 @@ const i18n = {
       'settings.newPasswordHint': '6자 이상',
       'settings.confirmPassword': '새 비밀번호 확인',
       'settings.confirm': '확인',
+      'settings.theme': '테마',
+
+      // 테마 설정
+      'theme.colorMode': '색상 모드',
+      'theme.dark': '다크',
+      'theme.light': '라이트',
+      'theme.system': '시스템',
+      'theme.primaryColor': '메인 컬러',
+      'theme.fontSize': '글꼴 크기',
+      'theme.small': '작게',
+      'theme.medium': '보통',
+      'theme.large': '크게',
 
       // 터미널
       'terminal.title': '터미널',
@@ -1217,9 +1265,9 @@ const i18n = {
 
     fr: {
       // Connexion
-      'login.subtitle': 'Entrez le jeton d\'accès',
-      'login.placeholder': 'Jeton d\'accès',
-      'login.button': 'Connexion',
+      'login.subtitle': 'Prêt à vous aider.',
+      'login.placeholder': '······',
+      'login.button': 'Entrer',
 
       // Liste des sessions
       'sessions.usage': 'Utilisation',
@@ -1289,6 +1337,18 @@ const i18n = {
       'settings.newPasswordHint': 'Au moins 6 caractères',
       'settings.confirmPassword': 'Confirmer',
       'settings.confirm': 'Confirmer',
+      'settings.theme': 'Thème',
+
+      // Paramètres du thème
+      'theme.colorMode': 'Mode couleur',
+      'theme.dark': 'Sombre',
+      'theme.light': 'Clair',
+      'theme.system': 'Système',
+      'theme.primaryColor': 'Couleur principale',
+      'theme.fontSize': 'Taille de police',
+      'theme.small': 'Petit',
+      'theme.medium': 'Moyen',
+      'theme.large': 'Grand',
 
       // Terminal
       'terminal.title': 'Terminal',
@@ -1486,9 +1546,9 @@ const i18n = {
 
     de: {
       // Anmeldung
-      'login.subtitle': 'Zugriffstoken eingeben',
-      'login.placeholder': 'Zugriffstoken',
-      'login.button': 'Anmelden',
+      'login.subtitle': 'Bereit zu helfen.',
+      'login.placeholder': '······',
+      'login.button': 'Eintreten',
 
       // Sitzungsliste
       'sessions.usage': 'Nutzung',
@@ -1559,6 +1619,18 @@ const i18n = {
       'settings.newPasswordHint': 'Mindestens 6 Zeichen',
       'settings.confirmPassword': 'Bestätigen',
       'settings.confirm': 'Bestätigen',
+      'settings.theme': 'Design',
+
+      // Theme-Einstellungen
+      'theme.colorMode': 'Farbmodus',
+      'theme.dark': 'Dunkel',
+      'theme.light': 'Hell',
+      'theme.system': 'System',
+      'theme.primaryColor': 'Hauptfarbe',
+      'theme.fontSize': 'Schriftgröße',
+      'theme.small': 'Klein',
+      'theme.medium': 'Mittel',
+      'theme.large': 'Groß',
 
       // Terminal
       'terminal.title': 'Terminal',
@@ -1756,9 +1828,9 @@ const i18n = {
 
     es: {
       // Inicio de sesión
-      'login.subtitle': 'Ingrese el token de acceso',
-      'login.placeholder': 'Token de acceso',
-      'login.button': 'Iniciar sesión',
+      'login.subtitle': 'Listo para ayudar.',
+      'login.placeholder': '······',
+      'login.button': 'Entrar',
 
       // Lista de sesiones
       'sessions.usage': 'Uso',
@@ -1829,6 +1901,18 @@ const i18n = {
       'settings.newPasswordHint': 'Al menos 6 caracteres',
       'settings.confirmPassword': 'Confirmar',
       'settings.confirm': 'Confirmar',
+      'settings.theme': 'Tema',
+
+      // Configuración del tema
+      'theme.colorMode': 'Modo de color',
+      'theme.dark': 'Oscuro',
+      'theme.light': 'Claro',
+      'theme.system': 'Sistema',
+      'theme.primaryColor': 'Color principal',
+      'theme.fontSize': 'Tamaño de fuente',
+      'theme.small': 'Pequeño',
+      'theme.medium': 'Mediano',
+      'theme.large': 'Grande',
 
       // Terminal
       'terminal.title': 'Terminal',
@@ -2026,8 +2110,8 @@ const i18n = {
 
     ru: {
       // Вход
-      'login.subtitle': 'Введите токен доступа',
-      'login.placeholder': 'Токен доступа',
+      'login.subtitle': 'Готов помочь.',
+      'login.placeholder': '······',
       'login.button': 'Войти',
 
       // Список сессий
@@ -2099,6 +2183,18 @@ const i18n = {
       'settings.newPasswordHint': 'Минимум 6 символов',
       'settings.confirmPassword': 'Подтвердить',
       'settings.confirm': 'Подтвердить',
+      'settings.theme': 'Тема',
+
+      // Настройки темы
+      'theme.colorMode': 'Цветовой режим',
+      'theme.dark': 'Тёмная',
+      'theme.light': 'Светлая',
+      'theme.system': 'Системная',
+      'theme.primaryColor': 'Основной цвет',
+      'theme.fontSize': 'Размер шрифта',
+      'theme.small': 'Мелкий',
+      'theme.medium': 'Средний',
+      'theme.large': 'Крупный',
 
       // Терминал
       'terminal.title': 'Терминал',
@@ -2296,8 +2392,8 @@ const i18n = {
 
     pt: {
       // Login
-      'login.subtitle': 'Digite o token de acesso',
-      'login.placeholder': 'Token de acesso',
+      'login.subtitle': 'Pronto para ajudar.',
+      'login.placeholder': '······',
       'login.button': 'Entrar',
 
       // Lista de sessões
@@ -2369,6 +2465,18 @@ const i18n = {
       'settings.newPasswordHint': 'Pelo menos 6 caracteres',
       'settings.confirmPassword': 'Confirmar',
       'settings.confirm': 'Confirmar',
+      'settings.theme': 'Tema',
+
+      // Configurações do tema
+      'theme.colorMode': 'Modo de cor',
+      'theme.dark': 'Escuro',
+      'theme.light': 'Claro',
+      'theme.system': 'Sistema',
+      'theme.primaryColor': 'Cor principal',
+      'theme.fontSize': 'Tamanho da fonte',
+      'theme.small': 'Pequeno',
+      'theme.medium': 'Médio',
+      'theme.large': 'Grande',
 
       // Terminal
       'terminal.title': 'Terminal',
