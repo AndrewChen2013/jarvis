@@ -779,7 +779,7 @@ const AppWebSocket = {
 
       // 检查断开的是否是当前活跃的 session
       const isCurrentSession = (boundWs === this.ws && sessionId === this.currentSession);
-      this.debugLog(`[${now}] onclose: isCurrentSession=${isCurrentSession}, boundWs===this.ws: ${boundWs === this.ws}`);
+      this.debugLog(`onclose: isCurrentSession=${isCurrentSession}, boundWs===this.ws: ${boundWs === this.ws}`);
 
       // 更新 SessionManager 中该 session 的状态
       if (session) {
@@ -788,7 +788,7 @@ const AppWebSocket = {
 
       // 1008 = Invalid token，需要重新登录
       if (event.code === 1008) {
-        this.debugLog(`[${now}] Token invalid, redirect to login`);
+        this.debugLog(`Token invalid, redirect to login`);
         this.handleUnauthorized();
         return;
       }
@@ -808,12 +808,12 @@ const AppWebSocket = {
       // 使用 session 自己的重连状态（不再依赖全局变量）
       // 无论是前台还是后台 session 都可以独立重连
       if (session && session.shouldReconnect && event.code !== 1000) {
-        this.debugLog(`[${now}] Triggering auto reconnect for session ${sessionId.substring(0, 8)}`);
+        this.debugLog(`Triggering auto reconnect for session ${sessionId.substring(0, 8)}`);
         this.attemptReconnectForSession(session);
       } else if (event.code === 1000) {
-        this.debugLog(`[${now}] Normal closure, no auto reconnect`);
+        this.debugLog(`Normal closure, no auto reconnect`);
       } else {
-        this.debugLog(`[${now}] No reconnect: session=${!!session}, shouldReconnect=${session?.shouldReconnect}`);
+        this.debugLog(`No reconnect: session=${!!session}, shouldReconnect=${session?.shouldReconnect}`);
       }
     };
 
@@ -1152,17 +1152,17 @@ const AppWebSocket = {
   attemptReconnectForSession(session) {
     const now = new Date().toISOString().substr(11, 12);
     const sessionId = session.id;
-    this.debugLog(`[${now}] attemptReconnectForSession called for ${sessionId.substring(0, 8)}`);
+    this.debugLog(`attemptReconnectForSession called for ${sessionId.substring(0, 8)}`);
 
     // 清理该 session 之前的重连定时器
     if (session.reconnectTimeout) {
-      this.debugLog(`[${now}] clearing previous reconnect timer for ${sessionId.substring(0, 8)}`);
+      this.debugLog(`clearing previous reconnect timer for ${sessionId.substring(0, 8)}`);
       clearTimeout(session.reconnectTimeout);
       session.reconnectTimeout = null;
     }
 
     if (session.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.debugLog(`[${now}] max reconnect attempts (${this.maxReconnectAttempts}) reached for ${sessionId.substring(0, 8)}, giving up`);
+      this.debugLog(`max reconnect attempts (${this.maxReconnectAttempts}) reached for ${sessionId.substring(0, 8)}, giving up`);
       // 只有当前 session 才更新 UI
       if (sessionId === this.currentSession) {
         this.updateStatus(this.t('reconnect.failed'), false);
@@ -1174,7 +1174,7 @@ const AppWebSocket = {
     // 首次重连延迟 500ms，后续指数退避
     const delay = session.reconnectAttempts === 1 ? 500 : Math.min(1000 * Math.pow(2, session.reconnectAttempts - 2), 10000);
 
-    this.debugLog(`[${now}] reconnect ${session.reconnectAttempts}/${this.maxReconnectAttempts} for ${sessionId.substring(0, 8)}, delay=${delay}ms`);
+    this.debugLog(`reconnect ${session.reconnectAttempts}/${this.maxReconnectAttempts} for ${sessionId.substring(0, 8)}, delay=${delay}ms`);
 
     // 只有当前 session 才更新 UI
     if (sessionId === this.currentSession) {
