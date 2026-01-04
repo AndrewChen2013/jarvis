@@ -16,9 +16,48 @@
 
 /**
  * 调试模块
- * 提供调试日志和调试面板功能
+ * 提供调试日志、调试面板和远程日志回传功能
  */
 const AppDebug = {
+  /**
+   * 初始化远程日志属性（mixin 只复制函数，需要手动初始化属性）
+   */
+  _initRemoteLogProps() {
+    if (this._remoteLogPropsInited) return;
+    this._remoteLogPropsInited = true;
+    this._remoteLogEnabled = false;
+    this._remoteLogWs = null;
+    this._remoteLogBuffer = [];
+    this._remoteLogFlushTimer = null;
+    this._remoteLogReconnectTimer = null;
+    this._remoteLogReconnectAttempts = 0;
+    this._remoteLogMaxReconnectAttempts = 5;
+    this._remoteLogBufferMaxSize = 100;
+    this._remoteLogFlushInterval = 2000; // 2秒批量发送
+    this._clientId = null;
+  },
+
+  /**
+   * 生成客户端 ID
+   */
+  _generateClientId() {
+    this._initRemoteLogProps();
+    if (!this._clientId) {
+      // 使用 UA + 时间戳生成唯一 ID
+      const ua = navigator.userAgent.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+      const ts = Date.now().toString(36);
+      const rand = Math.random().toString(36).substring(2, 6);
+      this._clientId = `${ua}-${ts}-${rand}`;
+    }
+    return this._clientId;
+  },
+
+  /**
+   * 日志上限配置
+   */
+  _maxLogEntries: 500,
+  _trimLogCount: 200,
+
   /**
    * 在页面上显示调试日志
    */
@@ -31,11 +70,269 @@ const AppDebug = {
     if (!this.debugLogs) this.debugLogs = [];
     this.debugLogs.push(logLine);
 
-    // 更新日志面板内容
+    // 超过上限时清理旧日志
+    if (this.debugLogs.length > this._maxLogEntries) {
+      this.debugLogs = this.debugLogs.slice(-this._trimLogCount);
+      // 重建 DOM 内容
+      const content = document.getElementById('debug-log-content');
+      if (content) {
+        content.innerHTML = this.debugLogs.join('<br>') + '<br>';
+      }
+    } else {
+      // 正常追加
+      const content = document.getElementById('debug-log-content');
+      if (content) {
+        content.innerHTML += logLine + '<br>';
+        content.scrollTop = content.scrollHeight;
+      }
+    }
+
+    // 远程日志回传
+    if (this._remoteLogEnabled) {
+      this._bufferRemoteLog({
+        timestamp: now.toISOString(),
+        level: 'debug',
+        message: msg,
+        clientId: this._generateClientId()
+      });
+    }
+  },
+
+  /**
+   * 缓存远程日志
+   */
+  _bufferRemoteLog(logEntry) {
+    this._initRemoteLogProps();
+    this._remoteLogBuffer.push(logEntry);
+
+    // 缓冲区满时立即发送
+    if (this._remoteLogBuffer.length >= this._remoteLogBufferMaxSize) {
+      this._flushRemoteLogs();
+    } else if (!this._remoteLogFlushTimer) {
+      // 设置定时发送
+      this._remoteLogFlushTimer = setTimeout(() => {
+        this._flushRemoteLogs();
+      }, this._remoteLogFlushInterval);
+    }
+  },
+
+  /**
+   * 发送缓存的远程日志
+   */
+  _flushRemoteLogs() {
+    this._initRemoteLogProps();
+    if (this._remoteLogFlushTimer) {
+      clearTimeout(this._remoteLogFlushTimer);
+      this._remoteLogFlushTimer = null;
+    }
+
+    if (this._remoteLogBuffer.length === 0) return;
+
+    const logs = [...this._remoteLogBuffer];
+    this._remoteLogBuffer = [];
+
+    // WebSocket 健康时优先使用
+    const wsHealthy = this._remoteLogWs &&
+                      this._remoteLogWs.readyState === WebSocket.OPEN &&
+                      !this._remoteLogWsUnhealthy;
+
+    if (wsHealthy) {
+      try {
+        this._remoteLogWs.send(JSON.stringify({
+          type: 'logs',
+          logs: logs
+        }));
+        // 发送成功，清理本地日志
+        this._clearLocalLogs(logs.length);
+        return;
+      } catch (e) {
+        console.warn('[RemoteLog] WebSocket send failed, switching to HTTP:', e);
+        // 标记 WebSocket 不健康，后续优先用 HTTP
+        this._remoteLogWsUnhealthy = true;
+        this._updateRemoteLogStatus('error');
+      }
+    }
+
+    // WebSocket 不可用或不健康，使用 HTTP 备份链路
+    this._sendLogsViaHttp(logs);
+  },
+
+  /**
+   * 通过 HTTP 发送日志
+   */
+  async _sendLogsViaHttp(logs) {
+    try {
+      const response = await fetch('/api/debug/logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token || ''}`
+        },
+        body: JSON.stringify({
+          clientId: this._generateClientId(),
+          logs: logs
+        })
+      });
+
+      if (response.ok) {
+        // 发送成功，清理本地日志
+        this._clearLocalLogs(logs.length);
+      } else {
+        console.warn('[RemoteLog] HTTP send failed:', response.status);
+      }
+    } catch (e) {
+      console.warn('[RemoteLog] HTTP send error:', e);
+    }
+  },
+
+  /**
+   * 清理已发送的本地日志
+   */
+  _clearLocalLogs(count) {
+    if (!this.debugLogs || this.debugLogs.length === 0) return;
+
+    // 移除已发送的日志（从头部移除）
+    this.debugLogs = this.debugLogs.slice(count);
+
+    // 更新 DOM
     const content = document.getElementById('debug-log-content');
     if (content) {
-      content.innerHTML += logLine + '<br>';
-      content.scrollTop = content.scrollHeight;
+      if (this.debugLogs.length === 0) {
+        content.innerHTML = '';
+      } else {
+        content.innerHTML = this.debugLogs.join('<br>') + '<br>';
+      }
+    }
+  },
+
+  /**
+   * 启动远程日志服务
+   */
+  startRemoteLog() {
+    this._initRemoteLogProps();
+    if (this._remoteLogEnabled) return;
+
+    this._remoteLogEnabled = true;
+    this._remoteLogReconnectAttempts = 0;
+    console.log('[RemoteLog] Starting remote log service...');
+
+    this._connectRemoteLogWs();
+  },
+
+  /**
+   * 连接远程日志 WebSocket
+   */
+  _connectRemoteLogWs() {
+    this._initRemoteLogProps();
+    if (this._remoteLogWs) {
+      try {
+        this._remoteLogWs.close();
+      } catch (e) {}
+    }
+
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/debug?client_id=${encodeURIComponent(this._generateClientId())}`;
+
+    try {
+      this._remoteLogWs = new WebSocket(wsUrl);
+
+      this._remoteLogWs.onopen = () => {
+        console.log('[RemoteLog] WebSocket connected');
+        this._remoteLogReconnectAttempts = 0;
+        this._remoteLogWsUnhealthy = false;  // 重置健康状态
+
+        // 发送认证
+        if (this.token) {
+          this._remoteLogWs.send(JSON.stringify({
+            type: 'auth',
+            token: this.token
+          }));
+        }
+
+        // 更新状态指示器
+        this._updateRemoteLogStatus('connected');
+      };
+
+      this._remoteLogWs.onclose = () => {
+        console.log('[RemoteLog] WebSocket closed');
+        this._updateRemoteLogStatus('disconnected');
+
+        // 自动重连
+        if (this._remoteLogEnabled && this._remoteLogReconnectAttempts < this._remoteLogMaxReconnectAttempts) {
+          this._remoteLogReconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(2, this._remoteLogReconnectAttempts - 1), 30000);
+          console.log(`[RemoteLog] Reconnecting in ${delay}ms (attempt ${this._remoteLogReconnectAttempts})`);
+
+          this._remoteLogReconnectTimer = setTimeout(() => {
+            this._connectRemoteLogWs();
+          }, delay);
+        }
+      };
+
+      this._remoteLogWs.onerror = (e) => {
+        console.warn('[RemoteLog] WebSocket error');
+        this._updateRemoteLogStatus('error');
+      };
+
+      this._remoteLogWs.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'ack') {
+            // 服务器确认收到
+          }
+        } catch (e) {}
+      };
+
+    } catch (e) {
+      console.warn('[RemoteLog] Failed to create WebSocket:', e);
+      this._updateRemoteLogStatus('error');
+    }
+  },
+
+  /**
+   * 停止远程日志服务
+   */
+  stopRemoteLog() {
+    this._initRemoteLogProps();
+    this._remoteLogEnabled = false;
+
+    if (this._remoteLogReconnectTimer) {
+      clearTimeout(this._remoteLogReconnectTimer);
+      this._remoteLogReconnectTimer = null;
+    }
+
+    if (this._remoteLogFlushTimer) {
+      clearTimeout(this._remoteLogFlushTimer);
+      this._remoteLogFlushTimer = null;
+    }
+
+    // 发送剩余日志
+    this._flushRemoteLogs();
+
+    if (this._remoteLogWs) {
+      try {
+        this._remoteLogWs.close();
+      } catch (e) {}
+      this._remoteLogWs = null;
+    }
+
+    this._updateRemoteLogStatus('stopped');
+    console.log('[RemoteLog] Stopped');
+  },
+
+  /**
+   * 更新远程日志状态指示器
+   */
+  _updateRemoteLogStatus(status) {
+    const indicator = document.getElementById('remote-log-status');
+    if (indicator) {
+      const colors = {
+        'connected': '#0f0',
+        'disconnected': '#f80',
+        'error': '#f00',
+        'stopped': '#888'
+      };
+      indicator.style.backgroundColor = colors[status] || '#888';
+      indicator.title = `Remote Log: ${status}`;
     }
   },
 
@@ -53,15 +350,44 @@ const AppDebug = {
     // 标题栏
     const header = document.createElement('div');
     header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #333;';
-    header.innerHTML = `<span style="color:#0f0;font-weight:bold;">${this.t('debug.title')}</span>`;
+
+    // 左侧标题和状态
+    const titleArea = document.createElement('div');
+    titleArea.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    titleArea.innerHTML = `<span style="color:#0f0;font-weight:bold;">${this.t('debug.title')}</span>`;
+
+    // 远程日志状态指示器
+    const statusIndicator = document.createElement('span');
+    statusIndicator.id = 'remote-log-status';
+    statusIndicator.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#888;display:inline-block;';
+    statusIndicator.title = 'Remote Log: stopped';
+    titleArea.appendChild(statusIndicator);
+
+    header.appendChild(titleArea);
 
     // 按钮组
     const btnGroup = document.createElement('div');
+    btnGroup.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+    // 远程日志开关按钮
+    const remoteLogBtn = document.createElement('button');
+    remoteLogBtn.id = 'remote-log-toggle';
+    remoteLogBtn.textContent = this.t('debug.remoteLog', 'Remote');
+    remoteLogBtn.style.cssText = 'padding:5px 12px;background:#333;color:#fff;border:none;border-radius:4px;';
+    remoteLogBtn.onclick = () => {
+      if (this._remoteLogEnabled) {
+        this.stopRemoteLog();
+        remoteLogBtn.style.background = '#333';
+      } else {
+        this.startRemoteLog();
+        remoteLogBtn.style.background = '#060';
+      }
+    };
 
     // 复制按钮
     const copyBtn = document.createElement('button');
     copyBtn.textContent = this.t('debug.copy');
-    copyBtn.style.cssText = 'padding:5px 15px;margin-right:10px;background:#333;color:#fff;border:none;border-radius:4px;';
+    copyBtn.style.cssText = 'padding:5px 12px;background:#333;color:#fff;border:none;border-radius:4px;';
     copyBtn.onclick = () => {
       const text = (window.app?.debugLogs || []).join('\n');
       const textarea = document.createElement('textarea');
@@ -78,7 +404,7 @@ const AppDebug = {
     // 清除按钮
     const clearBtn = document.createElement('button');
     clearBtn.textContent = this.t('debug.clear');
-    clearBtn.style.cssText = 'padding:5px 15px;margin-right:10px;background:#333;color:#fff;border:none;border-radius:4px;';
+    clearBtn.style.cssText = 'padding:5px 12px;background:#333;color:#fff;border:none;border-radius:4px;';
     clearBtn.onclick = () => {
       this.debugLogs = [];
       const content = document.getElementById('debug-log-content');
@@ -88,9 +414,10 @@ const AppDebug = {
     // 关闭按钮
     const closeBtn = document.createElement('button');
     closeBtn.textContent = this.t('debug.close');
-    closeBtn.style.cssText = 'padding:5px 15px;background:#c00;color:#fff;border:none;border-radius:4px;';
+    closeBtn.style.cssText = 'padding:5px 12px;background:#c00;color:#fff;border:none;border-radius:4px;';
     closeBtn.onclick = () => this.toggleDebugPanel();
 
+    btnGroup.appendChild(remoteLogBtn);
     btnGroup.appendChild(copyBtn);
     btnGroup.appendChild(clearBtn);
     btnGroup.appendChild(closeBtn);

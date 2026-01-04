@@ -101,6 +101,7 @@ async def handle_terminal_websocket(
 
         # 创建或获取终端
         terminal_id = session_id or f"new-{id(websocket)}"
+        logger.info(f"[WS] session_id={session_id[:8] if session_id else 'None'} -> terminal_id={terminal_id[:8]}")
 
         # 检查是否已有终端
         terminal = await terminal_manager.get_terminal(terminal_id)

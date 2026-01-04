@@ -31,7 +31,10 @@ const AppWebSocket = {
     // ========== 关键日志：记录调用时的状态 ==========
     const prevSession = this.currentSession;
     const prevWorkDir = this.currentWorkDir;
-    this.debugLog(`connectTerminal: BEFORE - currentSession=${prevSession?.substring(0, 8)}, currentWorkDir=${prevWorkDir}`);
+    const isNewSession = !sessionId;
+    this.debugLog(`=== connectTerminal START ===`);
+    this.debugLog(`connectTerminal: isNew=${isNewSession}, workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}`);
+    this.debugLog(`connectTerminal: prev session=${prevSession?.substring(0, 8)}, prev workDir=${prevWorkDir}`);
 
     // 保存当前工作目录和会话信息
     this.currentWorkDir = workDir;
@@ -383,13 +386,13 @@ const AppWebSocket = {
    * 初始化终端（在 WebSocket 连接成功后调用）
    */
   initTerminal() {
-    this.debugLog('initTerminal start');
+    this.debugLog(`=== initTerminal START ===`);
 
     // ========== 关键：捕获当前状态，防止 callback 执行时全局变量已变 ==========
     const capturedSessionId = this.currentSession;
     const capturedWorkDir = this.currentWorkDir;
     const capturedClaudeSessionId = this.currentClaudeSessionId;
-    this.debugLog(`initTerminal: CAPTURED sessionId=${capturedSessionId?.substring(0, 8)}, workDir=${capturedWorkDir}, claudeSessionId=${capturedClaudeSessionId?.substring(0, 8)}`);
+    this.debugLog(`initTerminal: captured sid=${capturedSessionId?.substring(0, 8)}, claudeSid=${capturedClaudeSessionId?.substring(0, 8)}`);
 
     // 获取当前 session
     const session = capturedSessionId ? this.sessionManager.sessions.get(capturedSessionId) : null;
@@ -427,34 +430,30 @@ const AppWebSocket = {
     }
 
     if (!container) {
-      console.error('Terminal container not found');
-      this.debugLog('initTerminal: container not found!');
+      this.debugLog('initTerminal: ERROR - container not found!');
       return;
     }
 
     try {
-      console.log('Creating new TerminalWrapper instance...');
-      this.debugLog(`initTerminal: create TerminalWrapper for session ${capturedSessionId?.substring(0, 8)}`);
+      this.debugLog(`initTerminal: creating TerminalWrapper...`);
       this.terminal = new TerminalWrapper(container, () => {
         // ========== 关键：callback 使用捕获的参数，不使用 this.xxx ==========
-        this.debugLog(`onReady CALLBACK: capturedSessionId=${capturedSessionId?.substring(0, 8)}, current this.currentSession=${this.currentSession?.substring(0, 8)}`);
+        this.debugLog(`=== TerminalWrapper onReady ===`);
+        this.debugLog(`onReady: captured sid=${capturedSessionId?.substring(0, 8)}, current sid=${this.currentSession?.substring(0, 8)}`);
 
         // 检查 session 是否已切换
         if (this.currentSession !== capturedSessionId) {
-          this.debugLog(`onReady: WARNING! Session switched from ${capturedSessionId?.substring(0, 8)} to ${this.currentSession?.substring(0, 8)}`);
-          this.debugLog(`onReady: Using CAPTURED params anyway to prevent crosstalk`);
+          this.debugLog(`onReady: WARNING! Session switched!`);
         }
 
         // 终端就绪后（fit 完成后）
-        console.log('Terminal ready callback, flushing queue...');
         this.flushOutputQueue();
 
         // fit 完成后再建立 WebSocket 连接，使用捕获的参数！
-        this.debugLog(`onReady: connect WebSocket with CAPTURED workDir=${capturedWorkDir}, claudeSessionId=${capturedClaudeSessionId?.substring(0, 8)}`);
+        this.debugLog(`onReady: calling connectWebSocket with claudeSid=${capturedClaudeSessionId?.substring(0, 8)}`);
         this.connectWebSocket(capturedWorkDir, capturedClaudeSessionId);
       });
-      console.log('Terminal created successfully');
-      this.debugLog(`initTerminal: Terminal created for session ${capturedSessionId?.substring(0, 8)}`);
+      this.debugLog(`initTerminal: TerminalWrapper created`);
 
       // 保存 terminal 到 SessionManager
       if (session) {
@@ -465,8 +464,7 @@ const AppWebSocket = {
         this.loadOrAssignTheme(session);
       }
     } catch (error) {
-      console.error('Terminal init error:', error);
-      this.debugLog(`initTerminal: error for session ${capturedSessionId?.substring(0, 8)}: ${error.message}`);
+      this.debugLog(`initTerminal: ERROR - ${error.message}`);
       container.innerHTML = '<div style="color:red;padding:20px;">' + this.t('terminal.initError', 'Terminal init failed: ') + error.message + '</div>';
     }
   },
@@ -477,26 +475,26 @@ const AppWebSocket = {
   flushOutputQueue() {
     // 刷新全局队列（兼容旧逻辑）
     if (this.outputQueue.length > 0 && this.terminal) {
-      console.log('Flushing global output queue:', this.outputQueue.length, 'items');
+      this.debugLog(`flushOutputQueue: global ${this.outputQueue.length} items`);
       const combined = this.outputQueue.join('');
       this.outputQueue = [];
       try {
         this.terminal.write(combined);
       } catch (error) {
-        console.error('Flush global queue error:', error);
+        this.debugLog(`flushOutputQueue: global error - ${error.message}`);
       }
     }
 
     // 刷新当前 session 的专属队列
     const session = this.currentSession ? this.sessionManager.sessions.get(this.currentSession) : null;
     if (session && session.outputQueue && session.outputQueue.length > 0 && session.terminal) {
-      console.log(`Flushing session queue for ${session.id.substring(0, 8)}:`, session.outputQueue.length, 'items');
+      this.debugLog(`flushOutputQueue: session ${session.id.substring(0, 8)} ${session.outputQueue.length} items`);
       const combined = session.outputQueue.join('');
       session.outputQueue = [];
       try {
         session.terminal.write(combined);
       } catch (error) {
-        console.error('Flush session queue error:', error);
+        this.debugLog(`flushOutputQueue: session error - ${error.message}`);
       }
     }
   },
@@ -506,16 +504,13 @@ const AppWebSocket = {
    * @param {boolean} isReconnect - 是否是重连，重连时不重置计数器
    */
   connectWebSocket(workDir, sessionId, isReconnect = false) {
-    // ========== 关键日志：记录传入参数 vs 全局状态 ==========
-    this.debugLog(`connectWebSocket: PARAMS workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}`);
-    this.debugLog(`connectWebSocket: GLOBAL this.currentWorkDir=${this.currentWorkDir}, this.currentSession=${this.currentSession?.substring(0, 8)}`);
-    if (workDir !== this.currentWorkDir || sessionId !== this.currentClaudeSessionId) {
-      this.debugLog(`connectWebSocket: WARNING! Params differ from global state - using PARAMS (correct behavior)`);
-    }
+    this.debugLog(`=== connectWebSocket START ===`);
+    this.debugLog(`connectWebSocket: claudeSid=${sessionId?.substring(0, 8)}, isReconnect=${isReconnect}`);
+    this.debugLog(`connectWebSocket: currentSession=${this.currentSession?.substring(0, 8)}`);
 
     // 检查连接锁，避免重复连接
     if (this.isConnecting) {
-      this.debugLog('connectWebSocket: already connecting, skip');
+      this.debugLog('connectWebSocket: BLOCKED by isConnecting lock!');
       return;
     }
 
@@ -596,76 +591,78 @@ const AppWebSocket = {
    * 3. 创建第二个 WebSocket，这次能正常连接
    */
   _doConnect(wsUrl) {
+    this.debugLog(`=== _doConnect START ===`);
     // 保存当前连接的 URL 和 sessionId，用于后续检查（防止切换 session 后串台）
     this._currentConnectUrl = wsUrl;
     const capturedSessionId = this.currentSession;  // 捕获当前 sessionId
-    this.debugLog(`_doConnect: capturedSessionId=${capturedSessionId?.substring(0, 8)}`);
+    this.debugLog(`_doConnect: capturedSid=${capturedSessionId?.substring(0, 8)}`);
+    this.debugLog(`_doConnect: url=${wsUrl.substring(0, 80)}...`);
 
-    // ====== iOS 26 Safari Workaround: 二次连接法 ======
-    // 第一次连接：可能会卡在 CONNECTING，但能激活网络栈
-    this.debugLog('1st WebSocket create');
+    // 检测是否是 iOS Safari（只在 iOS Safari 上使用 workaround）
+    const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+                        /Safari/.test(navigator.userAgent) &&
+                        !/Chrome|CriOS|FxiOS/.test(navigator.userAgent);
+    this.debugLog(`_doConnect: isIOSSafari=${isIOSSafari}`);
+
+    // 创建 WebSocket 连接
+    this.debugLog('WebSocket create');
     try {
       this.ws = new WebSocket(wsUrl);
-      this.debugLog('1st create ok, state=' + this.ws.readyState);
+      this.debugLog('create ok, state=' + this.ws.readyState);
     } catch (e) {
-      this.debugLog('1st create failed: ' + e.message);
+      this.debugLog('create failed: ' + e.message);
       this.isConnecting = false;
       return;
     }
 
-    // 保存第一个 WebSocket 的引用，用于后续检查
-    const firstWs = this.ws;
+    // ====== iOS Safari Workaround: 二次连接法 ======
+    // 只在 iOS Safari 上启用，避免其他平台的延迟
+    if (isIOSSafari) {
+      const firstWs = this.ws;
 
-    // 1 秒后检查：如果仍卡在 CONNECTING，关闭并创建第二个连接
-    setTimeout(() => {
-      // 确保是同一个 WebSocket 且仍在 CONNECTING 状态
-      // 如果 this.ws 已经不是 firstWs，说明已经被其他逻辑替换，不再处理
-      if (this.ws === firstWs && this.ws.readyState === WebSocket.CONNECTING) {
-        this.debugLog('1st still CONNECTING after 1s, close and retry');
-        // 先移除事件处理器，避免 onclose 触发额外的重连
-        this.debugLog('iOS workaround: removing event handlers before close');
-        firstWs.onopen = null;
-        firstWs.onclose = null;
-        firstWs.onerror = null;
-        firstWs.onmessage = null;
-        try { firstWs.close(); } catch (e) {}
-        this.debugLog('iOS workaround: 1st ws closed cleanly (no onclose triggered)');
-        this.ws = null;
+      // 1 秒后检查：如果仍卡在 CONNECTING，关闭并创建第二个连接
+      setTimeout(() => {
+        // 确保是同一个 WebSocket 且仍在 CONNECTING 状态
+        if (this.ws === firstWs && this.ws.readyState === WebSocket.CONNECTING) {
+          this.debugLog('iOS: 1st still CONNECTING after 1s, close and retry');
+          // 先移除事件处理器，避免 onclose 触发额外的重连
+          firstWs.onopen = null;
+          firstWs.onclose = null;
+          firstWs.onerror = null;
+          firstWs.onmessage = null;
+          try { firstWs.close(); } catch (e) {}
+          this.debugLog('iOS: 1st ws closed cleanly');
+          this.ws = null;
 
-        // 检查 URL 和 sessionId 是否仍然匹配（避免重连到错误的 session）
-        if (this._currentConnectUrl !== wsUrl) {
-          this.debugLog('URL changed, skip 2nd connect');
-          this.isConnecting = false;
-          return;
+          // 检查 URL 和 sessionId 是否仍然匹配
+          if (this._currentConnectUrl !== wsUrl) {
+            this.debugLog('URL changed, skip 2nd connect');
+            this.isConnecting = false;
+            return;
+          }
+          if (this.currentSession !== capturedSessionId) {
+            this.debugLog(`Session changed, skip 2nd connect`);
+            this.isConnecting = false;
+            return;
+          }
+
+          // 第二次连接
+          this.debugLog('iOS: 2nd WebSocket create');
+          try {
+            this.ws = new WebSocket(wsUrl);
+            this.debugLog('iOS: 2nd create ok, state=' + this.ws.readyState);
+            this.bindWebSocketEvents(capturedSessionId);
+          } catch (e) {
+            this.debugLog('iOS: 2nd create failed: ' + e.message);
+            this.isConnecting = false;
+            this.updateConnectStatus('failed', e.message);
+          }
         }
-        if (this.currentSession !== capturedSessionId) {
-          this.debugLog(`Session changed (${capturedSessionId?.substring(0, 8)} -> ${this.currentSession?.substring(0, 8)}), skip 2nd connect`);
-          this.isConnecting = false;
-          return;
-        }
+      }, 1000);
+    }
+    // ====== End iOS Safari Workaround ======
 
-        // 第二次连接：此时网络栈已激活，连接应该能成功
-        this.debugLog('2nd WebSocket create');
-        try {
-          this.ws = new WebSocket(wsUrl);
-          this.debugLog('2nd create ok, state=' + this.ws.readyState);
-          // 重新绑定事件到新的 WebSocket 实例（使用捕获的 sessionId）
-          this.bindWebSocketEvents(capturedSessionId);
-        } catch (e) {
-          this.debugLog('2nd create failed: ' + e.message);
-          this.isConnecting = false;
-          this.updateConnectStatus('failed', e.message);
-        }
-      } else if (this.ws !== firstWs) {
-        this.debugLog('1st ws replaced, skip iOS workaround');
-      } else {
-        // 第一次连接成功（非 iOS 26 Safari，或已修复）
-        this.debugLog('1st connection ok, state=' + this.ws.readyState);
-      }
-    }, 1000);
-    // ====== End iOS 26 Workaround ======
-
-    // 绑定事件到第一个 WebSocket 实例（使用捕获的 sessionId）
+    // 绑定事件到 WebSocket 实例（使用捕获的 sessionId）
     this.bindWebSocketEvents(capturedSessionId);
   },
 
@@ -685,13 +682,14 @@ const AppWebSocket = {
     this.ws.binaryType = 'arraybuffer';
 
     this.ws.onopen = () => {
-      this.debugLog('onopen fired');
+      this.debugLog(`=== WS onopen ===`);
+      this.debugLog(`onopen: handlerSid=${sessionId?.substring(0, 8)}, currentSid=${this.currentSession?.substring(0, 8)}`);
       this.isConnecting = false;
       this.shouldReconnect = true;
       this.reconnectAttempts = 0;
 
       // 立即发送认证消息（必须是连接后的第一条消息）
-      this.debugLog('Sending auth message');
+      this.debugLog('onopen: sending auth...');
       this.sendMessage({ type: 'auth', token: this.token });
 
       // 清理重连计时器，避免重复连接
@@ -743,7 +741,7 @@ const AppWebSocket = {
           message = JSON.parse(event.data);
         }
       } catch (e) {
-        console.error('Failed to parse message:', e);
+        this.debugLog(`onmessage: parse error - ${e.message}`);
         return;
       }
       // 使用捕获的 sessionId，确保消息写入正确的 session 终端
@@ -757,7 +755,6 @@ const AppWebSocket = {
     };
 
     this.ws.onclose = (event) => {
-      const now = new Date().toISOString().substr(11, 12);
       const codeNames = {
         1000: 'Normal Closure',
         1001: 'Going Away',
@@ -774,7 +771,8 @@ const AppWebSocket = {
         1013: 'Try Again Later',
         1015: 'TLS Handshake'
       };
-      this.debugLog(`[${now}] onclose code=${event.code} (${codeNames[event.code] || 'Unknown'}), session=${sessionId.substring(0, 8)}`);
+      this.debugLog(`=== WS onclose ===`);
+      this.debugLog(`onclose: code=${event.code} (${codeNames[event.code] || 'Unknown'}), handlerSid=${sessionId?.substring(0, 8)}`);
 
       // 获取断开连接的 session（使用闭包捕获的 sessionId，而不是 this.currentSession）
       const session = this.sessionManager.sessions.get(sessionId);
@@ -836,36 +834,45 @@ const AppWebSocket = {
    */
   handleMessage(message, sessionId) {
     try {
-      console.log('Received message:', message.type, 'for session:', sessionId?.substring(0, 8));
-
       // 获取消息对应的 session
       const session = sessionId ? this.sessionManager.sessions.get(sessionId) : null;
 
       switch (message.type) {
         case 'connecting':
-          console.log('Session connecting:', message.message);
+          this.debugLog(`MSG connecting: ${message.message}`);
           this.updateStatus(this.t('status.connecting'), false);
           this.updateConnectStatus('connecting', this.t('status.startingSession'));
           break;
 
         case 'connected':
-          this.debugLog(`received connected: terminal_id=${message.terminal_id?.substring(0, 8)}, handler_sessionId=${sessionId?.substring(0, 8)}, this.currentSession=${this.currentSession?.substring(0, 8)}`);
+          this.debugLog(`=== MSG connected ===`);
+          this.debugLog(`connected: terminal_id=${message.terminal_id?.substring(0, 8)}, handlerSid=${sessionId?.substring(0, 8)}, currentSid=${this.currentSession?.substring(0, 8)}`);
           this.updateConnectStatus('connected', '');
           this.updateStatus(this.t('status.connected'), true);
 
           // 同步前后端的 session ID（解决新建 session 时 ID 不一致的问题）
           // 注意：这里用的是 handler 的 sessionId，不是 this.currentSession
           if (message.terminal_id && message.terminal_id !== sessionId) {
-            this.debugLog(`connected: RENAME needed: handler_sessionId=${sessionId?.substring(0, 8)} -> terminal_id=${message.terminal_id?.substring(0, 8)}`);
-            if (this.sessionManager.renameSession(sessionId, message.terminal_id)) {
+            this.debugLog(`connected: RENAME ${sessionId?.substring(0, 8)} -> ${message.terminal_id?.substring(0, 8)}`);
+            const renameOk = this.sessionManager.renameSession(sessionId, message.terminal_id);
+            this.debugLog(`connected: rename result=${renameOk}`);
+            if (renameOk) {
+              // 保存旧 ID 到新 session 的 alias，让后续 output 能找到
+              const newSession = this.sessionManager.sessions.get(message.terminal_id);
+              if (newSession) {
+                newSession._oldId = sessionId;
+                this.debugLog(`connected: _oldId alias saved`);
+              } else {
+                this.debugLog(`connected: ERROR - newSession not found after rename!`);
+              }
               // 只有当 handler 的 sessionId 等于当前活跃 session 时才更新 this.currentSession
               if (sessionId === this.currentSession) {
-                this.debugLog(`connected: updating this.currentSession to ${message.terminal_id?.substring(0, 8)}`);
+                this.debugLog(`connected: updating currentSession`);
                 this.currentSession = message.terminal_id;
-              } else {
-                this.debugLog(`connected: NOT updating this.currentSession (handler=${sessionId?.substring(0, 8)} != current=${this.currentSession?.substring(0, 8)})`);
               }
             }
+          } else {
+            this.debugLog(`connected: no rename needed`);
           }
 
           // 2 秒后强制 xterm.js 重绘，修复历史渲染问题
@@ -895,54 +902,70 @@ const AppWebSocket = {
           break;
 
         case 'output':
-          console.log('Output received, data length:', message.data?.length, 'sessionId:', sessionId?.substring(0, 8));
+          // OUTPUT 日志太多，只在异常情况打印
           if (message.data) {
+            // 尝试查找 session（可能已经被 rename）
+            let targetSession = session;
+            if (!targetSession) {
+              // session 可能已被 rename，尝试通过 _oldId 查找
+              for (const [id, s] of this.sessionManager.sessions) {
+                if (s._oldId === sessionId) {
+                  targetSession = s;
+                  this.debugLog(`OUTPUT: found via _oldId ${sessionId?.substring(0, 8)} -> ${id?.substring(0, 8)}`);
+                  break;
+                }
+              }
+              if (!targetSession) {
+                this.debugLog(`OUTPUT: session not found! sid=${sessionId?.substring(0, 8)}, sessions: ${[...this.sessionManager.sessions.keys()].map(k => k.substring(0, 8)).join(',')}`);
+              }
+            }
+
             // 严格使用 session 对应的终端，不 fallback 到 this.terminal（防止串台）
-            if (session && session.terminal) {
+            if (targetSession && targetSession.terminal) {
               try {
-                session.terminal.write(message.data);
+                targetSession.terminal.write(message.data);
               } catch (writeError) {
-                console.error('Terminal write error:', writeError);
+                this.debugLog(`OUTPUT: write error: ${writeError.message}`);
               }
-            } else if (session && !session.terminal) {
+            } else if (targetSession && !targetSession.terminal) {
               // session 存在但 terminal 未就绪，放入 session 专属队列
-              if (!session.outputQueue) {
-                session.outputQueue = [];
+              if (!targetSession.outputQueue) {
+                targetSession.outputQueue = [];
               }
-              session.outputQueue.push(message.data);
-              console.log(`[${sessionId?.substring(0, 8)}] Terminal not ready, queued (${session.outputQueue.length} items)`);
+              targetSession.outputQueue.push(message.data);
+              this.debugLog(`OUTPUT: terminal not ready, queued (${targetSession.outputQueue.length} items)`);
             } else {
               // session 不存在，可能是 rename 后的旧消息，尝试用当前 session
               // 但只在 sessionId 匹配时才写入
               if (sessionId === this.currentSession && this.terminal) {
+                this.debugLog(`OUTPUT: fallback to this.terminal`);
                 this.terminal.write(message.data);
               } else {
-                console.warn(`[${sessionId?.substring(0, 8)}] Orphan output dropped, current=${this.currentSession?.substring(0, 8)}`);
+                this.debugLog(`OUTPUT: DROPPED! handlerSid=${sessionId?.substring(0, 8)} != currentSid=${this.currentSession?.substring(0, 8)}`);
               }
             }
           }
           break;
 
         case 'error':
-          console.error('Server error:', message.message);
+          this.debugLog(`MSG error: ${message.message}`);
           this.updateConnectStatus('error', message.message);
           this.showError(message.message);
           break;
 
         case 'pong':
-          // 心跳响应
-          console.log('Pong received');
+          // 心跳响应，不打日志
           break;
 
         case 'clients':
-          console.log('Client count:', message.count);
+          this.debugLog(`MSG clients: ${message.count}`);
           break;
 
         default:
-          console.log('Unknown message type:', message.type);
+          this.debugLog(`MSG unknown: ${message.type}`);
       }
     } catch (error) {
-      console.error('Handle message error:', error);
+      this.debugLog(`handleMessage ERROR: ${error.message}`);
     }
   },
 
@@ -1261,7 +1284,7 @@ const AppWebSocket = {
             message = JSON.parse(event.data);
           }
         } catch (e) {
-          console.error('Failed to parse message:', e);
+          this.debugLog(`[bg] parse error: ${e.message}`);
           return;
         }
         // 使用正确的 sessionId 处理消息
@@ -1390,7 +1413,7 @@ const AppWebSocket = {
     this.debugLog(`renameCurrentSession: currentName=${currentName}, hasShowRenameDialog=${typeof this.showRenameDialog}`);
 
     if (typeof this.showRenameDialog !== 'function') {
-      console.error('showRenameDialog is not a function');
+      this.debugLog('renameCurrentSession: ERROR - showRenameDialog is not a function');
       this.showToast('Error: showRenameDialog not available');
       return;
     }
@@ -1420,12 +1443,8 @@ const AppWebSocket = {
    * 获取并显示 git 分支（显示在 toolbar 内 session 名下方）
    */
   async fetchGitBranch(workDir) {
-    console.log('[GitBranch] fetchGitBranch called, workDir:', workDir);
     const branchEl = document.getElementById('git-branch');
-    if (!branchEl) {
-      console.log('[GitBranch] Element not found');
-      return;
-    }
+    if (!branchEl) return;
 
     // 先清空（CSS 会自动隐藏空元素）
     branchEl.textContent = '';
@@ -1434,31 +1453,22 @@ const AppWebSocket = {
     const session = this.sessionManager?.sessions.get(this.currentSession);
 
     if (!workDir) {
-      console.log('[GitBranch] No workDir provided');
       if (session) session.gitBranch = null;
       return;
     }
 
     try {
       const url = `/api/git/branch?path=${encodeURIComponent(workDir)}`;
-      console.log('[GitBranch] Fetching:', url);
       const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${this.token}` }
       });
 
-      console.log('[GitBranch] Response status:', response.status);
       if (response.ok) {
         const data = await response.json();
-        console.log('[GitBranch] Data:', data);
         if (data.branch) {
           const branchText = `⎇ ${data.branch}`;
           branchEl.textContent = branchText;
-          // 保存到 session
-          if (session) {
-            session.gitBranch = branchText;
-            console.log('[GitBranch] Saved to session:', session.id.substring(0, 8));
-          }
-          console.log('[GitBranch] Branch displayed:', data.branch);
+          if (session) session.gitBranch = branchText;
         } else {
           if (session) session.gitBranch = null;
         }
@@ -1466,7 +1476,6 @@ const AppWebSocket = {
         if (session) session.gitBranch = null;
       }
     } catch (e) {
-      console.error('[GitBranch] Error:', e.message);
       this.debugLog(`fetchGitBranch error: ${e.message}`);
       if (session) session.gitBranch = null;
     }
@@ -1481,7 +1490,7 @@ const AppWebSocket = {
       themes[sessionId] = theme;
       localStorage.setItem('session-themes', JSON.stringify(themes));
     } catch (e) {
-      console.error('Failed to save session theme:', e);
+      this.debugLog(`saveSessionTheme error: ${e.message}`);
     }
   },
 
@@ -1493,7 +1502,7 @@ const AppWebSocket = {
       const themes = JSON.parse(localStorage.getItem('session-themes') || '{}');
       return themes[sessionId] || null;
     } catch (e) {
-      console.error('Failed to load session theme:', e);
+      this.debugLog(`loadSessionTheme error: ${e.message}`);
       return null;
     }
   },

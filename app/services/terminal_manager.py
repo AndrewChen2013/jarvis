@@ -172,9 +172,21 @@ class TerminalManager:
         is_root = os.getuid() == 0
         skip_perm_flag = "" if is_root else " --dangerously-skip-permissions"
 
+        # 检测 Claude CLI 路径
+        # 优先使用 ~/.claude/local/claude（这是标准安装位置）
+        # 因为 `claude` 可能是 alias，在非交互式 shell 中不可用
+        home = os.path.expanduser("~")
+        claude_local = os.path.join(home, ".claude", "local", "claude")
+        if os.path.isfile(claude_local) and os.access(claude_local, os.X_OK):
+            claude_cmd = claude_local
+            logger.info(f"[Terminal] Using Claude CLI from: {claude_local}")
+        else:
+            # 回退到 PATH 中的 claude（可能通过 npm 全局安装）
+            claude_cmd = "claude"
+            logger.warning(f"[Terminal] Claude local not found at {claude_local}, using 'claude' from PATH")
+
         if session_id:
             # 检查是否是已存在的 session（通过检查文件是否存在）
-            home = os.path.expanduser("~")
             # Claude CLI 会将 "/" " " "~" 都替换为 "-"
             # 例如: /Users/bill/Library/Mobile Documents/com~apple~CloudDocs
             #   ->  -Users-bill-Library-Mobile-Documents-com-apple-CloudDocs
@@ -183,14 +195,14 @@ class TerminalManager:
 
             if os.path.exists(session_file):
                 # Session 存在，使用 --resume
-                cmd = f"claude --resume {session_id}{skip_perm_flag}"
+                cmd = f"{claude_cmd} --resume {session_id}{skip_perm_flag}"
                 logger.info(f"[Terminal] RESUME mode: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
             else:
                 # Session 不存在，使用 --session-id 创建新的
-                cmd = f"claude --session-id {session_id}{skip_perm_flag}"
+                cmd = f"{claude_cmd} --session-id {session_id}{skip_perm_flag}"
                 logger.info(f"[Terminal] NEW mode with session-id: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
         else:
-            cmd = f"claude{skip_perm_flag}"
+            cmd = f"{claude_cmd}{skip_perm_flag}"
             logger.info(f"[Terminal] NEW mode (cwd: {working_dir}, root: {is_root})")
 
         logger.info(f"[Terminal] Executing command: {cmd}")

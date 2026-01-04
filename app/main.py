@@ -32,9 +32,10 @@ from app.core.logging import logger
 from app.services.terminal_manager import terminal_manager
 from app.services.ssh_manager import ssh_manager
 from app.services.scheduler import scheduler
-from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor, scheduled_tasks
+from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor, scheduled_tasks, debug
 from app.api.terminal import handle_terminal_websocket
 from app.api.ssh_terminal import handle_ssh_websocket
+from app.api.debug import handle_debug_websocket
 
 
 @asynccontextmanager
@@ -89,6 +90,7 @@ app.include_router(pinned.router)
 app.include_router(remote_machines.router)
 app.include_router(monitor.router)
 app.include_router(scheduled_tasks.router)
+app.include_router(debug.router)
 
 # 挂载静态文件
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -172,6 +174,24 @@ async def websocket_ssh(
     )
 
 
+@app.websocket("/ws/debug")
+async def websocket_debug(
+    websocket: WebSocket,
+    client_id: str = Query(...)
+):
+    """调试日志 WebSocket 端点
+
+    Args:
+        client_id: 客户端标识（必填）
+
+    用于接收前端调试日志，写入文件便于分析
+    """
+    await handle_debug_websocket(
+        websocket=websocket,
+        client_id=client_id
+    )
+
+
 # 兼容旧的 WebSocket 端点（逐步废弃）
 @app.websocket("/ws/{session_id}")
 async def websocket_legacy(
@@ -191,7 +211,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=38010,
         reload=True,
         log_level="info"
     )
