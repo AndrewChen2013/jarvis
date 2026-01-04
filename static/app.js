@@ -701,11 +701,17 @@ class App {
         if (this._onPageChange && this._currentPage !== undefined) {
           this._onPageChange(this._currentPage);
         }
-      } else {
-        // token 无效，清除并显示登录页
+      } else if (response.status === 401) {
+        // 401 = token 无效，清除并显示登录页
         this.clearAuth();
         this.showView('login');
         this.showLoginError(this.t('login.tokenExpired'));
+      } else {
+        // 其他错误（500/502/503/504 等）是服务器/网络问题，不是认证问题
+        // 继续使用缓存的 token，显示会话列表
+        console.warn('Auth verify failed with status:', response.status);
+        this.showView('sessions');
+        this.showToast(this.t('status.serverError', 'Server error, please try again later'), 'warning');
       }
     } catch (error) {
       console.error('Auth check error:', error);
