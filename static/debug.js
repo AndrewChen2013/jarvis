@@ -473,6 +473,22 @@ const AppDebug = {
     if (panel) {
       const isVisible = panel.style.display === 'flex';
       panel.style.display = isVisible ? 'none' : 'flex';
+      // 保存状态到 localStorage
+      localStorage.setItem('debug_panel_visible', isVisible ? 'false' : 'true');
+    }
+  },
+
+  /**
+   * 恢复调试面板状态（页面加载时调用）
+   */
+  restoreDebugPanel() {
+    const isVisible = localStorage.getItem('debug_panel_visible') === 'true';
+    if (isVisible) {
+      this.initDebugPanel();
+      const panel = document.getElementById('debug-panel');
+      if (panel) {
+        panel.style.display = 'flex';
+      }
     }
   },
 

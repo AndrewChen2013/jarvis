@@ -76,6 +76,11 @@ class App {
     // 初始化主题
     this.initTheme();
 
+    // 恢复调试面板状态
+    if (this.restoreDebugPanel) {
+      this.restoreDebugPanel();
+    }
+
     // 初始化远程机器模块
     if (window.RemoteMachines) {
       window.RemoteMachines.init();

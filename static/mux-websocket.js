@@ -198,6 +198,23 @@ class MuxWebSocket {
    * @param {object} options - {rows, cols, onMessage, onConnect, onDisconnect}
    */
   connectTerminal(sessionId, workingDir, options = {}) {
+    const key = `terminal:${sessionId}`;
+
+    // Check if already connected to this terminal session
+    if (this.handlers.has(key)) {
+      this.log(`Terminal ${sessionId.substring(0, 8)} already connected, skip`);
+      // Update callbacks if provided
+      const handler = this.handlers.get(key);
+      if (options.onMessage) handler.onMessage = options.onMessage;
+      if (options.onConnect) handler.onConnect = options.onConnect;
+      if (options.onDisconnect) handler.onDisconnect = options.onDisconnect;
+      // Trigger onConnect immediately if already connected
+      if (this.state === 'connected' && options.onConnect) {
+        options.onConnect({ working_dir: workingDir });
+      }
+      return;
+    }
+
     this.subscribe(sessionId, 'terminal', {
       onMessage: options.onMessage,
       onConnect: options.onConnect,
@@ -210,7 +227,7 @@ class MuxWebSocket {
       rows: options.rows || 40,
       cols: options.cols || 120
     };
-    this.subscriptionData.set(`terminal:${sessionId}`, { channel: 'terminal', sessionId, data: connectData });
+    this.subscriptionData.set(key, { channel: 'terminal', sessionId, data: connectData });
 
     this.send('terminal', sessionId, 'connect', connectData);
   }
@@ -261,6 +278,23 @@ class MuxWebSocket {
    * @param {object} options - {resume, onMessage, onConnect, onDisconnect}
    */
   connectChat(sessionId, workingDir, options = {}) {
+    const key = `chat:${sessionId}`;
+
+    // Check if already connected to this chat session
+    if (this.handlers.has(key)) {
+      this.log(`Chat ${sessionId.substring(0, 8)} already connected, skip`);
+      // Update callbacks if provided
+      const handler = this.handlers.get(key);
+      if (options.onMessage) handler.onMessage = options.onMessage;
+      if (options.onConnect) handler.onConnect = options.onConnect;
+      if (options.onDisconnect) handler.onDisconnect = options.onDisconnect;
+      // Trigger onConnect immediately if already connected
+      if (this.state === 'connected' && options.onConnect) {
+        options.onConnect({ working_dir: workingDir });
+      }
+      return;
+    }
+
     this.subscribe(sessionId, 'chat', {
       onMessage: options.onMessage,
       onConnect: options.onConnect,
@@ -272,7 +306,7 @@ class MuxWebSocket {
       working_dir: workingDir,
       resume: options.resume
     };
-    this.subscriptionData.set(`chat:${sessionId}`, { channel: 'chat', sessionId, data: connectData });
+    this.subscriptionData.set(key, { channel: 'chat', sessionId, data: connectData });
 
     this.send('chat', sessionId, 'connect', connectData);
   }
