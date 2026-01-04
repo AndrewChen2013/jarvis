@@ -32,13 +32,18 @@ CLAUDE_CONFIG_PATH = os.path.expanduser("~/.claude.json")
 
 # MCP Server 配置
 MCP_SERVER_NAME = "jarvis-tasks"
+
+# Cross-platform venv Python path
+import sys
+if sys.platform == "win32":
+    VENV_PYTHON = f"{PROJECT_ROOT}/venv/Scripts/python.exe"
+else:
+    VENV_PYTHON = f"{PROJECT_ROOT}/venv/bin/python"
+
 MCP_SERVER_CONFIG = {
     "type": "stdio",
-    "command": f"{PROJECT_ROOT}/venv/bin/python",
-    "args": ["-m", "app.mcp.scheduled_tasks_mcp"],
-    "env": {
-        "PYTHONPATH": PROJECT_ROOT
-    }
+    "command": VENV_PYTHON,
+    "args": [f"{PROJECT_ROOT}/scripts/run_mcp.py"]
 }
 
 
