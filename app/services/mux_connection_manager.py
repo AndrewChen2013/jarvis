@@ -501,6 +501,8 @@ class MuxConnectionManager:
         elif msg_type == "assistant":
             message = content.get("message", {})
             content_blocks = message.get("content", [])
+            # Get timestamp if available
+            timestamp = msg.timestamp.isoformat() if hasattr(msg, 'timestamp') else None
             for block in content_blocks:
                 if not isinstance(block, dict):
                     # Handle string content directly
@@ -509,7 +511,7 @@ class MuxConnectionManager:
                             "channel": "chat",
                             "session_id": session_id,
                             "type": "assistant",
-                            "data": {"content": block}
+                            "data": {"content": block, "timestamp": timestamp}
                         })
                     continue
                 block_type = block.get("type")
@@ -518,7 +520,7 @@ class MuxConnectionManager:
                         "channel": "chat",
                         "session_id": session_id,
                         "type": "assistant",
-                        "data": {"content": block.get("text", "")}
+                        "data": {"content": block.get("text", ""), "timestamp": timestamp}
                     })
                 elif block_type == "tool_use":
                     await self.send_to_client(client_id, {
@@ -528,17 +530,43 @@ class MuxConnectionManager:
                         "data": {
                             "tool_name": block.get("name"),
                             "tool_id": block.get("id"),
-                            "input": block.get("input", {})
+                            "input": block.get("input", {}),
+                            "timestamp": timestamp
                         }
                     })
 
         elif msg_type == "user":
             message = content.get("message", {})
             content_blocks = message.get("content", [])
+            # Get timestamp if available
+            timestamp = msg.timestamp.isoformat() if hasattr(msg, 'timestamp') else None
             for block in content_blocks:
                 if not isinstance(block, dict):
+                    # Handle string content (user's text message)
+                    if isinstance(block, str):
+                        await self.send_to_client(client_id, {
+                            "channel": "chat",
+                            "session_id": session_id,
+                            "type": "user",
+                            "data": {
+                                "content": block,
+                                "timestamp": timestamp
+                            }
+                        })
                     continue
-                if block.get("type") == "tool_result":
+                block_type = block.get("type")
+                if block_type == "text":
+                    # User's text message
+                    await self.send_to_client(client_id, {
+                        "channel": "chat",
+                        "session_id": session_id,
+                        "type": "user",
+                        "data": {
+                            "content": block.get("text", ""),
+                            "timestamp": timestamp
+                        }
+                    })
+                elif block_type == "tool_result":
                     tool_result = content.get("tool_use_result", {})
                     await self.send_to_client(client_id, {
                         "channel": "chat",

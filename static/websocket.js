@@ -213,7 +213,9 @@ const AppWebSocket = {
       }
 
       // 直接切换视图，不清空终端容器（已有终端）
-      this.showView('terminal');
+      // 根据 session.viewMode 决定显示哪个视图（chat 或 terminal）
+      const viewMode = session.viewMode || 'terminal';
+      this.showView(viewMode);
 
       // 更新标题
       const titleEl = document.getElementById('terminal-title');

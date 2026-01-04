@@ -21,6 +21,7 @@ const ChatMode = {
   messagesEl: null,
   inputEl: null,
   sendBtn: null,
+  initialized: false,
 
   /**
    * Debug log helper - uses app's debugLog
@@ -35,9 +36,17 @@ const ChatMode = {
    * Initialize Chat mode
    */
   init(container) {
+    // Check if DOM still exists (may have been destroyed by view switch)
+    const existingBackBtn = container.querySelector('#chatBackBtn');
+    if (this.initialized && this.container === container && existingBackBtn) {
+      this.log('Already initialized, skipping');
+      return;
+    }
+
     this.container = container;
     this.render();
     this.bindEvents();
+    this.initialized = true;
   },
 
   /**
@@ -50,18 +59,25 @@ const ChatMode = {
       <div class="chat-container">
         <div class="chat-header">
           <div class="chat-header-left">
-            <button class="chat-back-btn" id="chatBackBtn">
+            <button class="chat-back-btn" id="chatBackBtn" title="${t('common.close', 'Close')}">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M15 18l-6-6 6-6"/>
+              </svg>
+            </button>
+            <button class="chat-minimize-btn" id="chatMinimizeBtn" title="${t('terminal.minimize', 'Minimize')}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6"/>
               </svg>
             </button>
             <span class="chat-title" id="chatTitle">${t('chat.title', 'Chat')}</span>
           </div>
           <div class="chat-header-right">
-            <div class="chat-mode-toggle">
-              <button class="chat-mode-btn active" data-mode="chat">${t('chat.mode.chat', 'Chat')}</button>
-              <button class="chat-mode-btn" data-mode="terminal">${t('chat.mode.terminal', 'Terminal')}</button>
-            </div>
+            <button class="chat-terminal-btn" id="chatTerminalBtn" title="${t('chat.mode.terminal', 'Terminal')}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="4 17 10 11 4 5"></polyline>
+                <line x1="12" y1="19" x2="20" y2="19"></line>
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -121,15 +137,21 @@ const ChatMode = {
       }
     });
 
-    // Mode toggle
-    this.container.querySelectorAll('.chat-mode-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const mode = e.target.dataset.mode;
-        if (mode === 'terminal') {
-          this.switchToTerminal();
-        }
+    // Minimize button
+    const minimizeBtn = document.getElementById('chatMinimizeBtn');
+    if (minimizeBtn) {
+      minimizeBtn.addEventListener('click', () => {
+        this.minimize();
       });
-    });
+    }
+
+    // Terminal mode button
+    const terminalBtn = document.getElementById('chatTerminalBtn');
+    if (terminalBtn) {
+      terminalBtn.addEventListener('click', () => {
+        this.switchToTerminal();
+      });
+    }
 
     // Input auto-resize
     this.inputEl.addEventListener('input', () => {
@@ -161,12 +183,13 @@ const ChatMode = {
     this.sessionId = sessionId;
     this.workingDir = workingDir;
 
-    // Update title
-    const title = workingDir.split('/').pop() || 'Chat';
-    document.getElementById('chatTitle').textContent = title;
-
     // 获取当前 session 实例
     const session = window.app?.sessionManager?.getActive();
+
+    // Update title - prefer session name, fallback to workDir
+    const title = session?.name || workingDir.split('/').pop() || 'Chat';
+    document.getElementById('chatTitle').textContent = title;
+
     if (!session) {
       this.log('ERROR: No active session found');
       this.updateStatus('disconnected');
@@ -321,8 +344,13 @@ const ChatMode = {
         break;
 
       case 'user_ack':
-        this.addMessage('user', data.content);
+        this.addMessage('user', data.content, { timestamp: new Date().toISOString() });
         this.showTypingIndicator();
+        break;
+
+      case 'user':
+        // User message from history
+        this.addMessage('user', data.content, { timestamp: data.timestamp });
         break;
 
       case 'stream':
@@ -334,7 +362,7 @@ const ChatMode = {
         if (this.isStreaming) {
           this.finalizeStreaming(data.content);
         } else {
-          this.addMessage('assistant', data.content);
+          this.addMessage('assistant', data.content, { timestamp: data.timestamp });
         }
         break;
 
@@ -408,6 +436,14 @@ const ChatMode = {
     bubble.className = 'chat-bubble';
     bubble.innerHTML = this.formatContent(content);
 
+    // Add timestamp if available
+    if (extra.timestamp) {
+      const timeEl = document.createElement('div');
+      timeEl.className = 'chat-message-time';
+      timeEl.textContent = this.formatTimestamp(extra.timestamp);
+      bubble.appendChild(timeEl);
+    }
+
     msgEl.appendChild(bubble);
     this.messagesEl.appendChild(msgEl);
 
@@ -415,6 +451,27 @@ const ChatMode = {
     this.scrollToBottom();
 
     return msgId;
+  },
+
+  /**
+   * Format timestamp for display
+   */
+  formatTimestamp(timestamp) {
+    if (!timestamp) return '';
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+
+      if (isToday) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+               ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    } catch (e) {
+      return '';
+    }
   },
 
   /**
@@ -655,14 +712,25 @@ const ChatMode = {
   },
 
   /**
+   * Minimize chat (hide to floating button)
+   */
+  minimize() {
+    this.log('minimize');
+    // Record that we're in chat mode when minimizing
+    const session = window.app?.sessionManager?.getActive();
+    if (session) {
+      session.viewMode = 'chat';
+    }
+    // Use app's minimize which handles floating button
+    if (window.app && window.app.minimizeCurrentSession) {
+      window.app.minimizeCurrentSession();
+    }
+  },
+
+  /**
    * Switch to terminal mode
    */
   switchToTerminal() {
-    // Update toggle UI
-    this.container.querySelectorAll('.chat-mode-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.mode === 'terminal');
-    });
-
     // Emit event for app to switch view
     if (window.app && window.app.switchToTerminalMode) {
       window.app.switchToTerminalMode(this.sessionId, this.workingDir);

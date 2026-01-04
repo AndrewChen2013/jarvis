@@ -621,6 +621,11 @@ class App {
       this.debugLog('minimize button bindend');
       minimizeBtn.addEventListener('click', () => {
         this.debugLog('minimize button clicked');
+        // 记住当前视图模式为 terminal
+        const session = this.sessionManager?.getActive();
+        if (session) {
+          session.viewMode = 'terminal';
+        }
         this.minimizeCurrentSession();
       });
     } else {

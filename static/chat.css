@@ -47,6 +47,23 @@
   background: var(--bg-hover);
 }
 
+.chat-minimize-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.chat-minimize-btn:active {
+  background: var(--bg-hover);
+}
+
 .chat-title {
   font-size: var(--font-md);
   font-weight: 500;
@@ -63,31 +80,28 @@
   gap: 8px;
 }
 
-.chat-mode-toggle {
+/* Terminal mode button - matches toolbar button style */
+.chat-terminal-btn {
   display: flex;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-md);
-  padding: 2px;
-}
-
-.chat-mode-btn {
-  padding: 6px 12px;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: var(--font-sm);
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all 0.2s ease;
 }
 
-.chat-mode-btn.active {
-  background: var(--color-primary);
-  color: white;
+.chat-terminal-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
-.chat-mode-btn:not(.active):active {
-  background: var(--bg-hover);
+.chat-terminal-btn:active {
+  background: var(--bg-active);
 }
 
 /* ========== Messages Area ========== */
@@ -455,4 +469,20 @@
 .chat-result-badge.error {
   background: var(--color-danger-light);
   color: var(--color-danger);
+}
+
+/* ========== Message Timestamp ========== */
+.chat-message-time {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.chat-message.user .chat-message-time {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-message.assistant .chat-message-time {
+  text-align: left;
 }
