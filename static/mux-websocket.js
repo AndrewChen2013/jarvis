@@ -42,6 +42,9 @@ class MuxWebSocket {
     // Session handlers: Map<sessionId, {channel, onMessage, onConnect, onDisconnect}>
     this.handlers = new Map();
 
+    // Subscription data for reconnection: Map<sessionId, {channel, data}>
+    this.subscriptionData = new Map();
+
     // Pending operations waiting for connection
     this.pendingOperations = [];
 
@@ -139,10 +142,13 @@ class MuxWebSocket {
    * @param {object} callbacks - {onMessage, onConnect, onDisconnect}
    */
   subscribe(sessionId, channel, callbacks) {
-    this.log(`Subscribing to ${channel}:${sessionId.substring(0, 8)}`);
+    // Use compound key to allow same sessionId for different channels (chat/terminal)
+    const key = `${channel}:${sessionId}`;
+    this.log(`Subscribing to ${key.substring(0, channel.length + 9)}`);
 
-    this.handlers.set(sessionId, {
+    this.handlers.set(key, {
       channel,
+      sessionId,
       onMessage: callbacks.onMessage || (() => {}),
       onConnect: callbacks.onConnect || (() => {}),
       onDisconnect: callbacks.onDisconnect || (() => {})
@@ -152,10 +158,12 @@ class MuxWebSocket {
   /**
    * Unsubscribe from a session
    * @param {string} sessionId - Session ID
+   * @param {string} channel - "terminal" or "chat"
    */
-  unsubscribe(sessionId) {
-    this.log(`Unsubscribing from ${sessionId.substring(0, 8)}`);
-    this.handlers.delete(sessionId);
+  unsubscribe(sessionId, channel) {
+    const key = `${channel}:${sessionId}`;
+    this.log(`Unsubscribing from ${key.substring(0, channel.length + 9)}`);
+    this.handlers.delete(key);
   }
 
   /**
@@ -196,11 +204,15 @@ class MuxWebSocket {
       onDisconnect: options.onDisconnect
     });
 
-    this.send('terminal', sessionId, 'connect', {
+    // Save subscription data for reconnection (use compound key)
+    const connectData = {
       working_dir: workingDir,
       rows: options.rows || 40,
       cols: options.cols || 120
-    });
+    };
+    this.subscriptionData.set(`terminal:${sessionId}`, { channel: 'terminal', sessionId, data: connectData });
+
+    this.send('terminal', sessionId, 'connect', connectData);
   }
 
   /**
@@ -209,7 +221,8 @@ class MuxWebSocket {
    */
   disconnectTerminal(sessionId) {
     this.send('terminal', sessionId, 'disconnect', {});
-    this.unsubscribe(sessionId);
+    this.unsubscribe(sessionId, 'terminal');
+    this.subscriptionData.delete(`terminal:${sessionId}`);
   }
 
   /**
@@ -218,7 +231,8 @@ class MuxWebSocket {
    */
   closeTerminal(sessionId) {
     this.send('terminal', sessionId, 'close', {});
-    this.unsubscribe(sessionId);
+    this.unsubscribe(sessionId, 'terminal');
+    this.subscriptionData.delete(`terminal:${sessionId}`);
   }
 
   /**
@@ -253,10 +267,14 @@ class MuxWebSocket {
       onDisconnect: options.onDisconnect
     });
 
-    this.send('chat', sessionId, 'connect', {
+    // Save subscription data for reconnection (use compound key)
+    const connectData = {
       working_dir: workingDir,
       resume: options.resume
-    });
+    };
+    this.subscriptionData.set(`chat:${sessionId}`, { channel: 'chat', sessionId, data: connectData });
+
+    this.send('chat', sessionId, 'connect', connectData);
   }
 
   /**
@@ -265,7 +283,8 @@ class MuxWebSocket {
    */
   disconnectChat(sessionId) {
     this.send('chat', sessionId, 'disconnect', {});
-    this.unsubscribe(sessionId);
+    this.unsubscribe(sessionId, 'chat');
+    this.subscriptionData.delete(`chat:${sessionId}`);
   }
 
   /**
@@ -274,7 +293,8 @@ class MuxWebSocket {
    */
   closeChat(sessionId) {
     this.send('chat', sessionId, 'close', {});
-    this.unsubscribe(sessionId);
+    this.unsubscribe(sessionId, 'chat');
+    this.subscriptionData.delete(`chat:${sessionId}`);
   }
 
   /**
@@ -337,34 +357,55 @@ class MuxWebSocket {
       return;
     }
 
-    // Check if session_id was remapped (backend generated new UUID for temp IDs like "new-123")
-    let handler = this.handlers.get(session_id);
+    // Use compound key for handler lookup: channel:session_id
+    const handlerKey = `${channel}:${session_id}`;
+
+    // Debug: log incoming message for chat/terminal
+    if (type === 'ready' || type === 'connected') {
+      this.log(`Received ${type} for ${handlerKey}, original=${data?.original_session_id?.substring(0, 8)}`);
+      this.log(`Registered handlers: ${Array.from(this.handlers.keys()).join(', ')}`);
+    }
+
+    // Look up handler by compound key
+    let handler = this.handlers.get(handlerKey);
 
     // If no handler found, check if this is a 'connected' or 'ready' message with original_session_id
     // Terminal uses 'connected', Chat uses 'ready'
     if (!handler && (type === 'connected' || type === 'ready') && data.original_session_id) {
-      const originalHandler = this.handlers.get(data.original_session_id);
+      const originalKey = `${channel}:${data.original_session_id}`;
+      const originalHandler = this.handlers.get(originalKey);
       if (originalHandler) {
-        // Re-map handler from original_session_id to new session_id
-        this.log(`Remapping handler: ${data.original_session_id.substring(0, 8)} -> ${session_id.substring(0, 8)}`);
-        this.handlers.delete(data.original_session_id);
-        this.handlers.set(session_id, originalHandler);
+        // Re-map handler from original key to new key
+        this.log(`Remapping handler: ${originalKey} -> ${handlerKey}`);
+        this.handlers.delete(originalKey);
+        this.handlers.set(handlerKey, originalHandler);
+        // Update sessionId in handler
+        originalHandler.sessionId = session_id;
         handler = originalHandler;
+
+        // Also remap subscription data for reconnection
+        const subData = this.subscriptionData.get(originalKey);
+        if (subData) {
+          this.subscriptionData.delete(originalKey);
+          subData.sessionId = session_id;  // Update to new session ID
+          this.subscriptionData.set(handlerKey, subData);
+        }
       }
     }
 
     if (handler) {
       // Handle special types
       if (type === 'connected' || type === 'ready') {
+        this.log(`Calling onConnect for ${handlerKey}`);
         handler.onConnect(data);
       } else if (type === 'error') {
-        this.log(`Error in ${channel}:${session_id.substring(0, 8)}: ${data.message}`);
+        this.log(`Error in ${handlerKey}: ${data.message}`);
       }
 
       // Always call onMessage for all messages
       handler.onMessage(type, data);
     } else {
-      this.log(`No handler for session ${session_id?.substring(0, 8)}`);
+      this.log(`No handler for ${handlerKey}, type=${type}`);
     }
   }
 
@@ -379,6 +420,9 @@ class MuxWebSocket {
 
       // Process pending operations
       this._processPendingOperations();
+
+      // Re-send connect messages for existing subscriptions (reconnection case)
+      this._resendSubscriptions();
 
     } else if (type === 'auth_failed') {
       this.log('Authentication failed: ' + data.reason);
@@ -401,7 +445,7 @@ class MuxWebSocket {
     this._setState('disconnected');
 
     // Notify all handlers
-    for (const [sessionId, handler] of this.handlers) {
+    for (const [key, handler] of this.handlers) {
       handler.onDisconnect();
     }
 
@@ -475,6 +519,25 @@ class MuxWebSocket {
 
     for (const message of ops) {
       this._sendRaw(message);
+    }
+  }
+
+  /**
+   * Re-send connect messages for existing subscriptions after reconnection
+   */
+  _resendSubscriptions() {
+    if (this.subscriptionData.size === 0) return;
+
+    this.log(`Re-sending ${this.subscriptionData.size} subscriptions after reconnect`);
+
+    for (const [key, sub] of this.subscriptionData) {
+      this.log(`Re-subscribing to ${key.substring(0, sub.channel.length + 9)}`);
+      this._sendRaw({
+        channel: sub.channel,
+        session_id: sub.sessionId,
+        type: 'connect',
+        data: sub.data
+      });
     }
   }
 

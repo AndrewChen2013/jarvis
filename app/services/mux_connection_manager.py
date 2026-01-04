@@ -394,6 +394,7 @@ class MuxConnectionManager:
 
             # Send ready with history count and original_session_id for handler remapping
             history = session.get_history()
+            logger.info(f"[Mux] Sending ready: session_id={session_id[:8]}, original={original_session_id[:8] if original_session_id else 'None'}")
             await self.send_to_client(client_id, {
                 "channel": "chat",
                 "session_id": session_id,
