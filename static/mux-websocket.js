@@ -51,6 +51,9 @@ class MuxWebSocket {
     // Connection state
     this.state = 'disconnected'; // disconnected, connecting, authenticating, connected
 
+    // Track if we've ever connected successfully (for reconnection detection)
+    this.hasConnectedBefore = false;
+
     // Callbacks
     this.onStateChange = null;
   }
@@ -81,7 +84,7 @@ class MuxWebSocket {
     }
 
     this._setState('connecting');
-    this.log('Connecting to /ws/mux...');
+    this.log(`Connecting to /ws/mux... (reconnect=${this.hasConnectedBefore})`);
 
     // Build WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -452,11 +455,21 @@ class MuxWebSocket {
       // Start ping interval
       this._startPingInterval();
 
-      // Process pending operations
-      this._processPendingOperations();
+      // Check if this is a reconnection before processing
+      const isReconnection = this.hasConnectedBefore;
 
-      // Re-send connect messages for existing subscriptions (reconnection case)
-      this._resendSubscriptions();
+      // Mark that we've connected at least once
+      this.hasConnectedBefore = true;
+
+      // Process pending operations (new subscriptions queued while connecting)
+      const processedKeys = this._processPendingOperations();
+
+      // Re-send connect messages for existing subscriptions (only on reconnection)
+      // This prevents duplicate connect messages on fresh connections
+      // Skip any keys that were already processed via pendingOperations
+      if (isReconnection) {
+        this._resendSubscriptions(processedKeys);
+      }
 
     } else if (type === 'auth_failed') {
       this.log('Authentication failed: ' + data.reason);
@@ -544,7 +557,9 @@ class MuxWebSocket {
   }
 
   _processPendingOperations() {
-    if (this.pendingOperations.length === 0) return;
+    const processedKeys = new Set();
+
+    if (this.pendingOperations.length === 0) return processedKeys;
 
     this.log(`Processing ${this.pendingOperations.length} pending operations`);
 
@@ -553,18 +568,28 @@ class MuxWebSocket {
 
     for (const message of ops) {
       this._sendRaw(message);
+      // Track connect messages to avoid duplicates in _resendSubscriptions
+      if (message.type === 'connect' && message.channel && message.session_id) {
+        processedKeys.add(`${message.channel}:${message.session_id}`);
+      }
     }
+
+    return processedKeys;
   }
 
   /**
    * Re-send connect messages for existing subscriptions after reconnection
+   * @param {Set} skipKeys - Keys to skip (already processed via pendingOperations)
    */
-  _resendSubscriptions() {
+  _resendSubscriptions(skipKeys = new Set()) {
     if (this.subscriptionData.size === 0) return;
 
-    this.log(`Re-sending ${this.subscriptionData.size} subscriptions after reconnect`);
+    const toResend = [...this.subscriptionData].filter(([key]) => !skipKeys.has(key));
+    if (toResend.length === 0) return;
 
-    for (const [key, sub] of this.subscriptionData) {
+    this.log(`Re-sending ${toResend.length} subscriptions after reconnect (skipped ${skipKeys.size})`);
+
+    for (const [key, sub] of toResend) {
       this.log(`Re-subscribing to ${key.substring(0, sub.channel.length + 9)}`);
       this._sendRaw({
         channel: sub.channel,

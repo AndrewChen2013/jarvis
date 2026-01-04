@@ -379,7 +379,7 @@ const AppDebug = {
 
     // 第二行：功能按钮（均匀分布）
     const btnGroup = document.createElement('div');
-    btnGroup.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;';
+    btnGroup.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:8px;';
 
     // 远程日志开关按钮
     const remoteLogBtn = document.createElement('button');
@@ -443,8 +443,23 @@ const AppDebug = {
       if (content) content.innerHTML = '';
     };
 
+    // Chat 模式按钮
+    const chatBtn = document.createElement('button');
+    chatBtn.textContent = 'Chat';
+    chatBtn.style.cssText = 'padding:5px 12px;background:#333;color:#fff;border:none;border-radius:4px;';
+    chatBtn.onclick = () => {
+      const session = this.sessionManager?.getActive();
+      if (session && session.workDir) {
+        this.showChat(session.id, session.workDir);
+        this.toggleDebugPanel(); // 关闭调试面板
+      } else {
+        this.debugLog('[Debug] No active session for chat mode');
+      }
+    };
+
     btnGroup.appendChild(remoteLogBtn);
     btnGroup.appendChild(apiLogBtn);
+    btnGroup.appendChild(chatBtn);
     btnGroup.appendChild(copyBtn);
     btnGroup.appendChild(clearBtn);
     header.appendChild(btnGroup);
