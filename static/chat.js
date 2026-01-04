@@ -433,6 +433,12 @@ const ChatMode = {
     const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
     const actionText = action === 'call' ? t('chat.tool.calling', 'Calling') : t('chat.tool.result', 'Result');
 
+    // Tools that should be expanded by default
+    const expandedByDefault = ['Grep', 'Edit', 'Read', 'Write', 'Glob', 'Bash', 'LSP'];
+    const shouldExpand = expandedByDefault.includes(toolName);
+    const contentClass = shouldExpand ? 'tool-content show' : 'tool-content';
+    const toggleClass = shouldExpand ? 'tool-toggle expanded' : 'tool-toggle';
+
     msgEl.innerHTML = `
       <div class="chat-bubble">
         <div class="tool-header" onclick="ChatMode.toggleToolContent('${msgId}')">
@@ -442,13 +448,13 @@ const ChatMode = {
             </svg>
           </span>
           <span class="tool-name">${toolName}</span>
-          <span class="tool-toggle">
+          <span class="${toggleClass}">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M6 9l6 6 6-6"/>
             </svg>
           </span>
         </div>
-        <div class="tool-content" id="${msgId}-content">
+        <div class="${contentClass}" id="${msgId}-content">
           <pre>${this.escapeHtml(JSON.stringify(data, null, 2))}</pre>
         </div>
       </div>
