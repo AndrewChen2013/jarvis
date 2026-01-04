@@ -349,9 +349,12 @@ const AppDebug = {
 
     // 标题栏
     const header = document.createElement('div');
-    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #333;';
+    header.style.cssText = 'display:flex;flex-direction:column;gap:8px;padding:10px;border-bottom:1px solid #333;';
 
-    // 左侧标题和状态
+    // 第一行：标题和状态
+    const titleRow = document.createElement('div');
+    titleRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+
     const titleArea = document.createElement('div');
     titleArea.style.cssText = 'display:flex;align-items:center;gap:10px;';
     titleArea.innerHTML = `<span style="color:#0f0;font-weight:bold;">${this.t('debug.title')}</span>`;
@@ -363,11 +366,20 @@ const AppDebug = {
     statusIndicator.title = 'Remote Log: stopped';
     titleArea.appendChild(statusIndicator);
 
-    header.appendChild(titleArea);
+    titleRow.appendChild(titleArea);
 
-    // 按钮组
+    // 关闭按钮放标题行右侧
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'padding:5px 10px;background:#c00;color:#fff;border:none;border-radius:4px;font-size:14px;';
+    closeBtn.onclick = () => this.toggleDebugPanel();
+    titleRow.appendChild(closeBtn);
+
+    header.appendChild(titleRow);
+
+    // 第二行：功能按钮（均匀分布）
     const btnGroup = document.createElement('div');
-    btnGroup.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+    btnGroup.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;';
 
     // 远程日志开关按钮
     const remoteLogBtn = document.createElement('button');
@@ -431,17 +443,10 @@ const AppDebug = {
       if (content) content.innerHTML = '';
     };
 
-    // 关闭按钮
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = this.t('debug.close');
-    closeBtn.style.cssText = 'padding:5px 12px;background:#c00;color:#fff;border:none;border-radius:4px;';
-    closeBtn.onclick = () => this.toggleDebugPanel();
-
     btnGroup.appendChild(remoteLogBtn);
     btnGroup.appendChild(apiLogBtn);
     btnGroup.appendChild(copyBtn);
     btnGroup.appendChild(clearBtn);
-    btnGroup.appendChild(closeBtn);
     header.appendChild(btnGroup);
 
     // 日志内容区
