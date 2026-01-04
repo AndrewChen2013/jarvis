@@ -620,11 +620,11 @@ const AppWebSocket = {
     if (isIOSSafari) {
       const firstWs = this.ws;
 
-      // 1 秒后检查：如果仍卡在 CONNECTING，关闭并创建第二个连接
+      // 300ms 后检查：如果仍卡在 CONNECTING，关闭并创建第二个连接
       setTimeout(() => {
         // 确保是同一个 WebSocket 且仍在 CONNECTING 状态
         if (this.ws === firstWs && this.ws.readyState === WebSocket.CONNECTING) {
-          this.debugLog('iOS: 1st still CONNECTING after 1s, close and retry');
+          this.debugLog('iOS: 1st still CONNECTING after 300ms, close and retry');
           // 先移除事件处理器，避免 onclose 触发额外的重连
           firstWs.onopen = null;
           firstWs.onclose = null;
@@ -658,7 +658,7 @@ const AppWebSocket = {
             this.updateConnectStatus('failed', e.message);
           }
         }
-      }, 1000);
+      }, 300);
     }
     // ====== End iOS Safari Workaround ======
 
