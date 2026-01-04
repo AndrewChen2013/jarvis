@@ -384,6 +384,21 @@ const AppDebug = {
       }
     };
 
+    // API 日志开关按钮
+    const apiLogBtn = document.createElement('button');
+    apiLogBtn.id = 'api-log-toggle';
+    apiLogBtn.textContent = 'API';
+    apiLogBtn.style.cssText = 'padding:5px 12px;background:#333;color:#fff;border:none;border-radius:4px;';
+    apiLogBtn.onclick = () => {
+      if (this._apiLogEnabled) {
+        this.disableApiLog();
+        apiLogBtn.style.background = '#333';
+      } else {
+        this.enableApiLog();
+        apiLogBtn.style.background = '#063';
+      }
+    };
+
     // 复制按钮
     const copyBtn = document.createElement('button');
     copyBtn.textContent = this.t('debug.copy');
@@ -418,6 +433,7 @@ const AppDebug = {
     closeBtn.onclick = () => this.toggleDebugPanel();
 
     btnGroup.appendChild(remoteLogBtn);
+    btnGroup.appendChild(apiLogBtn);
     btnGroup.appendChild(copyBtn);
     btnGroup.appendChild(clearBtn);
     btnGroup.appendChild(closeBtn);
@@ -528,6 +544,131 @@ const AppDebug = {
     } catch (e) {
       // 发送失败也不能抛错，避免死循环
       console.warn('[Debug] Failed to send error to backend:', e);
+    }
+  },
+
+  /**
+   * API 请求日志开关
+   */
+  _apiLogEnabled: false,
+  _originalFetch: null,
+
+  /**
+   * 启用 API 请求日志
+   */
+  enableApiLog() {
+    if (this._apiLogEnabled) return;
+    this._apiLogEnabled = true;
+
+    // 保存原始 fetch
+    if (!this._originalFetch) {
+      this._originalFetch = window.fetch.bind(window);
+    }
+
+    const self = this;
+
+    // 拦截 fetch
+    window.fetch = async function(input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+
+      // 跳过 debug API 自身，避免死循环
+      if (url.includes('/api/debug/') || url.includes('/ws/debug')) {
+        return self._originalFetch(input, init);
+      }
+
+      const method = init?.method || 'GET';
+      const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
+      const startTime = performance.now();
+
+      // 记录请求
+      let requestBody = null;
+      if (init?.body) {
+        try {
+          requestBody = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
+        } catch {
+          requestBody = String(init.body).substring(0, 500);
+        }
+      }
+
+      self.debugLog(`[API] → ${method} ${url.substring(0, 80)} #${requestId}`);
+
+      try {
+        const response = await self._originalFetch(input, init);
+        const duration = Math.round(performance.now() - startTime);
+
+        // 克隆响应以便读取 body
+        const clonedResponse = response.clone();
+
+        // 尝试解析响应
+        let responseBody = null;
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            responseBody = await clonedResponse.json();
+          } else {
+            const text = await clonedResponse.text();
+            responseBody = text.substring(0, 500);
+          }
+        } catch {
+          responseBody = '[Failed to parse response]';
+        }
+
+        // 记录响应
+        const status = response.status;
+        const logLevel = status >= 400 ? 'ERROR' : 'OK';
+        self.debugLog(`[API] ← ${status} ${method} ${url.substring(0, 60)} ${duration}ms #${requestId}`);
+
+        // 详细日志（仅在出错或响应较小时记录详情）
+        if (status >= 400 || (responseBody && JSON.stringify(responseBody).length < 1000)) {
+          self._logApiDetail(requestId, {
+            url, method, status, duration,
+            request: requestBody,
+            response: responseBody
+          });
+        }
+
+        return response;
+      } catch (error) {
+        const duration = Math.round(performance.now() - startTime);
+        self.debugLog(`[API] ✗ ${method} ${url.substring(0, 60)} ${duration}ms - ${error.message} #${requestId}`);
+
+        self._logApiDetail(requestId, {
+          url, method, duration,
+          request: requestBody,
+          error: error.message
+        });
+
+        throw error;
+      }
+    };
+
+    console.log('[Debug] API logging enabled');
+  },
+
+  /**
+   * 禁用 API 请求日志
+   */
+  disableApiLog() {
+    if (!this._apiLogEnabled) return;
+    this._apiLogEnabled = false;
+
+    if (this._originalFetch) {
+      window.fetch = this._originalFetch;
+    }
+
+    console.log('[Debug] API logging disabled');
+  },
+
+  /**
+   * 记录 API 详情
+   */
+  _logApiDetail(requestId, detail) {
+    // 通过 debugLog 记录，会自动走远程日志通道
+    const detailStr = JSON.stringify(detail, null, 0);
+    if (detailStr.length < 2000) {
+      this.debugLog(`[API-DETAIL] #${requestId} ${detailStr}`);
+    } else {
+      this.debugLog(`[API-DETAIL] #${requestId} ${detailStr.substring(0, 2000)}... (truncated)`);
     }
   }
 };
