@@ -72,8 +72,8 @@ const AppWebSocket = {
       // 切换到该 session
       this.sessionManager.switchTo(this.currentSession);
 
-      // 显示终端视图
-      this.showView('terminal');
+      // 显示默认视图（Chat 模式为默认）
+      this.showChat(this.currentSession, existingSession.workDir);
 
       // 设置终端标题
       const titleEl = document.getElementById('terminal-title');
@@ -112,8 +112,8 @@ const AppWebSocket = {
 
     this.debugLog(`connectTerminal: session registered, sessions.size=${this.sessionManager.sessions.size}`);
 
-    // 显示终端视图
-    this.showView('terminal');
+    // 显示默认视图（Chat 模式为默认）
+    this.showChat(this.currentSession, workDir);
 
     // 设置终端标题为会话名称
     const titleEl = document.getElementById('terminal-title');
