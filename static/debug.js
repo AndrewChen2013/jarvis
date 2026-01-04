@@ -396,6 +396,11 @@ const AppDebug = {
       } else {
         this.enableApiLog();
         apiLogBtn.style.background = '#063';
+        // 同时开启 Remote
+        if (!this._remoteLogEnabled) {
+          this.startRemoteLog();
+          remoteLogBtn.style.background = '#060';
+        }
       }
     };
 
