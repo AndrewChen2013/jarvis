@@ -387,34 +387,40 @@ AUTH_TOKEN=your-secret-token
 
 ### MCP Server for Scheduled Tasks
 
-To enable Claude Code to manage scheduled tasks, add the MCP server to your Claude Code configuration:
+Register the MCP server to enable Claude Code to manage scheduled tasks:
 
-**Location:** `~/.claude/claude_desktop_config.json` (or your Claude Code config)
+```bash
+# Run from project directory
+python scripts/register_mcp.py
+```
 
-```json
-{
-  "mcpServers": {
-    "jarvis-tasks": {
-      "command": "python",
-      "args": ["/path/to/jarvis/app/mcp/scheduled_tasks_mcp.py"],
-      "env": {
-        "JARVIS_URL": "http://localhost:8000",
-        "JARVIS_TOKEN": "your-auth-token"
-      }
-    }
-  }
-}
+This registers `jarvis-tasks` to `~/.claude.json`, making the scheduled task tools available in Claude Code globally (works from any directory).
+
+**Management commands:**
+
+```bash
+# Check registration status
+python scripts/register_mcp.py --check
+
+# Unregister
+python scripts/register_mcp.py --unregister
+
+# Register to project directory only (instead of global)
+python scripts/register_mcp.py --local
 ```
 
 **Available MCP Tools:**
-- `create_scheduled_task` — Create a new scheduled task
-- `list_scheduled_tasks` — List all tasks
-- `get_scheduled_task` — Get task details
-- `update_scheduled_task` — Modify a task
-- `delete_scheduled_task` — Remove a task
-- `toggle_scheduled_task` — Enable/disable a task
-- `run_scheduled_task_now` — Execute immediately
-- `get_task_executions` — View execution history
+
+| Tool | Description |
+|------|-------------|
+| `create_scheduled_task` | Create a new scheduled task with cron expression |
+| `list_scheduled_tasks` | List all tasks with status and last run time |
+| `get_scheduled_task` | Get task details and recent executions |
+| `update_scheduled_task` | Modify task name, prompt, cron, or notifications |
+| `delete_scheduled_task` | Remove a task permanently |
+| `toggle_scheduled_task` | Enable or disable a task |
+| `run_scheduled_task_now` | Execute a task immediately |
+| `get_task_executions` | View execution history for a task |
 
 ---
 

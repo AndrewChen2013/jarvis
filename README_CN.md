@@ -464,34 +464,40 @@ AUTH_TOKEN=你的密码
 
 ### 定时任务 MCP 服务器
 
-要让 Claude Code 能够管理定时任务，需要将 MCP 服务器添加到 Claude Code 配置中：
+注册 MCP 服务器，让 Claude Code 能够管理定时任务：
 
-**配置文件位置：** `~/.claude/claude_desktop_config.json`（或你的 Claude Code 配置文件）
+```bash
+# 在项目目录下运行
+python scripts/register_mcp.py
+```
 
-```json
-{
-  "mcpServers": {
-    "jarvis-tasks": {
-      "command": "python",
-      "args": ["/path/to/jarvis/app/mcp/scheduled_tasks_mcp.py"],
-      "env": {
-        "JARVIS_URL": "http://localhost:8000",
-        "JARVIS_TOKEN": "你的访问令牌"
-      }
-    }
-  }
-}
+这会将 `jarvis-tasks` 注册到 `~/.claude.json`，使定时任务工具在 Claude Code 中全局可用（任意目录都可使用）。
+
+**管理命令：**
+
+```bash
+# 检查注册状态
+python scripts/register_mcp.py --check
+
+# 取消注册
+python scripts/register_mcp.py --unregister
+
+# 仅注册到项目目录（而非全局）
+python scripts/register_mcp.py --local
 ```
 
 **可用的 MCP 工具：**
-- `create_scheduled_task` — 创建新的定时任务
-- `list_scheduled_tasks` — 列出所有任务
-- `get_scheduled_task` — 获取任务详情
-- `update_scheduled_task` — 修改任务
-- `delete_scheduled_task` — 删除任务
-- `toggle_scheduled_task` — 启用/禁用任务
-- `run_scheduled_task_now` — 立即执行
-- `get_task_executions` — 查看执行历史
+
+| 工具 | 描述 |
+|------|------|
+| `create_scheduled_task` | 创建新的定时任务，支持 cron 表达式 |
+| `list_scheduled_tasks` | 列出所有任务及状态、上次运行时间 |
+| `get_scheduled_task` | 获取任务详情和最近执行记录 |
+| `update_scheduled_task` | 修改任务名称、提示词、cron 或通知设置 |
+| `delete_scheduled_task` | 永久删除任务 |
+| `toggle_scheduled_task` | 启用或禁用任务 |
+| `run_scheduled_task_now` | 立即执行任务 |
+| `get_task_executions` | 查看任务执行历史 |
 
 ---
 
