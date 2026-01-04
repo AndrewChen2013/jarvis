@@ -962,7 +962,11 @@ class App {
     this.debugLog(`switchToTerminalMode: using claudeSessionId=${actualSessionId?.substring(0, 8)}`);
 
     // 重新连接 Terminal，使用 Chat 的 session ID 恢复历史
+    // Note: connectTerminal calls showChat by default, so we override it below
     this.connectTerminal(workingDir, actualSessionId, workingDir.split('/').pop());
+
+    // Switch to terminal view (override the showChat call in connectTerminal)
+    this.showView('terminal');
   }
 }
 
