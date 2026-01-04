@@ -23,7 +23,8 @@ class SessionInstance {
   constructor(sessionId, name) {
     this.id = sessionId;
     this.name = name;
-    this.ws = null;
+    this.ws = null;           // Terminal WebSocket
+    this.chatWs = null;       // Chat WebSocket (共享同一 session)
     this.terminal = null;
     this.container = null;
     this.status = 'idle'; // idle | connecting | connected | disconnected
@@ -385,11 +386,18 @@ class SessionManager {
       return;
     }
 
-    // 断开 WebSocket
+    // 断开 Terminal WebSocket
     if (session.ws) {
-      this.log('closeSession: close WebSocket');
+      this.log('closeSession: close Terminal WebSocket');
       session.ws.close();
       session.ws = null;
+    }
+
+    // 断开 Chat WebSocket
+    if (session.chatWs) {
+      this.log('closeSession: close Chat WebSocket');
+      session.chatWs.close();
+      session.chatWs = null;
     }
 
     // 销毁终端

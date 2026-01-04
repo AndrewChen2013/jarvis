@@ -622,6 +622,18 @@ class App {
       this.debugLog('warning: minimize button not found!');
     }
 
+    // Chat 模式切换按钮
+    const chatModeBtn = document.getElementById('chat-mode-btn');
+    if (chatModeBtn) {
+      chatModeBtn.addEventListener('click', () => {
+        this.debugLog('chat mode button clicked');
+        this.debugLog(`currentSession=${this.currentSession}, currentWorkDir=${this.currentWorkDir}`);
+        if (this.currentSession && this.currentWorkDir) {
+          this.showChat(this.currentSession, this.currentWorkDir);
+        }
+      });
+    }
+
     // 初始化上传功能
     if (this.initUpload) {
       this.initUpload();
@@ -909,6 +921,43 @@ class App {
         this.floatingButton.update();
       }
     }
+
+    // Chat view initialization
+    if (viewName === 'chat') {
+      const chatContainer = document.getElementById('chat-view');
+      if (window.ChatMode && chatContainer) {
+        window.ChatMode.init(chatContainer);
+        if (this.chatSessionId && this.chatWorkingDir) {
+          window.ChatMode.connect(this.chatSessionId, this.chatWorkingDir);
+        }
+      }
+    }
+  }
+
+  /**
+   * Show chat view for a session
+   */
+  showChat(sessionId, workingDir) {
+    this.debugLog(`showChat: ${sessionId}, ${workingDir}`);
+    this.chatSessionId = sessionId;
+    this.chatWorkingDir = workingDir;
+    this.showView('chat');
+  }
+
+  /**
+   * Switch from chat to terminal mode
+   */
+  switchToTerminalMode(sessionId, workingDir) {
+    this.debugLog(`switchToTerminalMode: ${sessionId}, ${workingDir}`);
+    // Don't disconnect chat - keep connection alive for quick switching
+
+    // 使用 Chat 模式更新的 claudeSessionId（如果有）
+    const session = this.sessionManager?.getActive();
+    const actualSessionId = session?.claudeSessionId || sessionId;
+    this.debugLog(`switchToTerminalMode: using claudeSessionId=${actualSessionId?.substring(0, 8)}`);
+
+    // 重新连接 Terminal，使用 Chat 的 session ID 恢复历史
+    this.connectTerminal(workingDir, actualSessionId, workingDir.split('/').pop());
   }
 }
 

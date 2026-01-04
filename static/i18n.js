@@ -159,6 +159,19 @@ const i18n = {
       'terminal.send': '发送',
       'terminal.initError': '终端初始化失败: ',
 
+      // Chat 模式
+      'chat.title': '对话',
+      'chat.mode.chat': '对话',
+      'chat.mode.terminal': '终端',
+      'chat.status.connected': '已连接',
+      'chat.status.disconnected': '已断开',
+      'chat.status.connecting': '连接中...',
+      'chat.empty': '开始对话',
+      'chat.input.placeholder': '输入消息...',
+      'chat.tool.calling': '正在调用',
+      'chat.tool.result': '执行结果',
+      'chat.send': '发送',
+
       // 悬浮按钮
       'float.noBackgroundSession': '没有后台会话',
 
@@ -321,6 +334,7 @@ const i18n = {
 
       // 终端工具栏
       'terminal.historyBtn': '历史',
+      'terminal.chatMode': '对话模式',
       'common.loading': '加载中...',
 
       // 远程机器
@@ -652,6 +666,7 @@ const i18n = {
 
       // Terminal Toolbar
       'terminal.historyBtn': 'History',
+      'terminal.chatMode': 'Chat Mode',
       'common.loading': 'Loading...',
 
       // Remote Machines

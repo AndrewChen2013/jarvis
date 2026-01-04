@@ -20,6 +20,18 @@
  */
 const AppWebSocket = {
   /**
+   * 检查是否启用 WebSocket 多路复用
+   * 返回 true 使用单一 WebSocket 连接处理所有会话
+   * 返回 false 使用传统的每会话一个 WebSocket 连接
+   * 可通过 window.app._useMux = false 动态禁用
+   */
+  isUseMux() {
+    // 检查是否被显式禁用
+    if (this._useMux === false) return false;
+    // 默认启用
+    return true;
+  },
+  /**
    * 连接终端（新版 - 直接使用 Claude session）
    * @param {string} workDir - 工作目录
    * @param {string} sessionId - Claude session_id（null 表示新建）
@@ -505,8 +517,15 @@ const AppWebSocket = {
    */
   connectWebSocket(workDir, sessionId, isReconnect = false) {
     this.debugLog(`=== connectWebSocket START ===`);
-    this.debugLog(`connectWebSocket: claudeSid=${sessionId?.substring(0, 8)}, isReconnect=${isReconnect}`);
+    const useMux = this.isUseMux();
+    this.debugLog(`connectWebSocket: claudeSid=${sessionId?.substring(0, 8)}, isReconnect=${isReconnect}, useMux=${useMux}`);
     this.debugLog(`connectWebSocket: currentSession=${this.currentSession?.substring(0, 8)}`);
+
+    // 如果启用多路复用，使用 muxWs
+    if (useMux && window.muxWs) {
+      this.connectWebSocketMux(workDir, sessionId, isReconnect);
+      return;
+    }
 
     // 检查连接锁，避免重复连接
     if (this.isConnecting) {
@@ -546,6 +565,126 @@ const AppWebSocket = {
 
     // 使用通用连接逻辑
     this._doConnect(wsUrl);
+  },
+
+  /**
+   * 使用多路复用 WebSocket 连接终端
+   * @param {string} workDir - 工作目录
+   * @param {string} sessionId - Claude session_id
+   * @param {boolean} isReconnect - 是否是重连
+   */
+  connectWebSocketMux(workDir, sessionId, isReconnect = false) {
+    this.debugLog(`=== connectWebSocketMux START ===`);
+    this.debugLog(`connectWebSocketMux: workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}`);
+
+    if (!isReconnect) {
+      this.reconnectAttempts = 0;
+    }
+
+    // 获取终端大小
+    let rows = 40, cols = 120;
+    if (this.terminal) {
+      const size = this.terminal.getSize();
+      rows = size.rows;
+      cols = Math.max(size.cols - 0, 20);
+      this.debugLog(`connectWebSocketMux: terminal size ${rows}x${cols}`);
+    }
+
+    // 使用当前会话 ID 作为多路复用的 session_id
+    const muxSessionId = this.currentSession;
+    this.debugLog(`connectWebSocketMux: muxSessionId=${muxSessionId?.substring(0, 8)}`);
+
+    // 绑定到 SessionManager 的 session
+    const session = this.sessionManager.sessions.get(muxSessionId);
+
+    // 设置 muxWs token
+    window.muxWs.token = this.token;
+
+    // 连接到终端
+    window.muxWs.connectTerminal(muxSessionId, workDir, {
+      rows,
+      cols,
+      onConnect: (data) => {
+        this.debugLog(`[MuxWS] Terminal connected: ${data.terminal_id?.substring(0, 8)}`);
+
+        // 更新连接状态
+        this.shouldReconnect = true;
+        this.updateConnectStatus('connected', '');
+
+        // 保存 terminal_id 到 session（这是 Claude 的 session_id）
+        if (session) {
+          session.claudeSessionId = data.terminal_id;
+          this.debugLog(`[MuxWS] Updated claudeSessionId: ${data.terminal_id?.substring(0, 8)}`);
+        }
+      },
+      onMessage: (type, data) => {
+        this._handleMuxMessage(muxSessionId, type, data);
+      },
+      onDisconnect: () => {
+        this.debugLog(`[MuxWS] Terminal disconnected: ${muxSessionId?.substring(0, 8)}`);
+
+        // 更新状态
+        if (this.currentSession === muxSessionId) {
+          this.updateConnectStatus('disconnected', '');
+        }
+
+        // 触发重连（如果需要）
+        if (this.shouldReconnect && session?.shouldReconnect !== false) {
+          this.debugLog(`[MuxWS] Will attempt reconnect for ${muxSessionId?.substring(0, 8)}`);
+          this._scheduleReconnect();
+        }
+      }
+    });
+
+    // 保存引用到 session（用于切换时恢复）
+    if (session) {
+      session.usingMux = true;
+    }
+  },
+
+  /**
+   * 处理来自多路复用连接的消息
+   */
+  _handleMuxMessage(sessionId, type, data) {
+    // 只处理当前活跃 session 的消息
+    if (sessionId !== this.currentSession) {
+      this.debugLog(`[MuxWS] Ignore message for inactive session ${sessionId?.substring(0, 8)}`);
+      return;
+    }
+
+    if (type === 'output') {
+      // 终端输出
+      if (this.terminal && data.text) {
+        this.terminal.write(data.text);
+      }
+    } else if (type === 'connected') {
+      // 已处理，但这里可以做额外操作
+    } else if (type === 'error') {
+      this.debugLog(`[MuxWS] Error: ${data.message}`);
+      this.updateConnectStatus('failed', data.message);
+    }
+  },
+
+  /**
+   * 发送终端输入（支持多路复用）
+   */
+  sendTerminalInput(data) {
+    if (this.isUseMux() && window.muxWs && this.currentSession) {
+      window.muxWs.terminalInput(this.currentSession, data);
+    } else {
+      this.sendMessage({ type: 'input', data });
+    }
+  },
+
+  /**
+   * 发送终端 resize（支持多路复用）
+   */
+  sendTerminalResize(rows, cols) {
+    if (this.isUseMux() && window.muxWs && this.currentSession) {
+      window.muxWs.terminalResize(this.currentSession, rows, cols);
+    } else {
+      this.sendMessage({ type: 'resize', rows, cols });
+    }
   },
 
   /**
@@ -861,7 +1000,9 @@ const AppWebSocket = {
               const newSession = this.sessionManager.sessions.get(message.terminal_id);
               if (newSession) {
                 newSession._oldId = sessionId;
-                this.debugLog(`connected: _oldId alias saved`);
+                // 同步更新 claudeSessionId（Chat 模式 --resume 需要）
+                newSession.claudeSessionId = message.terminal_id;
+                this.debugLog(`connected: _oldId alias saved, claudeSessionId updated`);
               } else {
                 this.debugLog(`connected: ERROR - newSession not found after rename!`);
               }
@@ -873,6 +1014,12 @@ const AppWebSocket = {
             }
           } else {
             this.debugLog(`connected: no rename needed`);
+            // 确保 claudeSessionId 已设置（重连时可能已有值）
+            const existingSession = this.sessionManager.sessions.get(sessionId);
+            if (existingSession && !existingSession.claudeSessionId && message.terminal_id) {
+              existingSession.claudeSessionId = message.terminal_id;
+              this.debugLog(`connected: updated claudeSessionId for existing session`);
+            }
           }
 
           // 2 秒后强制 xterm.js 重绘，修复历史渲染问题
@@ -973,6 +1120,27 @@ const AppWebSocket = {
    * 发送消息 - 使用 MessagePack 二进制协议
    */
   sendMessage(data) {
+    // 如果启用多路复用，路由特定消息类型
+    if (this.isUseMux() && window.muxWs && this.currentSession) {
+      if (data.type === 'input') {
+        window.muxWs.terminalInput(this.currentSession, data.data);
+        return;
+      }
+      if (data.type === 'resize') {
+        window.muxWs.terminalResize(this.currentSession, data.rows, data.cols);
+        return;
+      }
+      if (data.type === 'ping') {
+        // ping 通过 muxWs 的 system channel 发送
+        window.muxWs.send('system', null, 'ping', {});
+        return;
+      }
+      // 其他消息类型（如 auth）在 mux 模式下不需要通过 ws 发送
+      this.debugLog(`sendMessage: skip message type=${data.type} in mux mode`);
+      return;
+    }
+
+    // 非多路复用模式：使用传统 WebSocket
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       // 使用 MessagePack 二进制编码
       const packed = MessagePack.encode(data);

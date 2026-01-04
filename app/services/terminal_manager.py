@@ -29,6 +29,7 @@ import struct
 import termios
 import signal
 import pyte
+import uuid
 from typing import Dict, Optional, Callable, List, Any
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -202,8 +203,10 @@ class TerminalManager:
                 cmd = f"{claude_cmd} --session-id {session_id}{skip_perm_flag}"
                 logger.info(f"[Terminal] NEW mode with session-id: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
         else:
-            cmd = f"{claude_cmd}{skip_perm_flag}"
-            logger.info(f"[Terminal] NEW mode (cwd: {working_dir}, root: {is_root})")
+            # 新建 session 时自动生成 UUID，确保前端能获取到真正的 session ID
+            session_id = str(uuid.uuid4())
+            cmd = f"{claude_cmd} --session-id {session_id}{skip_perm_flag}"
+            logger.info(f"[Terminal] NEW mode with auto-generated session-id: {session_id[:8]}... (cwd: {working_dir}, root: {is_root})")
 
         logger.info(f"[Terminal] Executing command: {cmd}")
 

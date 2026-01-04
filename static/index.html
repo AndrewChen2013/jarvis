@@ -28,6 +28,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="/static/styles.css?v=123">
+  <link rel="stylesheet" href="/static/chat.css?v=1">
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
@@ -594,6 +595,9 @@
     </div>
   </div>
 
+  <!-- Chat 视图 -->
+  <div id="chat-view" class="view"></div>
+
   <!-- 终端视图 -->
   <div id="terminal-view" class="view">
     <!-- 工具栏 -->
@@ -609,6 +613,7 @@
         <span id="git-branch" class="git-branch-text"></span>
       </div>
       <div class="toolbar-right">
+        <button id="chat-mode-btn" class="btn-toolbar btn-chat-mode" data-i18n-title="terminal.chatMode" title="Chat Mode">⬡</button>
         <button id="terminal-history-btn" class="btn-toolbar" data-i18n-title="terminal.historyBtn" title="History">▤</button>
         <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel(event)">?</button>
       </div>
@@ -764,11 +769,13 @@
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack@3.0.0-beta2/dist.es5+umd/msgpack.min.js"></script>
+  <script defer src="/static/mux-websocket.js?v=4"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
   <script defer src="/static/terminal.js?v=12"></script>
-  <script defer src="/static/session-manager.js?v=12"></script>
+  <script defer src="/static/chat.js?v=10"></script>
+  <script defer src="/static/session-manager.js?v=13"></script>
   <script defer src="/static/floating-button.js"></script>
   <script defer src="/static/i18n.js?v=34"></script>
   <!-- App 模块 -->
@@ -779,7 +786,7 @@
   <script defer src="/static/swipe.js?v=51"></script>
   <script defer src="/static/files.js?v=20"></script>
   <script defer src="/static/projects.js?v=26"></script>
-  <script defer src="/static/websocket.js?v=60"></script>
+  <script defer src="/static/websocket.js?v=63"></script>
   <script defer src="/static/upload.js?v=5"></script>
   <script defer src="/static/download.js?v=3"></script>
   <script defer src="/static/history.js?v=12"></script>
@@ -789,6 +796,6 @@
   <script defer src="/static/ssh-terminal.js?v=5"></script>
   <script defer src="/static/monitor.js?v=6"></script>
   <script defer src="/static/scheduled-tasks.js?v=9"></script>
-  <script defer src="/static/app.js?v=35"></script>
+  <script defer src="/static/app.js?v=37"></script>
 </body>
 </html>

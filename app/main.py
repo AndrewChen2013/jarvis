@@ -20,7 +20,7 @@ Jarvis - 主应用入口
 - 只提供附加命名能力
 - 简化的终端管理
 """
-from fastapi import FastAPI, WebSocket, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -32,10 +32,11 @@ from app.core.logging import logger
 from app.services.terminal_manager import terminal_manager
 from app.services.ssh_manager import ssh_manager
 from app.services.scheduler import scheduler
-from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor, scheduled_tasks, debug
+from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor, scheduled_tasks, debug, chat
 from app.api.terminal import handle_terminal_websocket
 from app.api.ssh_terminal import handle_ssh_websocket
 from app.api.debug import handle_debug_websocket
+from app.services.mux_connection_manager import mux_manager
 
 
 @asynccontextmanager
@@ -91,6 +92,7 @@ app.include_router(remote_machines.router)
 app.include_router(monitor.router)
 app.include_router(scheduled_tasks.router)
 app.include_router(debug.router)
+app.include_router(chat.router)
 
 # 挂载静态文件
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -190,6 +192,68 @@ async def websocket_debug(
         websocket=websocket,
         client_id=client_id
     )
+
+
+@app.websocket("/ws/mux")
+async def websocket_mux(websocket: WebSocket):
+    """多路复用 WebSocket 端点
+
+    单一 WebSocket 连接支持多个 Terminal/Chat 会话。
+    通过 channel 和 session_id 路由消息。
+
+    Message Format:
+        {
+            "channel": "terminal" | "chat" | "system",
+            "session_id": "uuid" (optional for system),
+            "type": "message type",
+            "data": {...}
+        }
+
+    认证通过发送:
+        {"channel": "system", "type": "auth", "data": {"token": "xxx"}}
+    """
+    import uuid
+    import msgpack
+
+    await websocket.accept()
+
+    client_id = str(uuid.uuid4())
+    client = await mux_manager.connect(client_id, websocket)
+
+    try:
+        while True:
+            message = await websocket.receive()
+
+            if message.get("type") == "websocket.disconnect":
+                break
+
+            # Parse message (supports both MessagePack and JSON)
+            data = None
+            if "bytes" in message:
+                try:
+                    data = msgpack.unpackb(message["bytes"], raw=False)
+                except Exception as e:
+                    logger.error(f"[Mux] Failed to unpack message: {e}")
+                    continue
+            elif "text" in message:
+                try:
+                    import json
+                    data = json.loads(message["text"])
+                except Exception as e:
+                    logger.error(f"[Mux] Failed to parse JSON: {e}")
+                    continue
+            else:
+                continue
+
+            # Route message
+            await mux_manager.route_message(client_id, data)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"[Mux] WebSocket error: {e}", exc_info=True)
+    finally:
+        await mux_manager.disconnect(client_id)
 
 
 # 兼容旧的 WebSocket 端点（逐步废弃）
