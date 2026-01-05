@@ -214,7 +214,7 @@ const AppWebSocket = {
 
       // 直接切换视图，不清空终端容器（已有终端）
       // 根据 session.viewMode 决定显示哪个视图（chat 或 terminal）
-      const viewMode = session.viewMode || 'terminal';
+      const viewMode = session.viewMode || 'chat';
 
       // 如果是 chat 模式，需要先设置 chatSessionId 和 chatWorkingDir
       // 否则 showView('chat') 中的 ChatMode.connect() 不会被调用
@@ -316,6 +316,11 @@ const AppWebSocket = {
    */
   showTerminalView() {
     this.debugLog('showTerminalView start');
+    // 记住当前视图模式为 terminal
+    const activeSession = this.sessionManager?.getActive();
+    if (activeSession) {
+      activeSession.viewMode = 'terminal';
+    }
     this.showView('terminal');
     this.debugLog('showView done');
 

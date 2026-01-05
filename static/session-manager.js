@@ -57,6 +57,9 @@ class SessionInstance {
 
     // Git 分支信息（每个 session 独立）
     this.gitBranch = null;
+
+    // 视图模式（每个 session 独立，默认 chat）
+    this.viewMode = 'chat';
   }
 
   /**

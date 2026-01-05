@@ -951,6 +951,11 @@ class App {
     this.debugLog(`showChat: ${sessionId}, ${workingDir}`);
     this.chatSessionId = sessionId;
     this.chatWorkingDir = workingDir;
+    // 记住当前视图模式为 chat
+    const session = this.sessionManager?.getActive();
+    if (session) {
+      session.viewMode = 'chat';
+    }
     this.showView('chat');
   }
 
@@ -963,6 +968,9 @@ class App {
 
     // 使用 Chat 模式更新的 claudeSessionId（如果有）
     const session = this.sessionManager?.getActive();
+    if (session) {
+      session.viewMode = 'terminal';
+    }
     const actualSessionId = session?.claudeSessionId || sessionId;
     this.debugLog(`switchToTerminalMode: using claudeSessionId=${actualSessionId?.substring(0, 8)}`);
 
