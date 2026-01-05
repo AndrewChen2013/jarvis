@@ -503,83 +503,106 @@ class MuxConnectionManager:
             content_blocks = message.get("content", [])
             # Get timestamp if available
             timestamp = msg.timestamp.isoformat() if hasattr(msg, 'timestamp') else None
-            for block in content_blocks:
-                if not isinstance(block, dict):
-                    # Handle string content directly
-                    if isinstance(block, str):
+
+            # Handle string content directly (not a list)
+            if isinstance(content_blocks, str):
+                await self.send_to_client(client_id, {
+                    "channel": "chat",
+                    "session_id": session_id,
+                    "type": "assistant",
+                    "data": {"content": content_blocks, "timestamp": timestamp}
+                })
+            else:
+                for block in content_blocks:
+                    if not isinstance(block, dict):
+                        # Handle string content directly
+                        if isinstance(block, str):
+                            await self.send_to_client(client_id, {
+                                "channel": "chat",
+                                "session_id": session_id,
+                                "type": "assistant",
+                                "data": {"content": block, "timestamp": timestamp}
+                            })
+                        continue
+                    block_type = block.get("type")
+                    if block_type == "text":
                         await self.send_to_client(client_id, {
                             "channel": "chat",
                             "session_id": session_id,
                             "type": "assistant",
-                            "data": {"content": block, "timestamp": timestamp}
+                            "data": {"content": block.get("text", ""), "timestamp": timestamp}
                         })
-                    continue
-                block_type = block.get("type")
-                if block_type == "text":
-                    await self.send_to_client(client_id, {
-                        "channel": "chat",
-                        "session_id": session_id,
-                        "type": "assistant",
-                        "data": {"content": block.get("text", ""), "timestamp": timestamp}
-                    })
-                elif block_type == "tool_use":
-                    await self.send_to_client(client_id, {
-                        "channel": "chat",
-                        "session_id": session_id,
-                        "type": "tool_call",
-                        "data": {
-                            "tool_name": block.get("name"),
-                            "tool_id": block.get("id"),
-                            "input": block.get("input", {}),
-                            "timestamp": timestamp
-                        }
-                    })
+                    elif block_type == "tool_use":
+                        await self.send_to_client(client_id, {
+                            "channel": "chat",
+                            "session_id": session_id,
+                            "type": "tool_call",
+                            "data": {
+                                "tool_name": block.get("name"),
+                                "tool_id": block.get("id"),
+                                "input": block.get("input", {}),
+                                "timestamp": timestamp
+                            }
+                        })
 
         elif msg_type == "user":
             message = content.get("message", {})
             content_blocks = message.get("content", [])
             # Get timestamp if available
             timestamp = msg.timestamp.isoformat() if hasattr(msg, 'timestamp') else None
-            for block in content_blocks:
-                if not isinstance(block, dict):
-                    # Handle string content (user's text message)
-                    if isinstance(block, str):
+
+            # Handle string content directly (not a list)
+            if isinstance(content_blocks, str):
+                await self.send_to_client(client_id, {
+                    "channel": "chat",
+                    "session_id": session_id,
+                    "type": "user",
+                    "data": {
+                        "content": content_blocks,
+                        "timestamp": timestamp
+                    }
+                })
+            else:
+                for block in content_blocks:
+                    if not isinstance(block, dict):
+                        # Handle string content (user's text message)
+                        if isinstance(block, str):
+                            await self.send_to_client(client_id, {
+                                "channel": "chat",
+                                "session_id": session_id,
+                                "type": "user",
+                                "data": {
+                                    "content": block,
+                                    "timestamp": timestamp
+                                }
+                            })
+                        continue
+                    block_type = block.get("type")
+                    if block_type == "text":
+                        # User's text message
                         await self.send_to_client(client_id, {
                             "channel": "chat",
                             "session_id": session_id,
                             "type": "user",
                             "data": {
-                                "content": block,
+                                "content": block.get("text", ""),
                                 "timestamp": timestamp
                             }
                         })
-                    continue
-                block_type = block.get("type")
-                if block_type == "text":
-                    # User's text message
-                    await self.send_to_client(client_id, {
-                        "channel": "chat",
-                        "session_id": session_id,
-                        "type": "user",
-                        "data": {
-                            "content": block.get("text", ""),
-                            "timestamp": timestamp
-                        }
-                    })
-                elif block_type == "tool_result":
-                    tool_result = content.get("tool_use_result", {})
-                    await self.send_to_client(client_id, {
-                        "channel": "chat",
-                        "session_id": session_id,
-                        "type": "tool_result",
-                        "data": {
-                            "tool_id": block.get("tool_use_id"),
-                            "content": block.get("content", ""),
-                            "stdout": tool_result.get("stdout", ""),
-                            "stderr": tool_result.get("stderr", ""),
-                            "is_error": block.get("is_error", False)
-                        }
-                    })
+                    elif block_type == "tool_result":
+                        tool_result = content.get("tool_use_result", {})
+                        await self.send_to_client(client_id, {
+                            "channel": "chat",
+                            "session_id": session_id,
+                            "type": "tool_result",
+                            "data": {
+                                "tool_id": block.get("tool_use_id"),
+                                "content": block.get("content", ""),
+                                "stdout": tool_result.get("stdout", ""),
+                                "stderr": tool_result.get("stderr", ""),
+                                "is_error": block.get("is_error", False)
+                            }
+                        })
 
         elif msg_type == "result":
             await self.send_to_client(client_id, {

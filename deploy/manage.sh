@@ -15,6 +15,9 @@
 
 set -e
 
+# Configuration
+PORT=${JARVIS_PORT:-38010}
+
 # Check if running as root (warn but don't block)
 if [ "$EUID" -eq 0 ]; then
     echo ""
@@ -108,7 +111,7 @@ check_status() {
     # Show access URL
     if [ -n "$PID" ]; then
         echo ""
-        print_info "Access URL: http://localhost:8000"
+        print_info "Access URL: http://localhost:$PORT"
     fi
 }
 
@@ -239,14 +242,14 @@ start_service() {
     python scripts/register_mcp.py 2>/dev/null || true
 
     # Start in background
-    nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > logs/backend.log 2>&1 &
+    nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT > logs/backend.log 2>&1 &
 
     sleep 2
 
     PID=$(get_service_pid)
     if [ -n "$PID" ]; then
         print_success "Service started (PID: $PID)"
-        print_info "Access URL: http://localhost:8000"
+        print_info "Access URL: http://localhost:$PORT"
         print_info "Log file: $PROJECT_ROOT/logs/backend.log"
     else
         print_error "Failed to start, check logs"
@@ -309,7 +312,7 @@ enable_autostart() {
         <string>--host</string>
         <string>0.0.0.0</string>
         <string>--port</string>
-        <string>8000</string>
+        <string>${PORT}</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -370,7 +373,7 @@ Group=${CURRENT_USER}
 WorkingDirectory=${PROJECT_ROOT}
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=${PROJECT_ROOT}/.env
-ExecStart=${PROJECT_ROOT}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=${PROJECT_ROOT}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
 Restart=always
 RestartSec=10
 StandardOutput=journal
