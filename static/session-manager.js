@@ -50,9 +50,10 @@ class SessionInstance {
     this.claudeSessionId = null;
 
     // 重连状态（每个 session 独立）
-    this.shouldReconnect = false;
-    this.reconnectAttempts = 0;
-    this.reconnectTimeout = null;
+    // 用于 websocket.js 中的 attemptReconnectForSession()
+    this.shouldReconnect = false;   // 是否应该自动重连
+    this.reconnectAttempts = 0;     // 当前重连尝试次数
+    this.reconnectTimeout = null;   // 重连定时器
 
     // Context 数据缓存（每个 session 独立）
     this.contextData = null;

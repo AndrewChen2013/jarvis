@@ -35,10 +35,15 @@ class App {
     this.selectedWorkDir = null; // 选中的工作目录
     this.currentBrowsePath = null; // 当前浏览路径
     this.parentPath = null; // 父目录路径
-    this.reconnectAttempts = 0; // 重连尝试次数
-    this.maxReconnectAttempts = 5; // 最大重连次数
-    this.reconnectTimeout = null; // 重连定时器
-    this.shouldReconnect = false; // 是否应该重连
+    // === 重连相关属性 ===
+    // 注意：在 MuxWebSocket 模式下，重连由三层处理：
+    // 1. MuxWebSocket 层：WebSocket 连接级别的重连
+    // 2. Session 层：session.reconnectAttempts, session.reconnectTimeout
+    // 3. App 层（下面这些）：legacy 模式和常量
+    this.reconnectAttempts = 0; // [legacy] 仅 legacy 模式使用
+    this.maxReconnectAttempts = 5; // [常量] session 重连的最大次数
+    this.reconnectTimeout = null; // [legacy] 仅 legacy 模式使用
+    this.shouldReconnect = false; // [active] app 级别重连标志
     this.isConnecting = false; // 连接锁，防止并发连接
     this.outputQueue = []; // 输出消息队列（终端未就绪时缓存）
     this.currentSessionName = ''; // 当前会话名称

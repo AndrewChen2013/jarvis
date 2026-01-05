@@ -590,11 +590,10 @@ const AppWebSocket = {
    */
   connectWebSocketMux(workDir, sessionId, isReconnect = false) {
     this.debugLog(`=== connectWebSocketMux START ===`);
-    this.debugLog(`connectWebSocketMux: workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}`);
+    this.debugLog(`connectWebSocketMux: workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}, isReconnect=${isReconnect}`);
 
-    if (!isReconnect) {
-      this.reconnectAttempts = 0;
-    }
+    // 注意：mux 模式下不使用 app 级别的 reconnectAttempts
+    // 重连逻辑由 MuxWebSocket（连接级别）和 session.reconnectAttempts（session 级别）处理
 
     // 获取终端大小
     let rows = 40, cols = 120;
