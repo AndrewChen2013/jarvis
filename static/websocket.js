@@ -215,6 +215,16 @@ const AppWebSocket = {
       // 直接切换视图，不清空终端容器（已有终端）
       // 根据 session.viewMode 决定显示哪个视图（chat 或 terminal）
       const viewMode = session.viewMode || 'terminal';
+
+      // 如果是 chat 模式，需要先设置 chatSessionId 和 chatWorkingDir
+      // 否则 showView('chat') 中的 ChatMode.connect() 不会被调用
+      // 使用 sessionId（SessionManager 的键）而不是 claudeSessionId
+      if (viewMode === 'chat') {
+        this.chatSessionId = sessionId;
+        this.chatWorkingDir = session.workDir;
+        this.debugLog(`connectSession: setting chat params - chatSessionId=${this.chatSessionId?.substring(0, 8)}, chatWorkingDir=${this.chatWorkingDir}`);
+      }
+
       this.showView(viewMode);
 
       // 更新标题

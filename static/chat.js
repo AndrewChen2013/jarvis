@@ -33,6 +33,18 @@ const ChatMode = {
   },
 
   /**
+   * Clear all messages (used when switching sessions)
+   */
+  clearMessages() {
+    this.messages = [];
+    if (this.messagesEl) {
+      this.messagesEl.innerHTML = '';
+    }
+    this.isStreaming = false;
+    this.streamingMessageId = null;
+  },
+
+  /**
    * Initialize Chat mode
    */
   init(container) {
@@ -69,7 +81,7 @@ const ChatMode = {
                 <path d="M6 9l6 6 6-6"/>
               </svg>
             </button>
-            <span class="chat-title" id="chatTitle">${t('chat.title', 'Chat')}</span>
+            <span class="chat-title" id="chatTitle" style="cursor: pointer;" title="${t('debug.title', 'Debug Log')}">${t('chat.title', 'Chat')}</span>
           </div>
           <div class="chat-header-right">
             <button class="chat-terminal-btn" id="chatTerminalBtn" title="${t('chat.mode.terminal', 'Terminal')}">
@@ -153,6 +165,16 @@ const ChatMode = {
       });
     }
 
+    // Chat title - click to open debug panel
+    const chatTitle = document.getElementById('chatTitle');
+    if (chatTitle) {
+      chatTitle.addEventListener('click', () => {
+        if (window.app && window.app.toggleDebugPanel) {
+          window.app.toggleDebugPanel();
+        }
+      });
+    }
+
     // Input auto-resize
     this.inputEl.addEventListener('input', () => {
       this.inputEl.style.height = 'auto';
@@ -180,6 +202,12 @@ const ChatMode = {
    * 当 app.useMux 启用时，使用多路复用 WebSocket
    */
   connect(sessionId, workingDir) {
+    // 检查是否切换到不同的 session，如果是则清空消息
+    if (this.sessionId && this.sessionId !== sessionId) {
+      this.log(`Switching from session ${this.sessionId?.substring(0, 8)} to ${sessionId?.substring(0, 8)}, clearing messages`);
+      this.clearMessages();
+    }
+
     this.sessionId = sessionId;
     this.workingDir = workingDir;
 
