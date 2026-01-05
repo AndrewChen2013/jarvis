@@ -674,9 +674,10 @@ const AppWebSocket = {
         }
 
         // 触发重连（如果需要）
+        // BUG-012 FIX: Use attemptReconnectForSession instead of undefined _scheduleReconnect
         if (this.shouldReconnect && currentSession?.shouldReconnect !== false) {
           this.debugLog(`[MuxWS] Will attempt reconnect for ${currentSid?.substring(0, 8)}`);
-          this._scheduleReconnect();
+          this.attemptReconnectForSession(currentSession);
         }
       }
     });
@@ -1467,7 +1468,8 @@ const AppWebSocket = {
         }
       },
       onMessage: (type, data) => {
-        this.handleMuxMessage(type, data, sessionId);
+        // BUG-011 FIX: Use correct method name and parameter order
+        this._handleMuxMessage(sessionId, type, data);
       },
       onDisconnect: () => {
         this.debugLog(`reconnectSession: terminal disconnected for ${sessionId.substring(0, 8)}`);

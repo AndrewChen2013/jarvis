@@ -382,8 +382,17 @@ class App {
 
       if (pullDistance >= this.pullRefresh.reloadThreshold && !refreshing) {
         // 大幅下拉 - 刷新整个页面
+        // 先重置 UI 位置，避免视觉上"卡住"
+        pullRefresh.style.transform = '';
+        content.style.transform = '';
+        pullRefresh.classList.remove('pulling', 'reload-mode');
         window._isPageReloading = true;
-        location.reload();
+        // 等待浏览器渲染完成后再 reload，避免视觉卡顿
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            location.reload();
+          });
+        });
       } else if (pullDistance >= this.pullRefresh.dataThreshold && !refreshing) {
         // 常规下拉 - 只刷新数据
         refreshing = true;
@@ -711,6 +720,8 @@ class App {
         // token 有效，显示会话列表
         // 注意：showView('sessions') 内部会调用 loadSessions() 和 loadUsageSummary()
         this.showView('sessions');
+        // 预连接 WebSocket（后台静默进行）
+        this._preconnectWebSocket();
         // 并发加载其他数据
         Promise.all([
           this.loadSystemInfo(),
@@ -745,6 +756,8 @@ class App {
       // 网络错误，尝试使用缓存的 token
       // 注意：showView('sessions') 内部会调用 loadSessions()，不要重复调用
       this.showView('sessions');
+      // 预连接 WebSocket（后台静默进行）
+      this._preconnectWebSocket();
       // 恢复保存的页面位置
       requestAnimationFrame(() => {
         const container = document.getElementById('swipe-container');
@@ -797,6 +810,8 @@ class App {
         // 显示会话列表
         // 注意：showView('sessions') 内部会调用 loadSessions() 和 loadUsageSummary()
         this.showView('sessions');
+        // 预连接 WebSocket（后台静默进行）
+        this._preconnectWebSocket();
         // 并发加载其他数据
         Promise.all([
           this.loadSystemInfo(),
@@ -841,6 +856,8 @@ class App {
     // 关闭所有 session
     this.sessionManager.closeAll();
     this.disconnect();
+    // 断开 WebSocket 连接
+    this._disconnectWebSocket();
     this.showView('login');
   }
 
@@ -850,6 +867,32 @@ class App {
   clearAuth() {
     this.token = '';
     localStorage.removeItem('auth_token');
+  }
+
+  /**
+   * 预连接 WebSocket（后台静默进行）
+   * 在认证成功后调用，提前建立连接，减少用户首次操作延迟
+   */
+  _preconnectWebSocket() {
+    if (window.muxWs && window.muxWs.state === 'disconnected') {
+      this.debugLog('[Preconnect] Starting WebSocket preconnect...');
+      // 异步连接，不阻塞 UI
+      setTimeout(() => {
+        if (window.muxWs.state === 'disconnected') {
+          window.muxWs.connect();
+        }
+      }, 100);
+    }
+  }
+
+  /**
+   * 断开 WebSocket 连接
+   */
+  _disconnectWebSocket() {
+    if (window.muxWs) {
+      this.debugLog('[Preconnect] Disconnecting WebSocket...');
+      window.muxWs.disconnect();
+    }
   }
 
   /**

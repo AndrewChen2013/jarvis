@@ -18,7 +18,15 @@ WebSocket Multiplexing Connection Manager
 Provides a single WebSocket connection that can handle multiple Terminal and Chat
 sessions, reducing connection overhead and improving mobile compatibility.
 
-Message Format:
+Optimized Message Format (v2):
+    {
+        "c": 0|1|2,      # channel: 0=terminal, 1=chat, 2=system
+        "s": "uuid",     # session_id (omitted for system channel)
+        "t": 0-15,       # type code (see MSG_TYPES below)
+        "d": {...}       # data payload
+    }
+
+Legacy Format (v1, still supported for parsing):
     {
         "channel": "terminal" | "chat",
         "session_id": "uuid",
@@ -41,6 +49,143 @@ from app.core.logging import logger
 from app.core.config import settings
 from app.services.terminal_manager import terminal_manager, Terminal
 from app.services.chat_session_manager import chat_manager, ChatMessage
+
+
+# ============================================================================
+# Optimized Message Protocol Constants (v2)
+# ============================================================================
+
+# Channel codes (c field)
+CH_TERMINAL = 0
+CH_CHAT = 1
+CH_SYSTEM = 2
+
+# Channel name to code mapping
+CHANNEL_CODES = {
+    "terminal": CH_TERMINAL,
+    "chat": CH_CHAT,
+    "system": CH_SYSTEM,
+}
+
+# Message type codes (t field) - grouped by channel
+# Terminal types (0-9)
+MT_TERM_CONNECTED = 0
+MT_TERM_OUTPUT = 1
+MT_TERM_ERROR = 2
+MT_TERM_CLOSED = 3
+
+# Chat types (0-19)
+MT_CHAT_READY = 0
+MT_CHAT_STREAM = 1
+MT_CHAT_ASSISTANT = 2
+MT_CHAT_USER = 3
+MT_CHAT_TOOL_CALL = 4
+MT_CHAT_TOOL_RESULT = 5
+MT_CHAT_THINKING_START = 6
+MT_CHAT_THINKING_DELTA = 7
+MT_CHAT_THINKING_END = 8
+MT_CHAT_THINKING = 9
+MT_CHAT_SYSTEM = 10
+MT_CHAT_RESULT = 11
+MT_CHAT_ERROR = 12
+MT_CHAT_USER_ACK = 13
+MT_CHAT_HISTORY_END = 14
+
+# System types (0-9)
+MT_SYS_AUTH_SUCCESS = 0
+MT_SYS_AUTH_FAILED = 1
+MT_SYS_PONG = 2
+
+# Message type name to code mapping (per channel)
+MSG_TYPE_CODES = {
+    "terminal": {
+        "connected": MT_TERM_CONNECTED,
+        "output": MT_TERM_OUTPUT,
+        "error": MT_TERM_ERROR,
+        "closed": MT_TERM_CLOSED,
+    },
+    "chat": {
+        "ready": MT_CHAT_READY,
+        "stream": MT_CHAT_STREAM,
+        "assistant": MT_CHAT_ASSISTANT,
+        "user": MT_CHAT_USER,
+        "tool_call": MT_CHAT_TOOL_CALL,
+        "tool_result": MT_CHAT_TOOL_RESULT,
+        "thinking_start": MT_CHAT_THINKING_START,
+        "thinking_delta": MT_CHAT_THINKING_DELTA,
+        "thinking_end": MT_CHAT_THINKING_END,
+        "thinking": MT_CHAT_THINKING,
+        "system": MT_CHAT_SYSTEM,
+        "result": MT_CHAT_RESULT,
+        "error": MT_CHAT_ERROR,
+        "user_ack": MT_CHAT_USER_ACK,
+        "history_end": MT_CHAT_HISTORY_END,
+    },
+    "system": {
+        "auth_success": MT_SYS_AUTH_SUCCESS,
+        "auth_failed": MT_SYS_AUTH_FAILED,
+        "pong": MT_SYS_PONG,
+    },
+}
+
+
+# Reverse mappings (code to name) for parsing incoming messages
+CODE_TO_CHANNEL = {v: k for k, v in CHANNEL_CODES.items()}
+
+# Reverse type mappings (code to name) for parsing
+CODE_TO_MSG_TYPE = {
+    "terminal": {v: k for k, v in MSG_TYPE_CODES["terminal"].items()},
+    "chat": {v: k for k, v in MSG_TYPE_CODES["chat"].items()},
+    "system": {v: k for k, v in MSG_TYPE_CODES["system"].items()},
+}
+
+
+def _unpack_message(message: dict) -> tuple:
+    """Unpack a message, supporting both old and new formats.
+
+    Returns: (channel, session_id, msg_type, data)
+    """
+    # Check if it's new format (has 'c' key) or old format (has 'channel' key)
+    if "c" in message:
+        # New optimized format
+        ch_code = message.get("c", CH_SYSTEM)
+        channel = CODE_TO_CHANNEL.get(ch_code, "system")
+        session_id = message.get("s")
+        t_code = message.get("t", "")
+        # Convert type code to name if it's numeric
+        if isinstance(t_code, int):
+            type_map = CODE_TO_MSG_TYPE.get(channel, {})
+            msg_type = type_map.get(t_code, str(t_code))
+        else:
+            msg_type = t_code
+        data = message.get("d", {})
+    else:
+        # Old format
+        channel = message.get("channel", "")
+        session_id = message.get("session_id")
+        msg_type = message.get("type", "")
+        data = message.get("data", {})
+
+    return channel, session_id, msg_type, data
+
+
+def _pack_message(channel: str, session_id: Optional[str], msg_type: str, data: Any) -> dict:
+    """Pack a message using optimized format (v2)."""
+    ch_code = CHANNEL_CODES.get(channel, CH_SYSTEM)
+    type_codes = MSG_TYPE_CODES.get(channel, {})
+    t_code = type_codes.get(msg_type, msg_type)  # Fallback to string if not mapped
+
+    msg = {
+        "c": ch_code,
+        "t": t_code,
+        "d": data,
+    }
+
+    # Only include session_id for non-system channels
+    if session_id and channel != "system":
+        msg["s"] = session_id
+
+    return msg
 
 
 @dataclass
@@ -145,13 +290,30 @@ class MuxConnectionManager:
             logger.debug(f"[Mux] Client {client_id[:8]} unsubscribed from {session_id[:8]}")
 
     async def send_to_client(self, client_id: str, message: dict):
-        """Send a message to a specific client."""
+        """Send a message to a specific client using optimized format (v2).
+
+        Accepts either old format (channel/session_id/type/data) or new format (c/s/t/d).
+        Automatically converts to optimized format before sending.
+        """
         client = self.clients.get(client_id)
         if not client:
             return
 
         try:
-            packed = msgpack.packb(message, use_bin_type=True)
+            # Convert old format to new format if needed
+            if "channel" in message:
+                # Old format - convert to optimized format
+                optimized = _pack_message(
+                    channel=message.get("channel", "system"),
+                    session_id=message.get("session_id"),
+                    msg_type=message.get("type", ""),
+                    data=message.get("data", {})
+                )
+            else:
+                # Already in new format
+                optimized = message
+
+            packed = msgpack.packb(optimized, use_bin_type=True)
             await client.websocket.send_bytes(packed)
         except Exception as e:
             logger.error(f"[Mux] Failed to send to {client_id[:8]}: {e}")
@@ -171,11 +333,13 @@ class MuxConnectionManager:
             await self.send_to_client(client_id, message)
 
     async def route_message(self, client_id: str, message: dict):
-        """Route an incoming message to the appropriate handler."""
-        channel = message.get("channel")
-        session_id = message.get("session_id")
-        msg_type = message.get("type")
-        data = message.get("data", {})
+        """Route an incoming message to the appropriate handler.
+
+        Supports both old format (channel/session_id/type/data) and
+        optimized format (c/s/t/d).
+        """
+        # Unpack message (handles both formats)
+        channel, session_id, msg_type, data = _unpack_message(message)
 
         if not channel or not msg_type:
             logger.warning(f"[Mux] Invalid message from {client_id[:8]}: missing channel or type")
@@ -382,12 +546,34 @@ class MuxConnectionManager:
             # Check if session exists or create new one
             session = chat_manager.get_session(session_id)
             if not session:
-                await chat_manager.create_session(
-                    working_dir=working_dir,
-                    session_id=session_id,
-                    resume_session_id=resume
-                )
-                session = chat_manager.get_session(session_id)
+                try:
+                    await chat_manager.create_session(
+                        working_dir=working_dir,
+                        session_id=session_id,
+                        resume_session_id=resume
+                    )
+                    session = chat_manager.get_session(session_id)
+                except FileNotFoundError as e:
+                    # Working directory doesn't exist - permanent error, don't retry
+                    await self.send_to_client(client_id, {
+                        "channel": "chat",
+                        "session_id": original_session_id or session_id,
+                        "type": "error",
+                        "data": {
+                            "message": str(e),
+                            "permanent": True  # Tell frontend not to retry
+                        }
+                    })
+                    return
+                except Exception as e:
+                    # Other errors - may be temporary
+                    await self.send_to_client(client_id, {
+                        "channel": "chat",
+                        "session_id": original_session_id or session_id,
+                        "type": "error",
+                        "data": {"message": f"Failed to start session: {e}"}
+                    })
+                    return
 
             # Subscribe to this chat session
             await self.subscribe(client_id, session_id, "chat")
@@ -460,6 +646,33 @@ class MuxConnectionManager:
             async for msg in session.send_message(content):
                 await self._forward_chat_message(client_id, session_id, msg)
 
+        elif msg_type == "load_more_history":
+            # Load more history (pagination)
+            session = chat_manager.get_session(session_id)
+            if not session:
+                return
+
+            before_index = data.get("before_index", 0)
+            limit = min(data.get("limit", 50), 100)  # Cap at 100
+
+            messages, has_more = session.get_history_page(before_index, limit)
+
+            if messages:
+                for msg in messages:
+                    await self._forward_chat_message(client_id, session_id, msg)
+
+            # Send history_page_end marker
+            await self.send_to_client(client_id, {
+                "channel": "chat",
+                "session_id": session_id,
+                "type": "history_page_end",
+                "data": {
+                    "count": len(messages),
+                    "has_more": has_more,
+                    "oldest_index": before_index - len(messages) if messages else before_index
+                }
+            })
+
         elif msg_type == "close":
             await self.unsubscribe(client_id, session_id)
             await chat_manager.close_session(session_id)
@@ -488,15 +701,47 @@ class MuxConnectionManager:
         elif msg_type == "stream_event":
             event = content.get("event", {})
             event_type = event.get("type")
-            if event_type == "content_block_delta":
+
+            # Handle content block start (for thinking blocks)
+            if event_type == "content_block_start":
+                block = event.get("content_block", {})
+                if block.get("type") == "thinking":
+                    await self.send_to_client(client_id, {
+                        "channel": "chat",
+                        "session_id": session_id,
+                        "type": "thinking_start",
+                        "data": {}
+                    })
+
+            # Handle content block delta (streaming text or thinking)
+            elif event_type == "content_block_delta":
                 delta = event.get("delta", {})
-                if delta.get("type") == "text_delta":
+                delta_type = delta.get("type")
+
+                if delta_type == "text_delta":
                     await self.send_to_client(client_id, {
                         "channel": "chat",
                         "session_id": session_id,
                         "type": "stream",
                         "data": {"text": delta.get("text", "")}
                     })
+                elif delta_type == "thinking_delta":
+                    await self.send_to_client(client_id, {
+                        "channel": "chat",
+                        "session_id": session_id,
+                        "type": "thinking_delta",
+                        "data": {"text": delta.get("thinking", "")}
+                    })
+
+            # Handle content block stop (for thinking blocks)
+            elif event_type == "content_block_stop":
+                # Send thinking_end to finalize thinking block
+                await self.send_to_client(client_id, {
+                    "channel": "chat",
+                    "session_id": session_id,
+                    "type": "thinking_end",
+                    "data": {}
+                })
 
         elif msg_type == "assistant":
             message = content.get("message", {})
@@ -541,6 +786,17 @@ class MuxConnectionManager:
                                 "tool_name": block.get("name"),
                                 "tool_id": block.get("id"),
                                 "input": block.get("input", {}),
+                                "timestamp": timestamp
+                            }
+                        })
+                    elif block_type == "thinking":
+                        # Complete thinking block
+                        await self.send_to_client(client_id, {
+                            "channel": "chat",
+                            "session_id": session_id,
+                            "type": "thinking",
+                            "data": {
+                                "content": block.get("thinking", ""),
                                 "timestamp": timestamp
                             }
                         })

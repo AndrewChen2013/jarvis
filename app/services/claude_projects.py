@@ -66,6 +66,8 @@ class ClaudeProjectsScanner:
     def __init__(self, claude_dir: str = None):
         self.claude_dir = claude_dir or os.path.expanduser("~/.claude")
         self.projects_dir = os.path.join(self.claude_dir, "projects")
+        # 缓存 path_hash -> working_dir 映射，避免重复的递归路径查找
+        self._path_cache: Dict[str, str] = {}
 
     def _path_to_hash(self, working_dir: str) -> str:
         """将工作目录转换为 Claude 的路径 hash
@@ -84,16 +86,25 @@ class ClaudeProjectsScanner:
         注意：Claude 的 hash 方式是把 /、空格、~ 都替换为 -，这是有损转换。
 
         我们的策略：
-        1. 先尝试简单替换
-        2. 尝试已知的特殊路径模式（如 iCloud）
-        3. 如果路径不存在，尝试智能修复
+        1. 先查缓存
+        2. 尝试简单替换
+        3. 尝试已知的特殊路径模式（如 iCloud）
+        4. 如果路径不存在，尝试智能修复
+        5. 结果写入缓存
         """
+        # 查缓存
+        if path_hash in self._path_cache:
+            return self._path_cache[path_hash]
+
         if not path_hash.startswith("-"):
-            return path_hash.replace("-", "/")
+            result = path_hash.replace("-", "/")
+            self._path_cache[path_hash] = result
+            return result
 
         # 简单替换
         simple_path = "/" + path_hash[1:].replace("-", "/")
         if os.path.exists(simple_path):
+            self._path_cache[path_hash] = simple_path
             return simple_path
 
         # 尝试已知的特殊路径模式
@@ -103,6 +114,7 @@ class ClaudeProjectsScanner:
         special_path = special_path.replace("/com/apple/", "/com~apple~")
         if os.path.exists(special_path):
             logger.info(f"[Projects] Fixed iCloud path: {path_hash} -> {special_path}")
+            self._path_cache[path_hash] = special_path
             return special_path
 
         # 智能修复：尝试不同的 - 和 / 组合
@@ -152,10 +164,12 @@ class ClaudeProjectsScanner:
             result = try_combinations(parts, 0, "")
             if result:
                 logger.info(f"[Projects] Fixed path: {path_hash} -> {result}")
+                self._path_cache[path_hash] = result
                 return result
 
-        # 都失败了，返回简单替换的结果
+        # 都失败了，返回简单替换的结果（也缓存，避免重复尝试）
         logger.warning(f"[Projects] Cannot resolve path for hash: {path_hash}, using fallback: {simple_path}")
+        self._path_cache[path_hash] = simple_path
         return simple_path
 
     def list_projects(self) -> List[ClaudeProject]:

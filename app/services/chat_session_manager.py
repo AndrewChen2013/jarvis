@@ -83,7 +83,8 @@ class ChatSession:
         self._is_running = False
         self._is_busy = False
         self._reader_task: Optional[asyncio.Task] = None
-        self._message_queue: asyncio.Queue[ChatMessage] = asyncio.Queue()
+        # BUG-014 FIX: Add maxsize to prevent unbounded queue growth
+        self._message_queue: asyncio.Queue[ChatMessage] = asyncio.Queue(maxsize=1000)
         self._claude_session_id: Optional[str] = None  # Claude's internal session ID
         self._message_history: List[ChatMessage] = []  # Store message history for clients
 
@@ -174,7 +175,11 @@ class ChatSession:
                         self.on_message(msg)
 
                     # Queue for consumers
-                    await self._message_queue.put(msg)
+                    # BUG-014 FIX: Use put_nowait to avoid blocking, log warning if full
+                    try:
+                        self._message_queue.put_nowait(msg)
+                    except asyncio.QueueFull:
+                        logger.warning(f"Message queue full, dropping message: {msg.type}")
 
                     # Mark not busy when result received
                     if data.get("type") == "result":
@@ -218,9 +223,15 @@ class ChatSession:
         }
 
         # Send to Claude
-        line = json.dumps(input_msg) + "\n"
-        self._process.stdin.write(line.encode('utf-8'))
-        await self._process.stdin.drain()
+        # BUG-013 FIX: Use try/except to ensure _is_busy is reset on error
+        try:
+            line = json.dumps(input_msg) + "\n"
+            self._process.stdin.write(line.encode('utf-8'))
+            await self._process.stdin.drain()
+        except Exception as e:
+            self._is_busy = False
+            logger.error(f"Failed to send message: {e}")
+            raise RuntimeError(f"Failed to send message: {e}")
 
         # Yield messages until result
         while True:
@@ -278,6 +289,29 @@ class ChatSession:
     def get_history(self) -> List[ChatMessage]:
         """Get message history for this session."""
         return self._message_history.copy()
+
+    def get_history_page(self, before_index: int, limit: int = 50) -> tuple[List[ChatMessage], bool]:
+        """
+        Get a page of history before a given index.
+
+        Args:
+            before_index: Get messages before this index (0 = oldest)
+            limit: Maximum number of messages to return
+
+        Returns:
+            (messages, has_more): List of messages and whether there are more older messages
+        """
+        if before_index <= 0:
+            return [], False
+
+        start_index = max(0, before_index - limit)
+        messages = self._message_history[start_index:before_index]
+        has_more = start_index > 0
+        return messages, has_more
+
+    def get_history_count(self) -> int:
+        """Get total number of messages in history."""
+        return len(self._message_history)
 
     def _load_history_from_file(self) -> List[ChatMessage]:
         """
@@ -377,6 +411,10 @@ class ChatSessionManager:
         async with self._lock:
             if session_id in self._sessions:
                 raise ValueError(f"Session {session_id} already exists")
+
+            # Check if working directory exists
+            if not os.path.exists(working_dir):
+                raise FileNotFoundError(f"Working directory does not exist: {working_dir}")
 
             session = ChatSession(
                 session_id=session_id,

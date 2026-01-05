@@ -20,14 +20,194 @@
  * Provides a single WebSocket connection that handles multiple Terminal and Chat
  * sessions through message routing.
  *
- * Message Format:
+ * Optimized Message Format (v2):
  *   {
- *     channel: "terminal" | "chat" | "system",
- *     session_id: "uuid",
- *     type: "message type",
- *     data: {...}
+ *     c: 0|1|2,      // channel: 0=terminal, 1=chat, 2=system
+ *     s: "uuid",     // session_id (omitted for system)
+ *     t: 0-15,       // type code
+ *     d: {...}       // data
  *   }
  */
+
+// ============================================================================
+// Optimized Message Protocol Constants (v2) - Must match backend
+// ============================================================================
+
+// Channel codes
+const CH_TERMINAL = 0;
+const CH_CHAT = 1;
+const CH_SYSTEM = 2;
+
+const CHANNEL_CODES = {
+  terminal: CH_TERMINAL,
+  chat: CH_CHAT,
+  system: CH_SYSTEM
+};
+
+const CODE_TO_CHANNEL = {
+  [CH_TERMINAL]: 'terminal',
+  [CH_CHAT]: 'chat',
+  [CH_SYSTEM]: 'system'
+};
+
+// Message type codes - Terminal (0-9)
+const MT_TERM_CONNECTED = 0;
+const MT_TERM_OUTPUT = 1;
+const MT_TERM_ERROR = 2;
+const MT_TERM_CLOSED = 3;
+
+// Message type codes - Chat (0-19)
+const MT_CHAT_READY = 0;
+const MT_CHAT_STREAM = 1;
+const MT_CHAT_ASSISTANT = 2;
+const MT_CHAT_USER = 3;
+const MT_CHAT_TOOL_CALL = 4;
+const MT_CHAT_TOOL_RESULT = 5;
+const MT_CHAT_THINKING_START = 6;
+const MT_CHAT_THINKING_DELTA = 7;
+const MT_CHAT_THINKING_END = 8;
+const MT_CHAT_THINKING = 9;
+const MT_CHAT_SYSTEM = 10;
+const MT_CHAT_RESULT = 11;
+const MT_CHAT_ERROR = 12;
+const MT_CHAT_USER_ACK = 13;
+const MT_CHAT_HISTORY_END = 14;
+
+// Message type codes - System (0-9)
+const MT_SYS_AUTH_SUCCESS = 0;
+const MT_SYS_AUTH_FAILED = 1;
+const MT_SYS_PONG = 2;
+
+// Forward mapping (name to code) for sending
+const MSG_TYPE_CODES = {
+  terminal: {
+    connected: MT_TERM_CONNECTED,
+    output: MT_TERM_OUTPUT,
+    error: MT_TERM_ERROR,
+    closed: MT_TERM_CLOSED,
+    // Client-to-server types (not in backend response codes)
+    connect: 'connect',
+    disconnect: 'disconnect',
+    input: 'input',
+    resize: 'resize',
+    close: 'close'
+  },
+  chat: {
+    ready: MT_CHAT_READY,
+    stream: MT_CHAT_STREAM,
+    assistant: MT_CHAT_ASSISTANT,
+    user: MT_CHAT_USER,
+    tool_call: MT_CHAT_TOOL_CALL,
+    tool_result: MT_CHAT_TOOL_RESULT,
+    thinking_start: MT_CHAT_THINKING_START,
+    thinking_delta: MT_CHAT_THINKING_DELTA,
+    thinking_end: MT_CHAT_THINKING_END,
+    thinking: MT_CHAT_THINKING,
+    system: MT_CHAT_SYSTEM,
+    result: MT_CHAT_RESULT,
+    error: MT_CHAT_ERROR,
+    user_ack: MT_CHAT_USER_ACK,
+    history_end: MT_CHAT_HISTORY_END,
+    // Client-to-server types
+    connect: 'connect',
+    disconnect: 'disconnect',
+    message: 'message',
+    close: 'close'
+  },
+  system: {
+    auth_success: MT_SYS_AUTH_SUCCESS,
+    auth_failed: MT_SYS_AUTH_FAILED,
+    pong: MT_SYS_PONG,
+    // Client-to-server types
+    auth: 'auth',
+    ping: 'ping'
+  }
+};
+
+// Reverse mapping (code to name) for receiving
+const CODE_TO_MSG_TYPE = {
+  terminal: {
+    [MT_TERM_CONNECTED]: 'connected',
+    [MT_TERM_OUTPUT]: 'output',
+    [MT_TERM_ERROR]: 'error',
+    [MT_TERM_CLOSED]: 'closed'
+  },
+  chat: {
+    [MT_CHAT_READY]: 'ready',
+    [MT_CHAT_STREAM]: 'stream',
+    [MT_CHAT_ASSISTANT]: 'assistant',
+    [MT_CHAT_USER]: 'user',
+    [MT_CHAT_TOOL_CALL]: 'tool_call',
+    [MT_CHAT_TOOL_RESULT]: 'tool_result',
+    [MT_CHAT_THINKING_START]: 'thinking_start',
+    [MT_CHAT_THINKING_DELTA]: 'thinking_delta',
+    [MT_CHAT_THINKING_END]: 'thinking_end',
+    [MT_CHAT_THINKING]: 'thinking',
+    [MT_CHAT_SYSTEM]: 'system',
+    [MT_CHAT_RESULT]: 'result',
+    [MT_CHAT_ERROR]: 'error',
+    [MT_CHAT_USER_ACK]: 'user_ack',
+    [MT_CHAT_HISTORY_END]: 'history_end'
+  },
+  system: {
+    [MT_SYS_AUTH_SUCCESS]: 'auth_success',
+    [MT_SYS_AUTH_FAILED]: 'auth_failed',
+    [MT_SYS_PONG]: 'pong'
+  }
+};
+
+/**
+ * Unpack a message from either old or new format
+ * @returns {object} {channel, session_id, type, data}
+ */
+function unpackMessage(message) {
+  if ('c' in message) {
+    // New optimized format
+    const chCode = message.c;
+    const channel = CODE_TO_CHANNEL[chCode] || 'system';
+    const sessionId = message.s || null;
+    const tCode = message.t;
+    // Convert type code to name if numeric
+    let type;
+    if (typeof tCode === 'number') {
+      const typeMap = CODE_TO_MSG_TYPE[channel] || {};
+      type = typeMap[tCode] || String(tCode);
+    } else {
+      type = tCode;
+    }
+    const data = message.d || {};
+    return { channel, session_id: sessionId, type, data };
+  } else {
+    // Old format (legacy)
+    return {
+      channel: message.channel || '',
+      session_id: message.session_id || null,
+      type: message.type || '',
+      data: message.data || {}
+    };
+  }
+}
+
+/**
+ * Pack a message into optimized format
+ * @returns {object} Optimized message {c, s, t, d}
+ */
+function packMessage(channel, sessionId, type, data) {
+  const chCode = CHANNEL_CODES[channel];
+  if (chCode === undefined) {
+    // Unknown channel, use old format
+    return { channel, session_id: sessionId, type, data };
+  }
+
+  const typeMap = MSG_TYPE_CODES[channel] || {};
+  const tCode = typeMap[type] !== undefined ? typeMap[type] : type;
+
+  const msg = { c: chCode, t: tCode, d: data || {} };
+  if (sessionId && channel !== 'system') {
+    msg.s = sessionId;
+  }
+  return msg;
+}
 
 class MuxWebSocket {
   constructor() {
@@ -135,6 +315,9 @@ class MuxWebSocket {
       this.ws = null;
     }
 
+    // BUG-003 FIX: Reset authenticated state on disconnect
+    this.authenticated = false;
+
     this._setState('disconnected');
   }
 
@@ -167,6 +350,8 @@ class MuxWebSocket {
     const key = `${channel}:${sessionId}`;
     this.log(`Unsubscribing from ${key.substring(0, channel.length + 9)}`);
     this.handlers.delete(key);
+    // BUG-002 FIX: Also clean up subscriptionData to prevent stale data on reconnect
+    this.subscriptionData.delete(key);
   }
 
   /**
@@ -177,12 +362,8 @@ class MuxWebSocket {
    * @param {object} data - Message data
    */
   send(channel, sessionId, type, data) {
-    const message = {
-      channel,
-      session_id: sessionId,
-      type,
-      data: data || {}
-    };
+    // Pack message into optimized format
+    const message = packMessage(channel, sessionId, type, data);
 
     if (this.state !== 'connected') {
       this.log(`Queuing message: ${channel}:${type} (state=${this.state})`);
@@ -357,36 +538,35 @@ class MuxWebSocket {
   _onOpen() {
     this.log('WebSocket connected');
     clearTimeout(this.connectionTimeout);
+    // BUG-006 FIX: Also set to null after clearing
+    this.connectionTimeout = null;
     this.reconnectAttempts = 0;
 
     this._setState('authenticating');
 
-    // Authenticate
+    // Authenticate (use packMessage for optimized format)
     const token = window.app?.authToken || localStorage.getItem('auth_token') || '';
-    this._sendRaw({
-      channel: 'system',
-      type: 'auth',
-      data: { token }
-    });
+    this._sendRaw(packMessage('system', null, 'auth', { token }));
   }
 
   _onMessage(event) {
-    let message;
+    let rawMessage;
 
     try {
       if (event.data instanceof ArrayBuffer) {
         // MessagePack
-        message = MessagePack.decode(new Uint8Array(event.data));
+        rawMessage = MessagePack.decode(new Uint8Array(event.data));
       } else {
         // JSON
-        message = JSON.parse(event.data);
+        rawMessage = JSON.parse(event.data);
       }
     } catch (error) {
       this.log('Failed to parse message: ' + error);
       return;
     }
 
-    const { channel, session_id, type, data } = message;
+    // Unpack message (handles both old and new format)
+    const { channel, session_id, type, data } = unpackMessage(rawMessage);
 
     // Handle system messages
     if (channel === 'system') {
@@ -473,6 +653,8 @@ class MuxWebSocket {
 
     } else if (type === 'auth_failed') {
       this.log('Authentication failed: ' + data.reason);
+      // BUG-003 FIX: Reset authenticated on auth_failed
+      this.authenticated = false;
       this._setState('disconnected');
       this.ws.close();
 
@@ -529,11 +711,7 @@ class MuxWebSocket {
 
     this.pingInterval = setInterval(() => {
       if (this.state === 'connected') {
-        this._sendRaw({
-          channel: 'system',
-          type: 'ping',
-          data: {}
-        });
+        this._sendRaw(packMessage('system', null, 'ping', {}));
       }
     }, 30000); // Ping every 30 seconds
   }
@@ -591,12 +769,7 @@ class MuxWebSocket {
 
     for (const [key, sub] of toResend) {
       this.log(`Re-subscribing to ${key.substring(0, sub.channel.length + 9)}`);
-      this._sendRaw({
-        channel: sub.channel,
-        session_id: sub.sessionId,
-        type: 'connect',
-        data: sub.data
-      });
+      this._sendRaw(packMessage(sub.channel, sub.sessionId, 'connect', sub.data));
     }
   }
 

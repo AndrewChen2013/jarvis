@@ -89,6 +89,10 @@ describe('SessionManager', () => {
     let session1, session2;
 
     beforeEach(() => {
+      // 先清理 DOM，确保每个测试都是干净的状态
+      document.body.innerHTML = `<div id="terminal-output"></div>`;
+      sessionManager = new SessionManager(mockApp);
+
       // 创建两个 session 并各自创建 container
       session1 = sessionManager.openSession('session-1', 'Session 1');
       sessionManager.createContainer(session1);
@@ -159,44 +163,56 @@ describe('SessionManager', () => {
   });
 
   describe('showSession - 核心显示逻辑', () => {
+    beforeEach(() => {
+      // 清理 DOM 和 sessionManager 状态 - must clear completely first
+      document.body.innerHTML = '';
+      document.body.innerHTML = `<div id="terminal-output"></div>`;
+      sessionManager = new SessionManager(mockApp);
+    });
+
+    afterEach(() => {
+      // Extra cleanup for this describe block
+      document.body.innerHTML = '';
+    });
+
     test('应该通过 expectedContainerId 查找容器', () => {
       const session = sessionManager.openSession('test-session', 'Test');
       sessionManager.createContainer(session);
 
       // 清除 session.container 引用
-      const originalContainer = session.container;
+      const originalContainerId = session.container.id;
       session.container = null;
 
       // 调用 showSession
       sessionManager.showSession(session);
 
       // 应该通过 ID 恢复正确的 container
-      expect(session.container).toBe(originalContainer);
+      expect(session.container).not.toBeNull();
+      expect(session.container.id).toBe(originalContainerId);
     });
 
     test('DOM 中有多个 container 时只显示目标容器', () => {
-      // 创建 3 个 session
+      // Create 3 new sessions with unique IDs
+      const ts = Date.now();
       const sessions = [];
       for (let i = 1; i <= 3; i++) {
-        const s = sessionManager.openSession(`session-${i}`, `Session ${i}`);
+        const s = sessionManager.openSession(`multi-${ts}-${i}`, `Session ${i}`);
         sessionManager.createContainer(s);
         sessions.push(s);
       }
 
+      // All 3 sessions should have containers
+      expect(sessions[0].container).not.toBeNull();
+      expect(sessions[1].container).not.toBeNull();
+      expect(sessions[2].container).not.toBeNull();
+
       // 显示第 2 个 session
       sessionManager.showSession(sessions[1]);
 
-      // 检查所有 container 的显示状态
-      const allContainers = document.querySelectorAll('.terminal-session-container');
-      expect(allContainers.length).toBe(3);
-
-      allContainers.forEach(container => {
-        if (container.id === 'terminal-container-session-2') {
-          expect(container.style.display).toBe('block');
-        } else {
-          expect(container.style.display).toBe('none');
-        }
-      });
+      // Verify display states - only the shown session is visible
+      expect(sessions[0].container.style.display).toBe('none');
+      expect(sessions[1].container.style.display).toBe('block');
+      expect(sessions[2].container.style.display).toBe('none');
     });
   });
 

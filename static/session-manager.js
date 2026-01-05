@@ -76,6 +76,13 @@ class SessionInstance {
 
     // 视图模式（每个 session 独立，默认 chat）
     this.viewMode = 'chat';
+
+    // Chat 相关（每个 session 独立）
+    this.chatContainer = null;      // Chat DOM 容器
+    this.chatMessages = [];         // Chat 消息历史
+    this.chatIsStreaming = false;   // 是否正在流式输出
+    this.chatStreamingMessageId = null;  // 当前流式消息 ID
+    this.chatInputValue = '';       // Chat 输入框内容（切换时暂存）
   }
 
   /**
@@ -250,6 +257,11 @@ class SessionManager {
     // 更新容器 ID
     if (session.container) {
       session.container.id = `terminal-container-${newId}`;
+    }
+
+    // 更新 chat 容器 ID
+    if (session.chatContainer) {
+      session.chatContainer.id = `chat-container-${newId}`;
     }
 
     // 在 Map 中重新注册
@@ -439,10 +451,15 @@ class SessionManager {
     }
 
     // 通过 MuxWebSocket 断开连接
+    // BUG-004 FIX: 只关闭实际存在的订阅，避免发送不必要的消息
     if (window.muxWs) {
       this.log('closeSession: disconnect via MuxWebSocket');
-      window.muxWs.closeTerminal(sessionId);
-      window.muxWs.closeChat(sessionId);
+      if (window.muxWs.handlers.has(`terminal:${sessionId}`)) {
+        window.muxWs.closeTerminal(sessionId);
+      }
+      if (window.muxWs.handlers.has(`chat:${sessionId}`)) {
+        window.muxWs.closeChat(sessionId);
+      }
     }
 
     // 销毁终端
@@ -457,6 +474,13 @@ class SessionManager {
       this.log('closeSession: remove container');
       session.container.remove();
       session.container = null;
+    }
+
+    // 移除 chat 容器
+    if (session.chatContainer) {
+      this.log('closeSession: remove chat container');
+      session.chatContainer.remove();
+      session.chatContainer = null;
     }
 
     // 从 Map 中移除
@@ -628,6 +652,73 @@ class SessionManager {
       this.createContainer(session);
     }
     return session.container;
+  }
+
+  /**
+   * 为 session 创建 Chat 容器
+   */
+  createChatContainer(session) {
+    this.log(`createChatContainer: ${session.id}`);
+    const container = document.createElement('div');
+    container.id = `chat-container-${session.id}`;
+    container.className = 'chat-session-container';
+    container.style.display = 'none';
+
+    const chatView = document.getElementById('chat-view');
+    this.log(`createChatContainer: chatView=${chatView ? 'exists' : 'null'}`);
+    if (chatView) {
+      chatView.appendChild(container);
+      this.log(`createChatContainer: added to chatView`);
+    } else {
+      this.log(`createChatContainer: chatView not found!`);
+    }
+
+    session.chatContainer = container;
+    return container;
+  }
+
+  /**
+   * 获取或创建 session 的 Chat 容器
+   */
+  getOrCreateChatContainer(session) {
+    this.log(`getOrCreateChatContainer: ${session.id}, hasChatContainer=${!!session.chatContainer}`);
+    if (!session.chatContainer) {
+      this.createChatContainer(session);
+    }
+    return session.chatContainer;
+  }
+
+  /**
+   * 显示指定 session 的 Chat 容器，隐藏其他
+   */
+  showChatContainer(session) {
+    const expectedId = `chat-container-${session.id}`;
+    this.log(`showChatContainer: ${session.id.substring(0, 8)}, expectedId=${expectedId}`);
+
+    const chatView = document.getElementById('chat-view');
+    if (!chatView) {
+      this.log(`showChatContainer: ERROR - chatView not found!`);
+      return;
+    }
+
+    // 确保容器存在
+    if (!session.chatContainer) {
+      this.getOrCreateChatContainer(session);
+    }
+
+    // 隐藏所有 chat 容器，只显示目标
+    const allContainers = chatView.querySelectorAll('.chat-session-container');
+    this.log(`showChatContainer: found ${allContainers.length} chat containers`);
+
+    allContainers.forEach(container => {
+      if (container.id === expectedId) {
+        container.style.display = 'block';
+        this.log(`showChatContainer: SHOW ${container.id}`);
+      } else {
+        container.style.display = 'none';
+        this.log(`showChatContainer: HIDE ${container.id}`);
+      }
+    });
   }
 }
 
