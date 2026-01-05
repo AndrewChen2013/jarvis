@@ -14,6 +14,7 @@ mcp>=1.0.0
 pyte>=0.8.1
 sqlite-vec>=0.1.0
 httpx>=0.26.0
+watchdog>=4.0.0
 
 # Testing
 pytest>=8.0.0

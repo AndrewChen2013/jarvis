@@ -984,3 +984,78 @@
   font-size: var(--font-sm);
   font-style: italic;
 }
+
+/* ========== Slash Commands Bar ========== */
+.chat-slash-commands {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+  position: relative;
+}
+
+.slash-cmd-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slash-cmd-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--color-primary);
+}
+
+.slash-cmd-btn:active {
+  transform: scale(0.97);
+}
+
+.slash-cmd-btn.slash-cmd-more {
+  flex: 0 0 40px;
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+
+/* More Commands Panel */
+.chat-more-commands-panel {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  z-index: 100;
+}
+
+.chat-more-commands-panel.show {
+  display: block;
+}
+
+.more-cmds-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.more-cmds-grid .slash-cmd-btn {
+  flex: 1 1 auto;
+  min-width: calc(50% - 3px);
+}

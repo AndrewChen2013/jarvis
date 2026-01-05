@@ -129,6 +129,22 @@ const ChatMode = {
           </div>
         </div>
 
+        <div class="chat-slash-commands" id="chatSlashCommands">
+          <button class="slash-cmd-btn" data-cmd="/context">/context</button>
+          <button class="slash-cmd-btn" data-cmd="/compact">/compact</button>
+          <button class="slash-cmd-btn" data-cmd="/cost">/cost</button>
+          <button class="slash-cmd-btn slash-cmd-more" id="chatMoreCmds">···</button>
+          <div class="chat-more-commands-panel" id="chatMoreCmdsPanel">
+            <div class="more-cmds-grid">
+              <button class="slash-cmd-btn" data-cmd="/review">/review</button>
+              <button class="slash-cmd-btn" data-cmd="/pr-comments">/pr-comments</button>
+              <button class="slash-cmd-btn" data-cmd="/security-review">/security-review</button>
+              <button class="slash-cmd-btn" data-cmd="/release-notes">/release-notes</button>
+              <button class="slash-cmd-btn" data-cmd="/init">/init</button>
+              <button class="slash-cmd-btn" data-cmd="/todos">/todos</button>
+            </div>
+          </div>
+        </div>
         <div class="chat-input-area">
           <div class="chat-input-wrapper">
             <textarea
@@ -230,6 +246,70 @@ const ChatMode = {
         this.loadMoreHistory();
       }
     });
+
+    // Slash command buttons
+    const slashCmdsEl = this.container.querySelector('#chatSlashCommands');
+    const moreCmdsPanel = this.container.querySelector('#chatMoreCmdsPanel');
+    const moreCmdsBtn = this.container.querySelector('#chatMoreCmds');
+
+    if (slashCmdsEl) {
+      // Handle all slash command button clicks
+      slashCmdsEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('.slash-cmd-btn');
+        if (!btn) return;
+
+        // Toggle more commands panel
+        if (btn.id === 'chatMoreCmds') {
+          moreCmdsPanel?.classList.toggle('show');
+          return;
+        }
+
+        // Execute slash command
+        const cmd = btn.dataset.cmd;
+        if (cmd) {
+          this.executeSlashCommand(cmd);
+        }
+      });
+    }
+
+    // Handle more commands panel clicks
+    if (moreCmdsPanel) {
+      moreCmdsPanel.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent bubbling to slashCmdsEl
+        const btn = e.target.closest('.slash-cmd-btn');
+        if (!btn) return;
+
+        const cmd = btn.dataset.cmd;
+        if (cmd) {
+          this.executeSlashCommand(cmd);
+          moreCmdsPanel.classList.remove('show');
+        }
+      });
+
+      // Close panel when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!moreCmdsPanel.contains(e.target) && !moreCmdsBtn?.contains(e.target)) {
+          moreCmdsPanel.classList.remove('show');
+        }
+      });
+    }
+  },
+
+  /**
+   * Execute a slash command
+   */
+  executeSlashCommand(cmd) {
+    if (!this.isConnected) {
+      this.log(`Cannot execute ${cmd}: not connected`);
+      return;
+    }
+
+    this.log(`Executing slash command: ${cmd}`);
+
+    // Send command via MuxWebSocket
+    if (window.muxWs) {
+      window.muxWs.chatMessage(this.sessionId, cmd);
+    }
   },
 
   /**
@@ -460,13 +540,19 @@ const ChatMode = {
    * 临时切换到目标 session 的上下文处理消息，然后恢复
    */
   handleMessageForSession(data, targetSession, targetSessionId, container, messagesEl) {
-    // 如果目标是当前活跃的 session，直接使用现有方法
-    if (this.sessionId === targetSessionId && this.messagesEl === messagesEl) {
+    // 如果目标是当前活跃的 session
+    if (this.sessionId === targetSessionId) {
+      // 修复：如果 messagesEl 引用不一致，更新为正确的引用
+      if (this.messagesEl !== messagesEl) {
+        this.log(`handleMessageForSession: updating messagesEl reference for active session`);
+        this.messagesEl = messagesEl;
+        this.emptyEl = container.querySelector('#chatEmpty') || container.querySelector('.chat-empty');
+      }
       this.handleMessage(data);
       return;
     }
 
-    // 保存当前上下文
+    // 非活跃 session：保存当前上下文
     const savedMessagesEl = this.messagesEl;
     const savedEmptyEl = this.emptyEl;
     const savedMessages = this.messages;
@@ -515,8 +601,8 @@ const ChatMode = {
         break;
 
       case 'user_ack':
-        this.addMessage('user', data.content, { timestamp: new Date().toISOString() });
-        this.showTypingIndicator();
+        // 用户消息已在 sendMessage 中立即显示，此处仅用于确认
+        // 不再重复添加消息
         break;
 
       case 'user':
@@ -619,8 +705,8 @@ const ChatMode = {
         break;
 
       case 'user_ack':
-        this.addMessage('user', data.content, { timestamp: new Date().toISOString() });
-        this.showTypingIndicator();
+        // 用户消息已在 sendMessage 中立即显示，此处仅用于确认
+        // 不再重复添加消息
         break;
 
       case 'user':
@@ -782,6 +868,23 @@ const ChatMode = {
   sendMessage() {
     const content = this.inputEl.value.trim();
     if (!content || !this.isConnected || this.isStreaming) return;
+
+    // 确保 messagesEl 指向正确的容器
+    // 修复：在发送消息前重新获取当前 session 的容器，避免引用不一致
+    const session = window.app?.sessionManager?.getActive();
+    if (session?.chatContainer) {
+      const correctMessagesEl = session.chatContainer.querySelector('#chatMessages') ||
+                                session.chatContainer.querySelector('.chat-messages');
+      if (correctMessagesEl && correctMessagesEl !== this.messagesEl) {
+        this.log(`sendMessage: fixing messagesEl reference`);
+        this.messagesEl = correctMessagesEl;
+      }
+    }
+
+    // 立即显示用户消息，提供更好的用户体验
+    // 不等待后端 user_ack，避免消息不显示的问题
+    this.addMessage('user', content, { timestamp: new Date().toISOString() });
+    this.showTypingIndicator();
 
     if (window.muxWs) {
       window.muxWs.chatMessage(this.sessionId, content);

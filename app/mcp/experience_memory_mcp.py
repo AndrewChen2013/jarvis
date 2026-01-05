@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 BillChen
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Experience Memory MCP Server
 
@@ -183,6 +197,49 @@ class ExperienceStorage:
                 logger.warning(f"Failed to create vector table: {e}")
                 self._vec_available = False
 
+        # Create FTS5 table for keyword search (hybrid search)
+        self._fts_available = False
+        try:
+            self.conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS experience_fts USING fts5(
+                    title,
+                    content,
+                    tags,
+                    content='experiences',
+                    content_rowid='id',
+                    tokenize='unicode61'
+                )
+            """)
+            # Create triggers to keep FTS in sync
+            self.conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS experience_ai AFTER INSERT ON experiences BEGIN
+                    INSERT INTO experience_fts(rowid, title, content, tags)
+                    VALUES (new.id, new.title, new.content, new.tags);
+                END
+            """)
+            self.conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS experience_ad AFTER DELETE ON experiences BEGIN
+                    INSERT INTO experience_fts(experience_fts, rowid, title, content, tags)
+                    VALUES ('delete', old.id, old.title, old.content, old.tags);
+                END
+            """)
+            self.conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS experience_au AFTER UPDATE ON experiences BEGIN
+                    INSERT INTO experience_fts(experience_fts, rowid, title, content, tags)
+                    VALUES ('delete', old.id, old.title, old.content, old.tags);
+                    INSERT INTO experience_fts(rowid, title, content, tags)
+                    VALUES (new.id, new.title, new.content, new.tags);
+                END
+            """)
+            self._fts_available = True
+            logger.info("FTS5 table created successfully")
+
+            # Migrate existing data to FTS
+            self._migrate_to_fts()
+        except Exception as e:
+            logger.warning(f"Failed to create FTS table: {e}")
+            self._fts_available = False
+
         self.conn.commit()
 
     def store(self, exp_type: str, title: str, content: str,
@@ -215,9 +272,18 @@ class ExperienceStorage:
     def search_similar(self, embedding: list[float],
                        exp_type: Optional[str] = None,
                        project: Optional[str] = None,
-                       limit: int = 5) -> list[Experience]:
-        """Search for similar experiences using vector similarity"""
+                       limit: int = 5,
+                       query: str = None) -> list[Experience]:
+        """Search for similar experiences using hybrid search (vector + FTS)"""
 
+        # Use hybrid search if both vector and FTS are available
+        if self._vec_available and self._fts_available and query:
+            try:
+                return self._hybrid_search(embedding, query, exp_type, project, limit)
+            except Exception as e:
+                logger.warning(f"Hybrid search failed: {e}, falling back to vector search")
+
+        # Fall back to vector-only search
         if self._vec_available:
             try:
                 return self._vector_search(embedding, exp_type, project, limit)
@@ -355,6 +421,113 @@ class ExperienceStorage:
 
         self.conn.commit()
         return cursor.rowcount > 0
+
+    def _migrate_to_fts(self):
+        """Migrate existing data to FTS table"""
+        # Check if FTS table is empty
+        fts_count = self.conn.execute("SELECT COUNT(*) FROM experience_fts").fetchone()[0]
+        exp_count = self.conn.execute("SELECT COUNT(*) FROM experiences").fetchone()[0]
+
+        if fts_count < exp_count:
+            logger.info(f"Migrating {exp_count - fts_count} experiences to FTS...")
+            # Rebuild FTS index from experiences table
+            self.conn.execute("INSERT INTO experience_fts(experience_fts) VALUES('rebuild')")
+            logger.info("FTS migration completed")
+
+    def _fts_search(self, query: str, limit: int = 10) -> list[tuple[int, float]]:
+        """Perform FTS5 keyword search, returns list of (id, bm25_score)"""
+        if not self._fts_available:
+            return []
+
+        try:
+            # Use BM25 scoring (lower is better, so we negate it)
+            rows = self.conn.execute("""
+                SELECT rowid, bm25(experience_fts) as score
+                FROM experience_fts
+                WHERE experience_fts MATCH ?
+                ORDER BY score
+                LIMIT ?
+            """, (query, limit)).fetchall()
+            return [(row[0], row[1]) for row in rows]
+        except Exception as e:
+            logger.warning(f"FTS search failed: {e}")
+            return []
+
+    def _hybrid_search(self, embedding: list[float], query: str,
+                       exp_type: Optional[str] = None,
+                       project: Optional[str] = None,
+                       limit: int = 5,
+                       vec_weight: float = 0.5) -> list[Experience]:
+        """Perform hybrid search using RRF (Reciprocal Rank Fusion)"""
+        import sqlite_vec
+
+        k = 60  # RRF constant
+
+        # Vector search results: {id: rank}
+        vec_results = {}
+        if self._vec_available:
+            try:
+                rows = self.conn.execute("""
+                    SELECT experience_id, distance
+                    FROM experience_embeddings
+                    WHERE embedding MATCH ? AND k = ?
+                """, [sqlite_vec.serialize_float32(embedding), limit * 3]).fetchall()
+                for rank, (exp_id, _) in enumerate(rows):
+                    vec_results[exp_id] = rank
+            except Exception as e:
+                logger.warning(f"Vector search in hybrid failed: {e}")
+
+        # FTS search results: {id: rank}
+        fts_results = {}
+        if self._fts_available and query:
+            try:
+                # Prepare query for FTS (escape special chars, add wildcards)
+                fts_query = ' OR '.join(f'"{term}"*' for term in query.split() if term)
+                fts_rows = self._fts_search(fts_query, limit * 3)
+                for rank, (exp_id, _) in enumerate(fts_rows):
+                    fts_results[exp_id] = rank
+            except Exception as e:
+                logger.warning(f"FTS search in hybrid failed: {e}")
+
+        # Merge using RRF
+        all_ids = set(vec_results.keys()) | set(fts_results.keys())
+        rrf_scores = {}
+
+        for exp_id in all_ids:
+            score = 0.0
+            if exp_id in vec_results:
+                score += vec_weight * (1.0 / (k + vec_results[exp_id]))
+            if exp_id in fts_results:
+                score += (1 - vec_weight) * (1.0 / (k + fts_results[exp_id]))
+            rrf_scores[exp_id] = score
+
+        # Sort by RRF score (higher is better)
+        sorted_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
+
+        # Fetch and filter experiences
+        results = []
+        for exp_id in sorted_ids:
+            exp = self.get_by_id(exp_id)
+            if not exp:
+                continue
+            if exp_type and exp.type != exp_type:
+                continue
+            if project and exp.project != project:
+                continue
+
+            results.append(exp)
+
+            # Update access count
+            self.conn.execute(
+                "UPDATE experiences SET access_count = access_count + 1 WHERE id = ?",
+                (exp.id,)
+            )
+
+            if len(results) >= limit:
+                break
+
+        self.conn.commit()
+        return results
 
     def _row_to_experience(self, row: sqlite3.Row) -> Experience:
         """Convert database row to Experience object"""
@@ -618,7 +791,8 @@ async def handle_recall(args: dict):
     try:
         # Generate query embedding
         embedding = await embedding_service.embed(query)
-        experiences = storage.search_similar(embedding, exp_type, project, limit)
+        # Pass query for hybrid search (vector + FTS)
+        experiences = storage.search_similar(embedding, exp_type, project, limit, query=query)
     except Exception as e:
         logger.warning(f"Semantic search failed: {e}, falling back to list")
         experiences = storage.list_experiences(exp_type, project, limit)

@@ -38,11 +38,27 @@ from app.api.ssh_terminal import handle_ssh_websocket
 from app.api.debug import handle_debug_websocket
 from app.services.mux_connection_manager import mux_manager
 
+# CLAUDE.md watcher (optional, graceful fallback if watchdog not installed)
+_claude_md_watcher = None
+try:
+    from scripts.claude_md_watcher import start_watcher, stop_watcher
+    _claude_md_watcher_available = True
+except ImportError:
+    _claude_md_watcher_available = False
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     logger.info("Application starting...")
+
+    # 启动 CLAUDE.md 监控器
+    if _claude_md_watcher_available:
+        try:
+            start_watcher()
+            logger.info("CLAUDE.md watcher started")
+        except Exception as e:
+            logger.warning(f"Failed to start CLAUDE.md watcher: {e}")
 
     # 启动终端管理器
     await terminal_manager.start()
@@ -62,6 +78,15 @@ async def lifespan(app: FastAPI):
     await scheduler.stop()
     await ssh_manager.stop()
     await terminal_manager.stop()
+
+    # 停止 CLAUDE.md 监控器
+    if _claude_md_watcher_available:
+        try:
+            stop_watcher()
+            logger.info("CLAUDE.md watcher stopped")
+        except Exception:
+            pass
+
     logger.info("Application stopped")
 
 

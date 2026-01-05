@@ -71,3 +71,6 @@ htmlcov/
 *.tmp
 *.temp
 .cache/
+
+# MCP runtime
+.playwright-mcp/
