@@ -237,9 +237,10 @@ start_service() {
     cd "$PROJECT_ROOT"
     source venv/bin/activate
 
-    # Register MCP Server to ~/.claude.json
-    print_info "Registering MCP Server..."
+    # Register MCP Servers to ~/.claude.json
+    print_info "Registering MCP Servers..."
     python scripts/register_mcp.py 2>/dev/null || true
+    python scripts/register_experience_mcp.py 2>/dev/null || true
 
     # Start in background
     nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT > logs/backend.log 2>&1 &
