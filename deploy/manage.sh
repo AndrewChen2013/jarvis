@@ -167,17 +167,46 @@ install_deps() {
     fi
     print_success "Python: $(python3 --version)"
 
-    # Check Claude Code
+    # Check Claude Code (required)
     if ! command -v claude &> /dev/null; then
-        print_warning "Claude Code CLI not found"
-        echo "  Install: curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/install.sh | sh"
-        read -p "Continue installation? [y/N] " -n 1 -r
+        print_error "Claude Code CLI not found (required)"
+        echo ""
+        echo "  Please install Claude Code first:"
+        echo "  curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/install.sh | sh"
+        echo ""
+        exit 1
+    else
+        print_success "Claude Code: Installed"
+    fi
+
+    # Check Ollama (required for Experience Memory MCP)
+    if ! command -v ollama &> /dev/null; then
+        print_warning "Ollama not found (required for Experience Memory MCP)"
+        echo ""
+        echo "  Please install Ollama:"
+        if [[ "$OS" == "Darwin" ]]; then
+            echo "  brew install ollama"
+        else
+            echo "  curl -fsSL https://ollama.com/install.sh | sh"
+        fi
+        echo ""
+        read -p "Continue without Ollama? (Experience Memory MCP will not work) [y/N] " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
     else
-        print_success "Claude Code: Installed"
+        print_success "Ollama: Installed"
+
+        # Check if embedding model is available
+        if ! ollama list 2>/dev/null | grep -q "qwen3-embedding"; then
+            print_info "Downloading embedding model (qwen3-embedding:0.6b)..."
+            echo "  This may take a few minutes..."
+            ollama pull qwen3-embedding:0.6b
+            print_success "Embedding model downloaded"
+        else
+            print_success "Embedding model: qwen3-embedding ready"
+        fi
     fi
 
     # Create virtual environment
