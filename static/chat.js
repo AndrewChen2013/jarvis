@@ -9,12 +9,10 @@ const ChatMode = {
   // State
   sessionId: null,
   workingDir: null,
-  ws: null,
   messages: [],
   isConnected: false,
   isStreaming: false,
   streamingMessageId: null,
-  usingMux: false,  // Whether using multiplexed connection
 
   // DOM elements
   container: null,
@@ -224,82 +222,14 @@ const ChatMode = {
       return;
     }
 
-    // 检查是否启用多路复用
-    const useMux = window.app?.isUseMux?.() !== false && window.muxWs;
-    this.log(`Connect: useMux=${useMux}`);
-
-    if (useMux) {
-      this.connectMux(sessionId, workingDir, session);
+    // 统一使用 MuxWebSocket
+    if (!window.muxWs) {
+      this.log('ERROR: MuxWebSocket not available');
+      this.updateStatus('disconnected');
       return;
     }
 
-    // 检查 session 是否已有 chatWs 且连接正常
-    if (session.chatWs && session.chatWs.readyState === WebSocket.OPEN) {
-      this.log('Reusing existing connection from session');
-      this.ws = session.chatWs;
-      this.isConnected = true;
-      this.updateStatus('connected');
-      // 启用发送按钮
-      if (this.sendBtn && this.inputEl) {
-        this.sendBtn.disabled = !this.inputEl.value.trim();
-      }
-      return;
-    }
-
-    // 需要新建连接
-    // 获取 Terminal 的 Claude session ID 用于恢复历史
-    const claudeSessionId = session.claudeSessionId;
-    this.log(`Session info: id=${session.id?.substring(0, 8)}, claudeSessionId=${claudeSessionId?.substring(0, 8) || 'null'}`);
-    this.log(`Creating new WebSocket connection (resume: ${claudeSessionId || 'none'})`);
-
-    // Build WebSocket URL
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = window.app?.token || localStorage.getItem('auth_token');
-    let wsUrl = `${protocol}//${window.location.host}/ws/chat/${sessionId}?token=${token}`;
-    if (workingDir) {
-      wsUrl += `&working_dir=${encodeURIComponent(workingDir)}`;
-    }
-    // 如果有 Terminal 的 Claude session ID，添加 resume 参数以恢复历史
-    if (claudeSessionId) {
-      wsUrl += `&resume=${encodeURIComponent(claudeSessionId)}`;
-    }
-
-    this.updateStatus('connecting');
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      this.log('WebSocket connected');
-      // 保存到 session 实例
-      session.chatWs = ws;
-      this.ws = ws;
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        this.handleMessage(data);
-      } catch (e) {
-        this.log('ERROR: Failed to parse message: ' + e.message);
-      }
-    };
-
-    ws.onclose = (event) => {
-      this.log('WebSocket closed: ' + event.code);
-      this.isConnected = false;
-      this.updateStatus('disconnected');
-      // 清除 session 中的引用
-      if (session.chatWs === ws) {
-        session.chatWs = null;
-      }
-    };
-
-    ws.onerror = (error) => {
-      this.log('WebSocket error: ' + error);
-      this.updateStatus('disconnected');
-    };
-
-    // 先设置 this.ws 以便后续操作
-    this.ws = ws;
+    this.connectMux(sessionId, workingDir, session);
   },
 
   /**
@@ -307,7 +237,6 @@ const ChatMode = {
    */
   connectMux(sessionId, workingDir, session) {
     this.log(`connectMux: session=${sessionId?.substring(0, 8)}, workingDir=${workingDir}`);
-    this.usingMux = true;
     this.updateStatus('connecting');
 
     // 获取 Terminal 的 Claude session ID 用于恢复历史
@@ -430,15 +359,8 @@ const ChatMode = {
     const content = this.inputEl.value.trim();
     if (!content || !this.isConnected || this.isStreaming) return;
 
-    if (this.usingMux && window.muxWs) {
-      // 使用多路复用发送
+    if (window.muxWs) {
       window.muxWs.chatMessage(this.sessionId, content);
-    } else if (this.ws) {
-      // 使用传统 WebSocket 发送
-      this.ws.send(JSON.stringify({
-        type: 'message',
-        content: content
-      }));
     }
 
     this.inputEl.value = '';
@@ -766,19 +688,13 @@ const ChatMode = {
   },
 
   /**
-   * Disconnect (仅清除本地引用，不关闭连接)
-   * WebSocket 连接由 SessionManager 管理，切换模式时保持连接
+   * Disconnect (取消订阅但保持 MuxWebSocket 连接)
+   * WebSocket 连接由 MuxWebSocket 统一管理
    */
   disconnect() {
-    // 如果使用多路复用，取消订阅但保持连接
-    if (this.usingMux && window.muxWs && this.sessionId) {
+    if (window.muxWs && this.sessionId) {
       window.muxWs.disconnectChat(this.sessionId);
-      this.usingMux = false;
     }
-
-    // 不关闭连接，只清除本地引用
-    // 连接会在 session 关闭时由 SessionManager.closeSession() 关闭
-    this.ws = null;
     this.isConnected = false;
     this.isStreaming = false;
   }

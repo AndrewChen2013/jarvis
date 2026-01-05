@@ -59,13 +59,12 @@ const AppWebSocket = {
       this.debugLog(`connectTerminal: SESSION SWITCH detected! ${prevSession?.substring(0, 8)} -> ${this.currentSession?.substring(0, 8)}`);
     }
 
-    // 检查 session 是否已在 SessionManager 中且有活跃连接
+    // 检查 session 是否已在 SessionManager 中且已连接
     const existingSession = this.sessionManager.sessions.get(this.currentSession);
-    if (existingSession && existingSession.ws && existingSession.ws.readyState === WebSocket.OPEN) {
-      this.debugLog(`connectTerminal: session already has active WebSocket, reuse it`);
+    if (existingSession && existingSession.status === 'connected') {
+      this.debugLog(`connectTerminal: session already connected, reuse it`);
 
       // 恢复 app 层面的状态
-      this.ws = existingSession.ws;
       this.terminal = existingSession.terminal;
       this.shouldReconnect = existingSession.shouldReconnect;
 
@@ -191,12 +190,11 @@ const AppWebSocket = {
       const session = this.sessionManager.sessions.get(sessionId);
 
       // 详细记录 session 状态
-      this.debugLog(`connectSession: session state - ws=${session.ws ? 'exists' : 'NULL'}, wsState=${session.ws?.readyState}, terminal=${session.terminal ? 'exists' : 'NULL'}, container=${session.container ? session.container.id : 'NULL'}`);
+      this.debugLog(`connectSession: session state - status=${session.status}, terminal=${session.terminal ? 'exists' : 'NULL'}, container=${session.container ? session.container.id : 'NULL'}`);
       this.debugLog(`connectSession: session params - workDir=${session.workDir}, claudeSessionId=${session.claudeSessionId?.substring(0, 8)}`);
 
       // 恢复 app 层面的状态（从 session 中恢复完整状态）
       this.currentSession = sessionId;
-      this.ws = session.ws;
       this.terminal = session.terminal;
       this.currentWorkDir = session.workDir;
       this.currentClaudeSessionId = session.claudeSessionId;
@@ -205,9 +203,9 @@ const AppWebSocket = {
       // 切换到该 session
       this.sessionManager.switchTo(sessionId);
 
-      // 检查 ws 状态，如果不是 OPEN 需要重连
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        this.debugLog(`connectSession: ws not open (state=${this.ws?.readyState}), trigger reconnect`);
+      // 检查 session 状态，如果未连接需要重连
+      if (session.status !== 'connected') {
+        this.debugLog(`connectSession: session not connected (status=${session.status}), trigger reconnect`);
         session.shouldReconnect = true;
         this.attemptReconnectForSession(session);
       }
@@ -623,31 +621,62 @@ const AppWebSocket = {
       cols,
       onConnect: (data) => {
         this.debugLog(`[MuxWS] Terminal connected: ${data.terminal_id?.substring(0, 8)}`);
+        this.debugLog(`[MuxWS] Original session_id: ${muxSessionId?.substring(0, 8)}`);
 
         // 更新连接状态
         this.shouldReconnect = true;
         this.updateConnectStatus('connected', '');
 
-        // 保存 terminal_id 到 session（这是 Claude 的 session_id）
-        if (session) {
-          session.claudeSessionId = data.terminal_id;
-          this.debugLog(`[MuxWS] Updated claudeSessionId: ${data.terminal_id?.substring(0, 8)}`);
+        // 如果服务端返回了不同的 session_id，需要更新 SessionManager
+        const serverSessionId = data.terminal_id;
+        if (serverSessionId && serverSessionId !== muxSessionId) {
+          this.debugLog(`[MuxWS] Session ID changed: ${muxSessionId?.substring(0, 8)} -> ${serverSessionId?.substring(0, 8)}`);
+
+          // 在 SessionManager 中重命名 session
+          const renameOk = this.sessionManager.renameSession(muxSessionId, serverSessionId);
+          this.debugLog(`[MuxWS] Rename result: ${renameOk}`);
+
+          if (renameOk) {
+            // 更新 currentSession（如果是当前活跃会话）
+            if (this.currentSession === muxSessionId) {
+              this.currentSession = serverSessionId;
+              this.debugLog(`[MuxWS] Updated currentSession`);
+            }
+
+            // 获取重命名后的 session
+            const renamedSession = this.sessionManager.sessions.get(serverSessionId);
+            if (renamedSession) {
+              renamedSession.claudeSessionId = serverSessionId;
+            }
+          }
+        } else if (session) {
+          // Session ID 未变，只更新 claudeSessionId
+          session.claudeSessionId = serverSessionId;
+          this.debugLog(`[MuxWS] Updated claudeSessionId: ${serverSessionId?.substring(0, 8)}`);
         }
       },
       onMessage: (type, data) => {
-        this._handleMuxMessage(muxSessionId, type, data);
+        // 使用 this.currentSession 而不是闭包捕获的 muxSessionId
+        // 因为 session ID 可能在连接后被服务端重命名
+        this._handleMuxMessage(this.currentSession, type, data);
       },
       onDisconnect: () => {
-        this.debugLog(`[MuxWS] Terminal disconnected: ${muxSessionId?.substring(0, 8)}`);
+        // 获取当前实际的 session（可能已被重命名）
+        const currentSid = this.currentSession;
+        this.debugLog(`[MuxWS] Terminal disconnected: ${currentSid?.substring(0, 8)}`);
 
-        // 更新状态
-        if (this.currentSession === muxSessionId) {
-          this.updateConnectStatus('disconnected', '');
+        // 更新连接状态
+        this.updateConnectStatus('disconnected', '');
+
+        // 更新 session 状态
+        const currentSession = this.sessionManager.sessions.get(currentSid);
+        if (currentSession) {
+          currentSession.status = 'disconnected';
         }
 
         // 触发重连（如果需要）
-        if (this.shouldReconnect && session?.shouldReconnect !== false) {
-          this.debugLog(`[MuxWS] Will attempt reconnect for ${muxSessionId?.substring(0, 8)}`);
+        if (this.shouldReconnect && currentSession?.shouldReconnect !== false) {
+          this.debugLog(`[MuxWS] Will attempt reconnect for ${currentSid?.substring(0, 8)}`);
           this._scheduleReconnect();
         }
       }
@@ -857,7 +886,6 @@ const AppWebSocket = {
       // 保存状态到 SessionManager（每个 session 独立）
       const session = this.sessionManager.sessions.get(sessionId);
       if (session) {
-        session.ws = this.ws;
         session.status = 'connected';
         session.shouldReconnect = true;
         session.reconnectAttempts = 0;
@@ -1388,11 +1416,12 @@ const AppWebSocket = {
   },
 
   /**
-   * 重连指定 session（使用 session 自己的连接参数）
+   * 重连指定 session（通过 MuxWebSocket 重新订阅）
    * @param {SessionInstance} session - 要重连的 session
    */
   reconnectSession(session) {
     const sessionId = session.id;
+    this.debugLog(`reconnectSession: ${sessionId.substring(0, 8)} via MuxWebSocket`);
 
     // 如果是当前活跃 session，更新全局状态
     if (sessionId === this.currentSession) {
@@ -1400,98 +1429,56 @@ const AppWebSocket = {
       this.currentClaudeSessionId = session.claudeSessionId;
     }
 
-    // 构建 WebSocket URL（使用 session 自己的参数）
-    const params = new URLSearchParams({
-      working_dir: session.workDir
-    });
-    if (session.claudeSessionId) {
-      params.append('session_id', session.claudeSessionId);
+    // 检查 MuxWebSocket 是否可用且已连接
+    if (!window.muxWs) {
+      this.debugLog(`reconnectSession: MuxWebSocket not available`);
+      return;
     }
-    // 添加终端大小参数
+
+    if (window.muxWs.state !== 'connected') {
+      this.debugLog(`reconnectSession: MuxWebSocket not connected (state=${window.muxWs.state}), will auto-reconnect`);
+      // MuxWebSocket 会自动重连并重新订阅
+      return;
+    }
+
+    // 获取终端大小
     const terminal = session.terminal || this.terminal;
-    if (terminal) {
-      const size = terminal.getSize();
-      params.append('rows', size.rows);
-      params.append('cols', Math.max(size.cols - 0, 20));
-      this.debugLog(`reconnectSession: sending size ${size.rows}x${size.cols}`);
-    }
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/terminal?${params.toString()}`;
+    const rows = terminal ? terminal.getSize().rows : 40;
+    const cols = terminal ? terminal.getSize().cols : 120;
 
-    this.debugLog(`reconnectSession: ${sessionId.substring(0, 8)}, url=${wsUrl.substring(0, 80)}`);
-
-    // 如果是当前 session，使用全局 ws；否则只更新 session.ws
-    if (sessionId === this.currentSession) {
-      this._doConnect(wsUrl);
-    } else {
-      // 后台 session 重连
-      this._doConnectForSession(session, wsUrl);
-    }
-  },
-
-  /**
-   * 为后台 session 建立连接（不影响全局状态）
-   * @param {SessionInstance} session - 要连接的 session
-   * @param {string} wsUrl - WebSocket URL
-   */
-  _doConnectForSession(session, wsUrl) {
-    const sessionId = session.id;
-    this.debugLog(`_doConnectForSession: ${sessionId.substring(0, 8)}`);
-
-    try {
-      const ws = new WebSocket(wsUrl);
-      session.ws = ws;
-
-      ws.binaryType = 'arraybuffer';
-
-      ws.onopen = () => {
-        this.debugLog(`[bg] onopen for ${sessionId.substring(0, 8)}`);
+    // 通过 MuxWebSocket 重新连接终端
+    window.muxWs.connectTerminal(sessionId, session.workDir, {
+      rows,
+      cols,
+      onConnect: (data) => {
+        this.debugLog(`reconnectSession: terminal connected for ${sessionId.substring(0, 8)}`);
         session.status = 'connected';
         session.reconnectAttempts = 0;
         if (session.reconnectTimeout) {
           clearTimeout(session.reconnectTimeout);
           session.reconnectTimeout = null;
         }
-
-        // 如果此 session 现在是当前活跃的，同步更新全局 ws
+        // 更新 claudeSessionId
+        if (data.session_id) {
+          session.claudeSessionId = data.session_id;
+        }
+        // 如果是当前活跃 session，更新 UI
         if (sessionId === this.currentSession) {
-          this.debugLog(`[bg] session ${sessionId.substring(0, 8)} is now active, sync this.ws`);
-          this.ws = ws;
           this.updateConnectStatus('connected', '');
         }
-      };
-
-      ws.onmessage = (event) => {
-        let message;
-        try {
-          if (event.data instanceof ArrayBuffer) {
-            message = MessagePack.decode(new Uint8Array(event.data));
-          } else {
-            message = JSON.parse(event.data);
-          }
-        } catch (e) {
-          this.debugLog(`[bg] parse error: ${e.message}`);
-          return;
-        }
-        // 使用正确的 sessionId 处理消息
-        this.handleMessage(message, sessionId);
-      };
-
-      ws.onerror = () => {
-        this.debugLog(`[bg] onerror for ${sessionId.substring(0, 8)}`);
-      };
-
-      ws.onclose = (event) => {
-        this.debugLog(`[bg] onclose for ${sessionId.substring(0, 8)}, code=${event.code}`);
+      },
+      onMessage: (type, data) => {
+        this.handleMuxMessage(type, data, sessionId);
+      },
+      onDisconnect: () => {
+        this.debugLog(`reconnectSession: terminal disconnected for ${sessionId.substring(0, 8)}`);
         session.status = 'disconnected';
-
-        // 后台 session 也尝试重连
-        if (session.shouldReconnect && event.code !== 1000 && event.code !== 1008) {
+        // 尝试重连
+        if (session.shouldReconnect) {
           this.attemptReconnectForSession(session);
         }
-      };
-    } catch (e) {
-      this.debugLog(`_doConnectForSession failed: ${e.message}`);
-    }
+      }
+    });
   },
 
   /**

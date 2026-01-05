@@ -19,12 +19,25 @@
  * 支持同时打开多个 session，在后台保持连接
  */
 
+/**
+ * Session 实例
+ *
+ * ID 说明：
+ * - this.id: SessionManager 中的唯一键，用于前端会话管理
+ *   - 新建时为临时 ID（如 "new-1234567890"）
+ *   - 连接成功后服务端会返回 UUID，前端会通过 renameSession 更新为 UUID
+ *   - 更新后 this.id === this.claudeSessionId
+ *
+ * - this.claudeSessionId: 服务端的 Claude session UUID
+ *   - 连接前为 null
+ *   - 连接后由服务端分配
+ *   - 用于 API 调用（如获取 context）和 Chat 模式的 --resume
+ */
 class SessionInstance {
   constructor(sessionId, name) {
     this.id = sessionId;
     this.name = name;
-    this.ws = null;           // Terminal WebSocket
-    this.chatWs = null;       // Chat WebSocket (共享同一 session)
+    // WebSocket 由 MuxWebSocket 统一管理，不再存储在 session 中
     this.terminal = null;
     this.container = null;
     this.status = 'idle'; // idle | connecting | connected | disconnected
@@ -32,6 +45,8 @@ class SessionInstance {
 
     // 连接参数（每个 session 独立）
     this.workDir = null;
+    // 服务端 Claude session UUID，连接成功后由服务端分配
+    // rename 后 this.id === this.claudeSessionId
     this.claudeSessionId = null;
 
     // 重连状态（每个 session 独立）
@@ -134,6 +149,39 @@ class SessionManager {
    */
   getActive() {
     return this.activeId ? this.sessions.get(this.activeId) : null;
+  }
+
+  /**
+   * 获取当前活跃 session 的 workDir
+   */
+  getActiveWorkDir() {
+    return this.getActive()?.workDir || null;
+  }
+
+  /**
+   * 获取当前活跃 session 的 claudeSessionId
+   */
+  getActiveClaudeSessionId() {
+    return this.getActive()?.claudeSessionId || null;
+  }
+
+  /**
+   * 获取当前活跃 session 的 terminal
+   */
+  getActiveTerminal() {
+    return this.getActive()?.terminal || null;
+  }
+
+  /**
+   * 更新当前活跃 session 的状态
+   * @param {string} status - 新状态
+   */
+  updateActiveStatus(status) {
+    const session = this.getActive();
+    if (session) {
+      session.status = status;
+      this.log(`updateActiveStatus: ${session.id.substring(0, 8)} -> ${status}`);
+    }
   }
 
   /**
@@ -389,18 +437,11 @@ class SessionManager {
       return;
     }
 
-    // 断开 Terminal WebSocket
-    if (session.ws) {
-      this.log('closeSession: close Terminal WebSocket');
-      session.ws.close();
-      session.ws = null;
-    }
-
-    // 断开 Chat WebSocket
-    if (session.chatWs) {
-      this.log('closeSession: close Chat WebSocket');
-      session.chatWs.close();
-      session.chatWs = null;
+    // 通过 MuxWebSocket 断开连接
+    if (window.muxWs) {
+      this.log('closeSession: disconnect via MuxWebSocket');
+      window.muxWs.closeTerminal(sessionId);
+      window.muxWs.closeChat(sessionId);
     }
 
     // 销毁终端
