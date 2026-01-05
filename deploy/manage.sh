@@ -167,41 +167,70 @@ install_deps() {
     fi
     print_success "Python: $(python3 --version)"
 
-    # Check Claude Code (required)
+    # Check and install Claude Code
     if ! command -v claude &> /dev/null; then
-        print_error "Claude Code CLI not found (required)"
+        print_info "Installing Claude Code CLI..."
+        curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/install.sh | sh
+
+        if ! command -v claude &> /dev/null; then
+            print_error "Claude Code installation failed"
+            exit 1
+        fi
+
+        print_success "Claude Code: Installed"
         echo ""
-        echo "  Please install Claude Code first:"
-        echo "  curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/install.sh | sh"
+        echo -e "${YELLOW}╔════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║  IMPORTANT: Claude Code Login Required                         ║${NC}"
+        echo -e "${YELLOW}║                                                                ║${NC}"
+        echo -e "${YELLOW}║  After installation completes, run:                            ║${NC}"
+        echo -e "${YELLOW}║    claude                                                      ║${NC}"
+        echo -e "${YELLOW}║                                                                ║${NC}"
+        echo -e "${YELLOW}║  Then follow the prompts to log in with your Anthropic        ║${NC}"
+        echo -e "${YELLOW}║  account to activate Claude Code.                             ║${NC}"
+        echo -e "${YELLOW}╚════════════════════════════════════════════════════════════════╝${NC}"
         echo ""
-        exit 1
+        read -p "Press Enter after you have logged in to Claude Code..."
     else
         print_success "Claude Code: Installed"
     fi
 
-    # Check Ollama (required for Experience Memory MCP)
+    # Check and install Ollama
     if ! command -v ollama &> /dev/null; then
-        print_warning "Ollama not found (required for Experience Memory MCP)"
-        echo ""
-        echo "  Please install Ollama:"
+        print_info "Installing Ollama..."
         if [[ "$OS" == "Darwin" ]]; then
-            echo "  brew install ollama"
+            # macOS - use brew if available, otherwise curl
+            if command -v brew &> /dev/null; then
+                brew install ollama
+            else
+                curl -fsSL https://ollama.com/install.sh | sh
+            fi
         else
-            echo "  curl -fsSL https://ollama.com/install.sh | sh"
+            # Linux
+            curl -fsSL https://ollama.com/install.sh | sh
         fi
-        echo ""
-        read -p "Continue without Ollama? (Experience Memory MCP will not work) [y/N] " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
+
+        if ! command -v ollama &> /dev/null; then
+            print_error "Ollama installation failed"
+            print_warning "Experience Memory MCP will not work without Ollama"
+        else
+            print_success "Ollama: Installed"
         fi
     else
         print_success "Ollama: Installed"
+    fi
 
-        # Check if embedding model is available
+    # Download embedding model if Ollama is available
+    if command -v ollama &> /dev/null; then
+        # Ensure Ollama service is running
+        if ! pgrep -x "ollama" > /dev/null; then
+            print_info "Starting Ollama service..."
+            ollama serve &>/dev/null &
+            sleep 2
+        fi
+
         if ! ollama list 2>/dev/null | grep -q "qwen3-embedding"; then
             print_info "Downloading embedding model (qwen3-embedding:0.6b)..."
-            echo "  This may take a few minutes..."
+            echo "  This may take a few minutes depending on your network..."
             ollama pull qwen3-embedding:0.6b
             print_success "Embedding model downloaded"
         else
