@@ -117,16 +117,14 @@ class TestChatSession:
 
     def test_find_claude_raises_if_not_found(self):
         """找不到 claude 时应该抛出异常"""
-        session = ChatSession(
-            session_id="test",
-            working_dir="/tmp",
-            claude_path=None  # 不指定路径
-        )
-
         with patch('shutil.which', return_value=None):
             with patch('os.path.exists', return_value=False):
                 with pytest.raises(FileNotFoundError):
-                    session._find_claude()
+                    ChatSession(
+                        session_id="test",
+                        working_dir="/tmp",
+                        claude_path=None  # 不指定路径
+                    )
 
 
 class TestChatSessionManager:
@@ -393,6 +391,42 @@ class TestResumeSession:
         history = session._load_history_from_file()
 
         assert history == []
+
+    def test_load_history_from_file_with_trailing_slash(self, temp_work_dir, tmp_path):
+        """测试带尾部斜杠的 working_dir 是否能正确加载历史"""
+        resume_id = str(uuid.uuid4())
+
+        # 实际目录名（无斜杠）
+        clean_work_dir = temp_work_dir.rstrip('/')
+        encoded_path = clean_work_dir.replace("/", "-").replace(" ", "-").replace("~", "-")
+        session_dir = tmp_path / ".claude" / "projects" / encoded_path
+        session_dir.mkdir(parents=True)
+        session_file = session_dir / f"{resume_id}.jsonl"
+
+        # 写入历史
+        messages = [{"type": "user", "message": {"content": "Hello"}}]
+        with open(session_file, 'w') as f:
+            for msg in messages:
+                f.write(json.dumps(msg) + "\n")
+
+        # 使用带尾部斜杠的 working_dir 创建 Session
+        working_dir_with_slash = clean_work_dir + "/"
+
+        with patch.object(Path, 'home', return_value=tmp_path):
+            session = ChatSession(
+                session_id="test",
+                working_dir=working_dir_with_slash,
+                claude_path="/usr/bin/true",
+                resume_session_id=resume_id
+            )
+            # 验证内部 working_dir 已被规范化
+            assert session.working_dir == clean_work_dir
+
+            # 验证历史能加载
+            history = session._load_history_from_file()
+            assert len(history) == 1
+            assert history[0].content["message"]["content"] == "Hello"
+
 
 
 class TestClaudeSessionId:

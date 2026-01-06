@@ -74,7 +74,8 @@ class ChatSession:
         resume_session_id: Optional[str] = None  # Claude session ID to resume
     ):
         self.session_id = session_id
-        self.working_dir = working_dir
+        # Normalize working_dir: remove trailing slash to ensure consistent path encoding
+        self.working_dir = working_dir.rstrip('/') if working_dir else working_dir
         self.claude_path = claude_path or self._find_claude()
         self.on_message = on_message
         self.resume_session_id = resume_session_id  # If set, will --resume this session

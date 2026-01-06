@@ -48,8 +48,10 @@ const ChatMode = {
    * 保存消息到当前 session
    */
   saveMessageToSession(msg) {
+    // this.messages 是 session.chatMessages 的引用，所以直接 push 即可
+    // 如果它们不是同一个引用（例如初始化失败），则尝试同步
     const session = window.app?.sessionManager?.getActive();
-    if (session) {
+    if (session && session.chatMessages !== this.messages) {
       session.chatMessages.push(msg);
     }
     this.messages.push(msg);
@@ -483,6 +485,19 @@ const ChatMode = {
             this.sendBtn.disabled = !this.inputEl.value.trim();
           }
         }
+
+        // 自动加载历史记录（如果本地消息为空）
+        // 后端在 connect 时会自动推送最新的 50 条历史，所以这里不需要主动加载
+        // 否则会导致重复（后端推一次，前端拉一次）
+        /*
+        if (this.messages.length === 0) {
+          this.log(`[MuxWS] Initial connection, loading history...`);
+          // 初始加载历史，重置状态
+          this.historyOldestIndex = -1; // -1 表示从最新开始
+          this.hasMoreHistory = true;
+          this.loadMoreHistory();
+        }
+        */
       },
       onMessage: (type, data) => {
         // BUG-017 FIX: 使用捕获的 session 处理消息
@@ -606,6 +621,11 @@ const ChatMode = {
         break;
 
       case 'user':
+        // 用户消息去重
+        if (this.isDuplicateMessage('user', data.content, data.timestamp)) {
+          this.log('Skipping duplicate user message');
+          return;
+        }
         this.addMessage('user', data.content, { timestamp: data.timestamp });
         break;
 
@@ -618,6 +638,11 @@ const ChatMode = {
         if (this.isStreaming) {
           this.finalizeStreaming(data.content);
         } else {
+          // 助手消息去重
+          if (this.isDuplicateMessage('assistant', data.content, data.timestamp)) {
+            this.log('Skipping duplicate assistant message');
+            return;
+          }
           this.addMessage('assistant', data.content, { timestamp: data.timestamp });
         }
         break;
@@ -719,6 +744,11 @@ const ChatMode = {
             extra: { timestamp: data.timestamp }
           });
         } else {
+          // 实时用户消息去重
+          if (this.isDuplicateMessage('user', data.content, data.timestamp)) {
+            this.log('Skipping duplicate user message');
+            return;
+          }
           this.addMessage('user', data.content, { timestamp: data.timestamp });
         }
         break;
@@ -739,6 +769,11 @@ const ChatMode = {
         } else if (this.isStreaming) {
           this.finalizeStreaming(data.content);
         } else {
+          // 助手消息去重
+          if (this.isDuplicateMessage('assistant', data.content, data.timestamp)) {
+            this.log('Skipping duplicate assistant message');
+            return;
+          }
           this.addMessage('assistant', data.content, { timestamp: data.timestamp });
         }
         break;
@@ -814,6 +849,12 @@ const ChatMode = {
 
         // Insert collected messages at the top (in correct order)
         if (this.pendingHistoryMessages.length > 0) {
+          // Sync with this.messages data structure (prepend to history)
+          // pendingHistoryMessages are ordered [older -> newer]
+          // this.messages are ordered [older -> newer]
+          // So we unshift them in reverse order or spread
+          this.messages.unshift(...this.pendingHistoryMessages);
+
           // Preserve scroll position
           const scrollHeightBefore = this.messagesEl.scrollHeight;
           const scrollTopBefore = this.messagesEl.scrollTop;
@@ -860,6 +901,57 @@ const ChatMode = {
         // Heartbeat response
         break;
     }
+  },
+
+  /**
+   * Check if a message is a duplicate of recent messages
+   */
+  isDuplicateMessage(type, content, timestamp) {
+    if (!this.messages || this.messages.length === 0) return false;
+    
+    // Check the last 50 messages
+    const checkCount = Math.min(this.messages.length, 50);
+    const startIndex = this.messages.length - checkCount;
+    
+    for (let i = this.messages.length - 1; i >= startIndex; i--) {
+      const msg = this.messages[i];
+      if (msg.type === type) {
+        // Content match
+        let isContentMatch = false;
+        if (typeof msg.content === 'string' && typeof content === 'string') {
+          isContentMatch = msg.content === content;
+        } else {
+          // Deep compare objects if needed, but for now strict equality or stringify
+          isContentMatch = JSON.stringify(msg.content) === JSON.stringify(content);
+        }
+
+        if (isContentMatch) {
+          // If we have timestamps, check if they are close (e.g., within 60 seconds)
+          // Backend history messages might have slightly different timestamps than frontend generated ones
+          if (timestamp && msg.extra?.timestamp) {
+            const msgTime = new Date(msg.extra.timestamp).getTime();
+            const newTime = new Date(timestamp).getTime();
+            // Allow 60s variance
+            if (Math.abs(newTime - msgTime) < 60000) {
+              return true;
+            }
+          } else {
+            // If no timestamp to compare, assume duplicate if it's the very last message of this type
+            // to be safe against echoes
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  },
+
+  /**
+   * Check if a user message is a duplicate of the last message
+   * @deprecated Use isDuplicateMessage instead
+   */
+  isDuplicateUserMessage(content) {
+    return this.isDuplicateMessage('user', content, null);
   },
 
   /**
@@ -1008,7 +1100,8 @@ const ChatMode = {
       this.emptyEl.style.display = 'none';
     }
 
-    const msgId = 'tool-' + Date.now();
+    // Add random suffix to ensure uniqueness
+    const msgId = 'tool-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
     const msgEl = document.createElement('div');
     msgEl.className = 'chat-message tool';
     msgEl.id = msgId;
@@ -1043,20 +1136,38 @@ const ChatMode = {
 
     // Get tool icon
     const toolIcon = this.getToolIcon(toolName);
+    
+    // Descriptive pending message
+    const pendingMsgs = {
+      'Bash': 'Executing command...',
+      'Read': 'Reading file...',
+      'Edit': 'Applying changes...',
+      'Grep': 'Searching...',
+      'Glob': 'Listing files...',
+      'default': 'Processing...'
+    };
+    const pendingText = pendingMsgs[toolName] || pendingMsgs.default;
 
     msgEl.innerHTML = `
       <div class="chat-bubble">
-        <div class="tool-header" onclick="ChatMode.toggleToolContent('${msgId}')">
+        <div class="tool-header" onclick="ChatMode.toggleToolContent('${msgId}', event)">
           <span class="tool-icon">${toolIcon}</span>
           <span class="tool-name">${toolName}</span>
-          <span class="${toggleClass}">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6"/>
-            </svg>
-          </span>
+          <div class="tool-actions">
+            <button class="tool-action-btn" onclick="ChatMode.showFullscreenTool('${msgId}', event)" title="Fullscreen">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+              </svg>
+            </button>
+            <span class="${toggleClass}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </span>
+          </div>
         </div>
         <div class="${contentClass}" id="${msgId}-content">
-          ${toolContent}
+          ${toolContent.includes('tool-pending') ? toolContent.replace('tool-pending">', `tool-pending">${pendingText}`) : toolContent}
         </div>
       </div>
     `;
@@ -1207,7 +1318,7 @@ const ChatMode = {
     html += `</div>`;
 
     // Will be populated by tool result
-    html += `<div class="tool-code-block"><pre class="tool-pending">Reading file...</pre></div>`;
+    html += `<div class="tool-code-block"><pre class="tool-pending"></pre></div>`;
 
     return html;
   },
@@ -1233,7 +1344,7 @@ const ChatMode = {
     }
 
     // Output will be populated by tool result
-    html += `<div class="tool-bash-output"><pre class="tool-pending">Executing...</pre></div>`;
+    html += `<div class="tool-bash-output"><pre class="tool-pending"></pre></div>`;
 
     return html;
   },
@@ -1257,7 +1368,7 @@ const ChatMode = {
 
     // Store pattern for highlighting in results
     html += `<div class="tool-grep-results" data-pattern="${this.escapeHtml(pattern)}">`;
-    html += `<pre class="tool-pending">Searching...</pre>`;
+    html += `<pre class="tool-pending"></pre>`;
     html += `</div>`;
 
     return html;
@@ -1282,7 +1393,7 @@ const ChatMode = {
       const isHidden = shouldCollapse && idx >= MAX_VISIBLE_LINES;
       html += `<div class="code-line${isHidden ? ' hidden' : ''}">`;
       html += `<span class="line-number">${lineNum}</span>`;
-      html += `<span class="line-content">${this.escapeHtml(line) || ' '}</span>`;
+      html += `<span class="line-content">${this.highlightCode(line) || ' '}</span>`;
       html += `</div>`;
     });
 
@@ -1311,14 +1422,64 @@ const ChatMode = {
   /**
    * Toggle tool content visibility
    */
-  toggleToolContent(msgId) {
-    // BUG-016 FIX: 在当前容器内查找
-    const content = this.messagesEl?.querySelector(`#${msgId}-content`);
-    const toggle = this.messagesEl?.querySelector(`#${msgId} .tool-toggle`);
+  toggleToolContent(msgId, event) {
+    if (event) event.stopPropagation();
+    
+    // Find the correct container first
+    const msgEl = document.getElementById(msgId);
+    if (!msgEl) return;
+
+    const content = msgEl.querySelector(`#${msgId}-content`);
+    const toggle = msgEl.querySelector(`.tool-toggle`);
+    
     if (content) {
+      const isExpanding = !content.classList.contains('show');
+      
+      // Store current scroll position state
+      const threshold = 100;
+      const isNearBottom = (this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight) < threshold;
+
       content.classList.toggle('show');
       toggle?.classList.toggle('expanded');
+      
+      // If expanding and was near bottom, scroll after layout update
+      if (isExpanding && isNearBottom) {
+        setTimeout(() => {
+          this.scrollToBottom();
+        }, 50);
+      }
     }
+  },
+
+  /**
+   * Show tool content in full-screen modal
+   */
+  showFullscreenTool(msgId, event) {
+    if (event) event.stopPropagation();
+    
+    const msgEl = document.getElementById(msgId);
+    if (!msgEl) return;
+
+    const toolName = msgEl.querySelector('.tool-name')?.textContent || 'Tool Output';
+    const contentHtml = msgEl.querySelector(`#${msgId}-content`)?.innerHTML || '';
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'tool-fullscreen-overlay';
+    overlay.innerHTML = `
+      <div class="tool-fs-header">
+        <button class="tool-fs-close" onclick="this.closest('.tool-fullscreen-overlay').remove()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <span class="tool-fs-title">${toolName}</span>
+      </div>
+      <div class="tool-fs-content">
+        ${contentHtml}
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
   },
 
   /**
@@ -1715,6 +1876,8 @@ const ChatMode = {
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
       const id = `code-${Date.now()}-${codeBlockId++}`;
       const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
+      const highlighted = this.highlightCode(code.trim(), lang);
+      
       return `<div class="code-block-wrapper">
         <div class="code-block-header">
           ${langLabel}
@@ -1725,7 +1888,7 @@ const ChatMode = {
             </svg>
           </button>
         </div>
-        <pre id="${id}"><code class="language-${lang}">${code.trim()}</code></pre>
+        <pre id="${id}"><code class="language-${lang}">${highlighted}</code></pre>
       </div>`;
     });
 
@@ -1785,8 +1948,44 @@ const ChatMode = {
    */
   scrollToBottom() {
     requestAnimationFrame(() => {
-      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      if (this.messagesEl) {
+        this.messagesEl.scrollTo({
+          top: this.messagesEl.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
     });
+  },
+
+  /**
+   * Simple syntax highlighting using regex
+   */
+  highlightCode(code, lang = '') {
+    if (!code) return '';
+    
+    // Escape HTML first
+    let escaped = this.escapeHtml(code);
+    
+    // Basic keywords
+    const keywords = ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'switch', 'case', 'break', 'continue', 'export', 'import', 'from', 'class', 'extends', 'async', 'await', 'try', 'catch', 'finally', 'new', 'this', 'super'];
+    const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
+    
+    escaped = escaped.replace(keywordRegex, '<span class="hl-keyword">$1</span>');
+    
+    // Strings
+    escaped = escaped.replace(/(["'])(?:(?=(\\?))\2.)*?\1/g, '<span class="hl-string">$&</span>');
+    
+    // Numbers
+    escaped = escaped.replace(/\b\d+(\.\d+)?\b/g, '<span class="hl-number">$&</span>');
+    
+    // Booleans
+    escaped = escaped.replace(/\b(true|false|null|undefined)\b/g, '<span class="hl-bool">$1</span>');
+    
+    // Comments
+    escaped = escaped.replace(/\/\/.*/g, '<span class="hl-comment">$&</span>');
+    escaped = escaped.replace(/\/\*[\s\S]*?\*\//g, '<span class="hl-comment">$&</span>');
+    
+    return escaped;
   },
 
   /**
@@ -1795,15 +1994,18 @@ const ChatMode = {
   updateStatus(status) {
     const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
 
-    this.statusDot.className = 'chat-status-dot ' + status;
+    if (this.statusDot) {
+      this.statusDot.className = 'chat-status-dot ' + status;
+    }
 
-    const texts = {
-      connected: t('chat.status.connected', 'Connected'),
-      disconnected: t('chat.status.disconnected', 'Disconnected'),
-      connecting: t('chat.status.connecting', 'Connecting...')
-    };
-
-    this.statusTextEl.textContent = texts[status] || status;
+    if (this.statusTextEl) {
+      const texts = {
+        connected: t('chat.status.connected', 'Connected'),
+        disconnected: t('chat.status.disconnected', 'Disconnected'),
+        connecting: t('chat.status.connecting', 'Connecting...')
+      };
+      this.statusTextEl.textContent = texts[status] || status;
+    }
   },
 
   /**

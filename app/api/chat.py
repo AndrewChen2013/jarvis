@@ -81,6 +81,9 @@ async def chat_websocket(
                 await websocket.close()
                 return
 
+            # Normalize working_dir
+            working_dir = working_dir.rstrip('/')
+
             await chat_manager.create_session(
                 working_dir=working_dir,
                 session_id=session_id,
