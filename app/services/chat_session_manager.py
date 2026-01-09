@@ -77,7 +77,9 @@ class ChatSession:
         # Normalize working_dir: remove trailing slash to ensure consistent path encoding
         self.working_dir = working_dir.rstrip('/') if working_dir else working_dir
         self.claude_path = claude_path or self._find_claude()
-        self.on_message = on_message
+        self._callbacks: List[Callable[[ChatMessage], None]] = []
+        if on_message:
+            self._callbacks.append(on_message)
         self.resume_session_id = resume_session_id  # If set, will --resume this session
 
         self._process: Optional[asyncio.subprocess.Process] = None
@@ -171,9 +173,12 @@ class ChatSession:
                     if data.get("type") != "stream_event":
                         self._message_history.append(msg)
 
-                    # Notify callback
-                    if self.on_message:
-                        self.on_message(msg)
+                    # Notify all callbacks
+                    for callback in self._callbacks:
+                        try:
+                            callback(msg)
+                        except Exception as e:
+                            logger.error(f"Error in chat callback: {e}")
 
                     # Queue for consumers
                     # BUG-014 FIX: Use put_nowait to avoid blocking, log warning if full
@@ -252,9 +257,20 @@ class ChatSession:
                 self._is_busy = False
                 break
 
+    def add_callback(self, callback: Callable[[ChatMessage], None]):
+        """Add a message callback."""
+        if callback not in self._callbacks:
+            self._callbacks.append(callback)
+
+    def remove_callback(self, callback: Callable[[ChatMessage], None]):
+        """Remove a message callback."""
+        if callback in self._callbacks:
+            self._callbacks.remove(callback)
+
     async def close(self):
         """Close the session and cleanup."""
         self._is_running = False
+        self._callbacks.clear()
 
         if self._reader_task:
             self._reader_task.cancel()

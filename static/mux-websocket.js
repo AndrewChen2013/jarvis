@@ -466,15 +466,20 @@ class MuxWebSocket {
 
     // Check if already connected to this chat session
     if (this.handlers.has(key)) {
-      this.log(`Chat ${sessionId.substring(0, 8)} already connected, skip`);
-      // Update callbacks if provided
+      this.log(`Chat ${sessionId.substring(0, 8)} already connected, updating callbacks`);
+      // Update callbacks
       const handler = this.handlers.get(key);
       if (options.onMessage) handler.onMessage = options.onMessage;
       if (options.onConnect) handler.onConnect = options.onConnect;
       if (options.onDisconnect) handler.onDisconnect = options.onDisconnect;
-      // Trigger onConnect immediately if already connected
-      if (this.state === 'connected' && options.onConnect) {
-        options.onConnect({ working_dir: workingDir });
+      
+      // Trigger onConnect immediately since we're already connected
+      if (this.state === 'connected' || this.state === 'authenticating') {
+        // We might not have the full data from the original ready message, 
+        // but we know it's active.
+        setTimeout(() => {
+          if (options.onConnect) options.onConnect({ working_dir: workingDir, already_connected: true });
+        }, 0);
       }
       return;
     }

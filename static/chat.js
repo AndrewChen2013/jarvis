@@ -370,37 +370,34 @@ const ChatMode = {
       return;
     }
 
-    // 切换到不同的 session 时，保存当前 session 的状态
+    // åˆ‡æ¢åˆ°ä¸åçš„ session æ—¶ï¼Œä¿ session çš„çŠ¶æ€
     if (this.sessionId && this.sessionId !== sessionId) {
       const oldSession = window.app?.sessionManager?.sessions.get(this.sessionId);
       if (oldSession) {
-        // 保存流式状态
+        // ä¿å¼çŠ¶æ€
         oldSession.chatIsStreaming = this.isStreaming;
         oldSession.chatStreamingMessageId = this.streamingMessageId;
-        // 保存输入框内容
+        // ä¿–æˆ–åˆ›å»º session çš„ chat å®¹å™¨
         if (this.inputEl) {
-          oldSession.chatInputValue = this.inputEl.value || '';
-          this.log(`Saved input for ${this.sessionId?.substring(0, 8)}: "${oldSession.chatInputValue.substring(0, 20)}..."`);
+          oldSession.chatInputValue = this.inputEl.value;
         }
-        this.log(`Saved streaming state for ${this.sessionId?.substring(0, 8)}`);
       }
     }
 
+    // Always update current sessionId
     this.sessionId = sessionId;
     this.workingDir = workingDir;
 
-    // 获取或创建 session 的 chat 容器
+    // ä¿–æˆ–åˆ›å»º session çš„ chat å®¹å™¨
     if (sessionManager) {
       sessionManager.getOrCreateChatContainer(session);
       sessionManager.showChatContainer(session);
     }
 
-    // 检查容器是否已经有内容（已初始化过）
-    const hasContent = session.chatContainer && session.chatContainer.querySelector('.chat-container');
-    this.log(`connect: hasContent=${hasContent}, chatMessages.length=${session.chatMessages.length}`);
-
-    if (hasContent) {
-      // 容器已有内容，只需更新引用
+    // æ£€æŸ¥å®¹å™¨æ˜¯åå·²ç»æœ‰å†…å®¹ï¼ˆå·²åˆªéœ€æ›´æ–°å¼•ç”¨
+    const isNewContainer = !session.chatContainer.innerHTML.trim();
+    
+    if (!isNewContainer) {
       this.container = session.chatContainer;
       this.messagesEl = session.chatContainer.querySelector('#chatMessages') ||
                         session.chatContainer.querySelector('.chat-messages');
@@ -415,20 +412,37 @@ const ChatMode = {
       this.emptyEl = session.chatContainer.querySelector('#chatEmpty') ||
                      session.chatContainer.querySelector('.chat-empty');
 
-      // 恢复流式状态
+      // æ¢å¤æµå¼çŠ¶æ€
       this.isStreaming = session.chatIsStreaming || false;
       this.streamingMessageId = session.chatStreamingMessageId || null;
       this.messages = session.chatMessages;
 
       this.log(`connect: restored container, messages=${this.messages.length}`);
     } else {
-      // 新容器，需要渲染
+      // æ–°å®¹å™¨ï¼Œéœ€è¦æ¸²æŸ“
       this.container = session.chatContainer;
       this.messages = session.chatMessages;
       this.isStreaming = false;
       this.streamingMessageId = null;
       this.render();
       this.bindEvents();
+      
+      // If we already have messages in memory for this session, render them now
+      if (this.messages && this.messages.length > 0) {
+        this.log(`connect: rendering ${this.messages.length} existing messages`);
+        // Hide empty state if there are messages
+        if (this.emptyEl) this.emptyEl.style.display = 'none';
+        
+        const fragment = document.createDocumentFragment();
+        for (const msg of this.messages) {
+          // Note: createMessageElement handles formatting and timestamp
+          const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra || {});
+          fragment.appendChild(msgEl);
+        }
+        this.messagesEl.appendChild(fragment);
+        this.scrollToBottom();
+      }
+      
       this.log(`connect: rendered new container`);
     }
 
@@ -907,6 +921,10 @@ const ChatMode = {
    * Check if a message is a duplicate of recent messages
    */
   isDuplicateMessage(type, content, timestamp) {
+    // During history loading, we are receiving verified history from server,
+    // so we don't need to perform duplicate checks which might skip valid history.
+    if (this.isLoadingHistory) return false;
+
     if (!this.messages || this.messages.length === 0) return false;
     
     // Check the last 50 messages

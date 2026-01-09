@@ -196,8 +196,11 @@ class MuxClient:
     connected_at: datetime = field(default_factory=datetime.now)
     subscriptions: Set[str] = field(default_factory=set)  # session_ids
     authenticated: bool = False
+    is_closed: bool = False  # Track if connection is closing/closed to avoid sending to dead connections
     # Track terminal output callbacks for cleanup
     terminal_callbacks: Dict[str, Callable] = field(default_factory=dict)
+    # Track chat output callbacks for cleanup
+    chat_callbacks: Dict[str, Callable] = field(default_factory=dict)
 
 
 class MuxConnectionManager:
@@ -233,6 +236,9 @@ class MuxConnectionManager:
             if not client:
                 return
 
+            # Mark as closed immediately to prevent any pending sends
+            client.is_closed = True
+
             # Remove from all session subscriptions
             for session_id in client.subscriptions:
                 if session_id in self.session_subscribers:
@@ -246,6 +252,12 @@ class MuxConnectionManager:
                     if terminal:
                         terminal.remove_output_callback(client.terminal_callbacks[session_id])
                         terminal_manager.decrement_websocket_count(session_id)
+
+                # Cleanup chat callbacks
+                if session_id in client.chat_callbacks:
+                    session = chat_manager.get_session(session_id)
+                    if session:
+                        session.remove_callback(client.chat_callbacks[session_id])
 
             logger.info(f"[Mux] Client {client_id[:8]} disconnected, cleaned up {len(client.subscriptions)} subscriptions")
 
@@ -287,6 +299,13 @@ class MuxConnectionManager:
                     terminal_manager.decrement_websocket_count(session_id)
                 del client.terminal_callbacks[session_id]
 
+            # Cleanup chat callback if exists
+            if session_id in client.chat_callbacks:
+                session = chat_manager.get_session(session_id)
+                if session:
+                    session.remove_callback(client.chat_callbacks[session_id])
+                del client.chat_callbacks[session_id]
+
             logger.debug(f"[Mux] Client {client_id[:8]} unsubscribed from {session_id[:8]}")
 
     async def send_to_client(self, client_id: str, message: dict):
@@ -296,7 +315,7 @@ class MuxConnectionManager:
         Automatically converts to optimized format before sending.
         """
         client = self.clients.get(client_id)
-        if not client:
+        if not client or client.is_closed:
             return
 
         try:
@@ -316,7 +335,9 @@ class MuxConnectionManager:
             packed = msgpack.packb(optimized, use_bin_type=True)
             await client.websocket.send_bytes(packed)
         except Exception as e:
-            logger.error(f"[Mux] Failed to send to {client_id[:8]}: {e}")
+            # Mark as closed on send error to prevent further attempts
+            client.is_closed = True
+            logger.debug(f"[Mux] Client {client_id[:8]} connection closed, marked as closed")
 
     async def broadcast_to_session(self, session_id: str, channel: str, msg_type: str, data: Any):
         """Broadcast a message to all clients subscribed to a session."""
@@ -541,7 +562,7 @@ class MuxConnectionManager:
             else:
                 actual_session_id = str(uuid.uuid4())
 
-            session_id = actual_session_id
+            session_id = actual_session_id or session_id
 
             # Check if session exists or create new one
             session = chat_manager.get_session(session_id)
@@ -578,6 +599,19 @@ class MuxConnectionManager:
             # Subscribe to this chat session
             await self.subscribe(client_id, session_id, "chat")
 
+            # Setup callback for this specific client to ensure broadcasting
+            # We use a wrapper to forward messages to this client
+            def chat_callback(msg: ChatMessage):
+                # Create a task to forward the message asynchronously
+                asyncio.create_task(self._forward_chat_message(client_id, session_id, msg))
+
+            session.add_callback(chat_callback)
+            
+            # Store callback for cleanup if not already tracked (MuxClient might need a chat_callbacks dict)
+            if not hasattr(client, 'chat_callbacks'):
+                client.chat_callbacks = {}
+            client.chat_callbacks[session_id] = chat_callback
+
             # Send ready with history count and original_session_id for handler remapping
             history = session.get_history()
             logger.info(f"[Mux] Sending ready: session_id={session_id[:8]}, original={original_session_id[:8] if original_session_id else 'None'}")
@@ -592,24 +626,30 @@ class MuxConnectionManager:
                 }
             })
 
-            # Send message history (limit to last 50 messages to avoid flooding)
-            MAX_HISTORY_MESSAGES = 50
+            # Send message history (limit to initial small batch for speed)
+            MAX_INITIAL_HISTORY = 15
             if history:
                 total_count = len(history)
-                if total_count > MAX_HISTORY_MESSAGES:
-                    history = history[-MAX_HISTORY_MESSAGES:]
-                    logger.info(f"[Mux] Limiting history from {total_count} to {len(history)} messages")
+                if total_count > MAX_INITIAL_HISTORY:
+                    # Only send the most recent N messages initially
+                    history = history[-MAX_INITIAL_HISTORY:]
+                    logger.info(f"[Mux] Limiting initial history from {total_count} to {len(history)} messages")
 
-                logger.info(f"[Mux] Sending {len(history)} history messages to client {client_id[:8]}")
+                logger.info(f"[Mux] Sending {len(history)} initial history messages to client {client_id[:8]}")
                 for msg in history:
                     await self._forward_chat_message(client_id, session_id, msg)
 
-                # Send history_end marker
+                # Send history_end marker with total count so frontend knows there is more
                 await self.send_to_client(client_id, {
                     "channel": "chat",
                     "session_id": session_id,
                     "type": "history_end",
-                    "data": {"count": len(history), "total": total_count}
+                    "data": {
+                        "count": len(history),
+                        "total": total_count,
+                        "has_more": total_count > MAX_INITIAL_HISTORY,
+                        "oldest_index": total_count - MAX_INITIAL_HISTORY if total_count > MAX_INITIAL_HISTORY else 0
+                    }
                 })
 
             logger.info(f"[Mux] Client {client_id[:8]} connected to chat {session_id[:8]}")
@@ -642,9 +682,9 @@ class MuxConnectionManager:
                 "data": {"content": content}
             })
 
-            # Process message and stream responses
-            async for msg in session.send_message(content):
-                await self._forward_chat_message(client_id, session_id, msg)
+            # Process message - responses will be handled by the chat_callback/broadcast mechanism
+            # We wrap this in a task so it doesn't block the Mux router
+            asyncio.create_task(self._process_chat_message(session, content))
 
         elif msg_type == "load_more_history":
             # Load more history (pagination)
@@ -677,6 +717,16 @@ class MuxConnectionManager:
             await self.unsubscribe(client_id, session_id)
             await chat_manager.close_session(session_id)
             logger.info(f"[Mux] Chat {session_id[:8]} closed by client {client_id[:8]}")
+
+    async def _process_chat_message(self, session, content: str):
+        """Helper to process chat message without blocking the router."""
+        try:
+            async for _ in session.send_message(content):
+                # We just consume the generator to keep the session alive and busy
+                # The actual messages are forwarded via the chat_callback
+                pass
+        except Exception as e:
+            logger.error(f"Error processing chat message: {e}")
 
     async def _forward_chat_message(self, client_id: str, session_id: str, msg: ChatMessage):
         """Forward a chat message to the client in the appropriate format."""
@@ -847,6 +897,12 @@ class MuxConnectionManager:
                         })
                     elif block_type == "tool_result":
                         tool_result = content.get("tool_use_result", {})
+                        # Handle case where tool_result might be a list or non-dict
+                        stdout = ""
+                        stderr = ""
+                        if isinstance(tool_result, dict):
+                            stdout = tool_result.get("stdout", "")
+                            stderr = tool_result.get("stderr", "")
                         await self.send_to_client(client_id, {
                             "channel": "chat",
                             "session_id": session_id,
@@ -854,8 +910,8 @@ class MuxConnectionManager:
                             "data": {
                                 "tool_id": block.get("tool_use_id"),
                                 "content": block.get("content", ""),
-                                "stdout": tool_result.get("stdout", ""),
-                                "stderr": tool_result.get("stderr", ""),
+                                "stdout": stdout,
+                                "stderr": stderr,
                                 "is_error": block.get("is_error", False)
                             }
                         })

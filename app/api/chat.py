@@ -214,12 +214,18 @@ async def handle_chat_message(websocket: WebSocket, msg: ChatMessage):
         for block in content_blocks:
             if block.get("type") == "tool_result":
                 tool_result = data.get("tool_use_result", {})
+                # Handle case where tool_result might be a list or non-dict
+                stdout = ""
+                stderr = ""
+                if isinstance(tool_result, dict):
+                    stdout = tool_result.get("stdout", "")
+                    stderr = tool_result.get("stderr", "")
                 await websocket.send_json({
                     "type": "tool_result",
                     "tool_id": block.get("tool_use_id"),
                     "content": block.get("content", ""),
-                    "stdout": tool_result.get("stdout", ""),
-                    "stderr": tool_result.get("stderr", ""),
+                    "stdout": stdout,
+                    "stderr": stderr,
                     "is_error": block.get("is_error", False)
                 })
 
