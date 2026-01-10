@@ -97,6 +97,11 @@ Format: minute hour day month weekday""",
                     "feishu_receiver": {
                         "type": "string",
                         "description": "Feishu notification receiver (email or open_id). ⚠️ If not set, task results will NOT be sent as notifications"
+                    },
+                    "execution_mode": {
+                        "type": "string",
+                        "enum": ["resume", "new"],
+                        "description": "Execution mode: 'resume' (default) continues from previous session context, 'new' creates fresh session each time for independent analysis (recommended for stock/market analysis tasks)"
                     }
                 },
                 "required": ["name", "prompt", "cron_expr"]
@@ -190,6 +195,11 @@ Format: minute hour day month weekday""",
                     "feishu_receiver": {
                         "type": "string",
                         "description": "Feishu notification receiver"
+                    },
+                    "execution_mode": {
+                        "type": "string",
+                        "enum": ["resume", "new"],
+                        "description": "Execution mode: 'resume' continues from previous session, 'new' creates fresh session each time"
                     }
                 },
                 "required": ["task_id"]
@@ -267,6 +277,7 @@ async def handle_create_task(db, args: dict):
     description = args.get("description", "")
     notify_feishu = args.get("notify_feishu", True)
     feishu_receiver = args.get("feishu_receiver", "")
+    execution_mode = args.get("execution_mode", "resume")
 
     # Create task
     task_id = db.create_scheduled_task(
@@ -276,7 +287,8 @@ async def handle_create_task(db, args: dict):
         prompt=prompt,
         cron_expr=cron_expr,
         notify_feishu=notify_feishu,
-        feishu_chat_id=feishu_receiver
+        feishu_chat_id=feishu_receiver,
+        execution_mode=execution_mode
     )
 
     # Register to scheduler
@@ -292,6 +304,7 @@ async def handle_create_task(db, args: dict):
         "task_id": task_id,
         "message": f"Task '{name}' created successfully! ID: {task_id}",
         "cron_expr": cron_expr,
+        "execution_mode": execution_mode,
         "notify_feishu": notify_feishu,
         "feishu_receiver": feishu_receiver or None,
         "next_hint": "Task added to scheduler. Will execute automatically according to cron expression."
@@ -430,6 +443,8 @@ async def handle_update_task(db, args: dict):
         update_args["notify_feishu"] = args["notify_feishu"]
     if "feishu_receiver" in args:
         update_args["feishu_chat_id"] = args["feishu_receiver"]
+    if "execution_mode" in args:
+        update_args["execution_mode"] = args["execution_mode"]
 
     if not update_args:
         return [TextContent(type="text", text="No fields provided to update")]

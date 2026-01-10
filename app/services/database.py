@@ -234,12 +234,16 @@ class Database:
                         enabled INTEGER DEFAULT 1,
                         notify_feishu INTEGER DEFAULT 1,
                         feishu_chat_id TEXT,
+                        execution_mode TEXT DEFAULT 'resume',
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         last_run_at DATETIME,
                         next_run_at DATETIME
                     )
                 """)
+
+                # 迁移：为 scheduled_tasks 添加 execution_mode 列（如果不存在）
+                self._migrate_scheduled_tasks(cursor)
                 cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_enabled
                     ON scheduled_tasks(enabled, next_run_at)
@@ -282,6 +286,18 @@ class Database:
                 logger.info("Added 'machine_id' column to pinned_sessions")
         except Exception as e:
             logger.error(f"Migration error: {e}")
+
+    def _migrate_scheduled_tasks(self, cursor):
+        """为 scheduled_tasks 表添加 execution_mode 列（向后兼容）"""
+        try:
+            cursor.execute("PRAGMA table_info(scheduled_tasks)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'execution_mode' not in columns:
+                cursor.execute("ALTER TABLE scheduled_tasks ADD COLUMN execution_mode TEXT DEFAULT 'resume'")
+                logger.info("Added 'execution_mode' column to scheduled_tasks")
+        except Exception as e:
+            logger.error(f"Migration error for scheduled_tasks: {e}")
 
     def _migrate_from_json(self):
         """从 JSON 文件迁移数据"""
@@ -1034,21 +1050,28 @@ class Database:
         description: str = None,
         timezone: str = "Asia/Shanghai",
         notify_feishu: bool = True,
-        feishu_chat_id: str = None
+        feishu_chat_id: str = None,
+        execution_mode: str = "resume"
     ) -> int:
-        """创建定时任务，返回任务ID"""
+        """创建定时任务，返回任务ID
+
+        Args:
+            execution_mode: 执行模式
+                - "resume": 首次创建 session，后续 resume 继续（默认）
+                - "new": 每次都创建新 session，独立执行
+        """
         with self._lock:
             with self._get_conn() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO scheduled_tasks
                     (name, description, session_id, working_dir, prompt, cron_expr,
-                     timezone, enabled, notify_feishu, feishu_chat_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                     timezone, enabled, notify_feishu, feishu_chat_id, execution_mode)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                 """, (name, description, session_id, working_dir, prompt, cron_expr,
-                      timezone, 1 if notify_feishu else 0, feishu_chat_id))
+                      timezone, 1 if notify_feishu else 0, feishu_chat_id, execution_mode))
                 task_id = cursor.lastrowid
-                logger.info(f"Created scheduled task: {name} (id={task_id}, cron={cron_expr})")
+                logger.info(f"Created scheduled task: {name} (id={task_id}, cron={cron_expr}, mode={execution_mode})")
                 return task_id
 
     def get_scheduled_task(self, task_id: int) -> Optional[Dict[str, Any]]:
@@ -1059,7 +1082,7 @@ class Database:
                 cursor.execute("""
                     SELECT id, name, description, session_id, working_dir, prompt,
                            cron_expr, timezone, enabled, notify_feishu, feishu_chat_id,
-                           created_at, updated_at, last_run_at, next_run_at
+                           execution_mode, created_at, updated_at, last_run_at, next_run_at
                     FROM scheduled_tasks
                     WHERE id = ?
                 """, (task_id,))
@@ -1068,6 +1091,7 @@ class Database:
                     result = dict(row)
                     result['enabled'] = bool(result['enabled'])
                     result['notify_feishu'] = bool(result['notify_feishu'])
+                    result['execution_mode'] = result.get('execution_mode') or 'resume'
                     return result
                 return None
 
@@ -1079,7 +1103,7 @@ class Database:
                 cursor.execute("""
                     SELECT id, name, description, session_id, working_dir, prompt,
                            cron_expr, timezone, enabled, notify_feishu, feishu_chat_id,
-                           created_at, updated_at, last_run_at, next_run_at
+                           execution_mode, created_at, updated_at, last_run_at, next_run_at
                     FROM scheduled_tasks
                     ORDER BY created_at DESC
                 """)
@@ -1088,6 +1112,7 @@ class Database:
                     item = dict(row)
                     item['enabled'] = bool(item['enabled'])
                     item['notify_feishu'] = bool(item['notify_feishu'])
+                    item['execution_mode'] = item.get('execution_mode') or 'resume'
                     results.append(item)
                 return results
 
@@ -1099,7 +1124,7 @@ class Database:
                 cursor.execute("""
                     SELECT id, name, description, session_id, working_dir, prompt,
                            cron_expr, timezone, enabled, notify_feishu, feishu_chat_id,
-                           created_at, updated_at, last_run_at, next_run_at
+                           execution_mode, created_at, updated_at, last_run_at, next_run_at
                     FROM scheduled_tasks
                     WHERE enabled = 1
                     ORDER BY next_run_at ASC
@@ -1109,6 +1134,7 @@ class Database:
                     item = dict(row)
                     item['enabled'] = True
                     item['notify_feishu'] = bool(item['notify_feishu'])
+                    item['execution_mode'] = item.get('execution_mode') or 'resume'
                     results.append(item)
                 return results
 
@@ -1132,9 +1158,16 @@ class Database:
         timezone: str = None,
         enabled: bool = None,
         notify_feishu: bool = None,
-        feishu_chat_id: str = None
+        feishu_chat_id: str = None,
+        execution_mode: str = None
     ) -> bool:
-        """更新定时任务"""
+        """更新定时任务
+
+        Args:
+            execution_mode: 执行模式
+                - "resume": 首次创建 session，后续 resume 继续
+                - "new": 每次都创建新 session，独立执行
+        """
         with self._lock:
             with self._get_conn() as conn:
                 cursor = conn.cursor()
@@ -1171,6 +1204,9 @@ class Database:
                 if feishu_chat_id is not None:
                     updates.append("feishu_chat_id = ?")
                     params.append(feishu_chat_id if feishu_chat_id else None)
+                if execution_mode is not None:
+                    updates.append("execution_mode = ?")
+                    params.append(execution_mode)
 
                 params.append(task_id)
                 cursor.execute(f"""

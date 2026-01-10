@@ -68,6 +68,7 @@ class TaskExecutor:
         prompt = task['prompt']
         notify_feishu = task.get('notify_feishu', True)
         feishu_chat_id = task.get('feishu_chat_id')
+        execution_mode = task.get('execution_mode', 'resume')
 
         # 获取或创建任务锁
         if task_id not in self._task_locks:
@@ -95,7 +96,7 @@ class TaskExecutor:
                     feishu_receive_id=feishu_chat_id
                 )
 
-                # 获取任务已有的 session_id（用于 resume）
+                # 获取任务已有的 session_id（用于 resume 模式）
                 existing_session_id = task.get('session_id')
 
                 # 使用 claude -p 执行
@@ -103,11 +104,14 @@ class TaskExecutor:
                     prompt=full_prompt,
                     working_dir=working_dir,
                     timeout=self.DEFAULT_TIMEOUT,
-                    existing_session_id=existing_session_id
+                    existing_session_id=existing_session_id,
+                    execution_mode=execution_mode
                 )
 
-                # 更新任务的 session_id（首次执行时保存，后续执行时 session_id 不变）
-                if not existing_session_id:
+                # 更新任务的 session_id
+                # resume 模式：首次执行时保存，后续 session_id 不变
+                # new 模式：不保存 session_id，每次都是新的
+                if execution_mode == "resume" and not existing_session_id:
                     db.update_task_session_id(task_id, session_id)
 
                 # 计算耗时
@@ -174,7 +178,8 @@ class TaskExecutor:
         prompt: str,
         working_dir: str,
         timeout: int,
-        existing_session_id: str = None
+        existing_session_id: str = None,
+        execution_mode: str = "resume"
     ) -> Tuple[str, str, int, str]:
         """使用 claude -p 执行任务
 
@@ -183,13 +188,26 @@ class TaskExecutor:
             working_dir: 工作目录
             timeout: 超时时间（秒）
             existing_session_id: 已有的 session_id（用于 resume）
+            execution_mode: 执行模式
+                - "resume": 首次创建 session，后续 resume 继续（默认）
+                - "new": 每次都创建新 session，独立执行
 
         Returns:
             (stdout, stderr, return_code, session_id)
         """
-        # 判断是 resume 还是新建
-        if existing_session_id:
-            # 复用已有的 session（resume 模式）
+        # 根据 execution_mode 判断是 resume 还是新建
+        if execution_mode == "new":
+            # new 模式：每次都创建新 session，独立执行
+            session_id = str(uuid.uuid4())
+            cmd = [
+                'claude',
+                '-p',  # 非交互模式
+                '--dangerously-skip-permissions',
+                '--session-id', session_id,
+            ]
+            mode = "NEW (independent)"
+        elif existing_session_id:
+            # resume 模式且有已有 session：复用
             session_id = existing_session_id
             cmd = [
                 'claude',
@@ -199,7 +217,7 @@ class TaskExecutor:
             ]
             mode = "RESUME"
         else:
-            # 新建 session
+            # resume 模式但没有已有 session：首次创建
             session_id = str(uuid.uuid4())
             cmd = [
                 'claude',
@@ -207,7 +225,7 @@ class TaskExecutor:
                 '--dangerously-skip-permissions',
                 '--session-id', session_id,  # 使用 --session-id 创建新会话
             ]
-            mode = "NEW"
+            mode = "NEW (first run)"
 
         # 如果设置了 MAX_TURNS，添加限制
         if self.MAX_TURNS is not None:
