@@ -462,12 +462,21 @@ class MuxConnectionManager:
             await self.subscribe(client_id, session_id, "terminal")
             terminal_manager.increment_websocket_count(session_id)
 
+            # BUG FIX: Clean up old callback before registering new one
+            # This prevents duplicate output when client reconnects
+            if session_id in client.terminal_callbacks:
+                old_callback = client.terminal_callbacks[session_id]
+                terminal.remove_output_callback(old_callback)
+                terminal_manager.decrement_websocket_count(session_id)
+                logger.debug(f"[Mux] Removed old terminal callback for client {client_id[:8]} session {session_id[:8]}")
+
             # Setup output callback for this client
-            async def output_callback(output_data: bytes):
+            # Use default parameter binding to capture current values
+            async def output_callback(output_data: bytes, cid=client_id, sid=session_id):
                 text = output_data.decode('utf-8', errors='replace')
-                await self.send_to_client(client_id, {
+                await self.send_to_client(cid, {
                     "channel": "terminal",
-                    "session_id": session_id,
+                    "session_id": sid,
                     "type": "output",
                     "data": {"text": text}
                 })
@@ -599,17 +608,20 @@ class MuxConnectionManager:
             # Subscribe to this chat session
             await self.subscribe(client_id, session_id, "chat")
 
+            # BUG FIX: Clean up old callback before registering new one
+            # This prevents duplicate message delivery when client reconnects
+            if session_id in client.chat_callbacks:
+                old_callback = client.chat_callbacks[session_id]
+                session.remove_callback(old_callback)
+                logger.debug(f"[Mux] Removed old callback for client {client_id[:8]} session {session_id[:8]}")
+
             # Setup callback for this specific client to ensure broadcasting
-            # We use a wrapper to forward messages to this client
-            def chat_callback(msg: ChatMessage):
+            # Use default parameter binding to capture current values and avoid closure issues
+            def chat_callback(msg: ChatMessage, cid=client_id, sid=session_id):
                 # Create a task to forward the message asynchronously
-                asyncio.create_task(self._forward_chat_message(client_id, session_id, msg))
+                asyncio.create_task(self._forward_chat_message(cid, sid, msg))
 
             session.add_callback(chat_callback)
-            
-            # Store callback for cleanup if not already tracked (MuxClient might need a chat_callbacks dict)
-            if not hasattr(client, 'chat_callbacks'):
-                client.chat_callbacks = {}
             client.chat_callbacks[session_id] = chat_callback
 
             # Send ready with history count and original_session_id for handler remapping
