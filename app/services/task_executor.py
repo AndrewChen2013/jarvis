@@ -252,6 +252,34 @@ class TaskExecutor:
             await process.wait()
             raise
 
+    def _detect_feishu_id_type(self, receive_id: str) -> tuple[str, str]:
+        """检测飞书接收者 ID 类型
+
+        Returns:
+            (id_type, instruction): ID 类型和额外指令
+            - id_type: email, open_id, chat_id, phone
+            - instruction: 如果是 phone，需要先查询 open_id 的指令
+        """
+        if "@" in receive_id:
+            return "email", ""
+        elif receive_id.startswith("ou_"):
+            return "open_id", ""
+        elif receive_id.startswith("oc_"):
+            return "chat_id", ""
+        elif receive_id.isdigit() and len(receive_id) >= 10:
+            # 纯数字且长度 >= 10，判断为手机号
+            return "phone", f"""
+**注意：接收者是手机号，需要先查询 open_id**
+
+请先使用 lark-mcp 的 contact_v3_user_batchGetId 工具查询用户 open_id：
+- mobiles: ["+86{receive_id}"]（如果是国内手机号需要加 +86 前缀）
+- user_id_type: open_id
+
+获取到 open_id 后，再用 open_id 发送消息。"""
+        else:
+            # 默认当作 open_id
+            return "open_id", ""
+
     def _build_task_prompt(
         self,
         task_name: str,
@@ -275,13 +303,33 @@ class TaskExecutor:
 
         # 如果需要飞书通知且指定了接收者，添加通知指令
         if notify_feishu and feishu_receive_id:
-            base_prompt += f"""
+            id_type, extra_instruction = self._detect_feishu_id_type(feishu_receive_id)
+
+            if id_type == "phone":
+                # 手机号需要先查询 open_id
+                base_prompt += f"""
+
+## 任务完成后
+任务完成后，请发送执行结果通知到飞书。
+{extra_instruction}
+
+发送消息时使用 lark-mcp 的 im_v1_message_create 工具：
+- receive_id_type: open_id（使用查询到的 open_id）
+- msg_type: interactive
+- content: 构建一个卡片消息，包含：
+  - 标题：⏰ 定时任务执行完成（绿色）
+  - 任务名称：{task_name}
+  - 执行结果摘要
+
+请确保飞书消息发送成功后再结束任务。"""
+            else:
+                base_prompt += f"""
 
 ## 任务完成后
 任务完成后，请使用 lark-mcp 的 im_v1_message_create 工具发送执行结果通知到飞书。
 
 发送参数：
-- receive_id_type: {"email" if "@" in feishu_receive_id else "open_id"}
+- receive_id_type: {id_type}
 - receive_id: {feishu_receive_id}
 - msg_type: interactive
 - content: 构建一个卡片消息，包含：
