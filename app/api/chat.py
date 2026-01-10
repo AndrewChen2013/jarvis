@@ -22,6 +22,7 @@ using Claude CLI's stream-json format for structured communication.
 import json
 import logging
 import asyncio
+from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from typing import Optional
 
@@ -203,7 +204,8 @@ async def handle_chat_message(websocket: WebSocket, msg: ChatMessage):
                     "type": "tool_call",
                     "tool_name": block.get("name"),
                     "tool_id": block.get("id"),
-                    "input": block.get("input", {})
+                    "input": block.get("input", {}),
+                    "timestamp": datetime.now().isoformat()
                 })
 
     elif msg_type == "user":
@@ -226,7 +228,8 @@ async def handle_chat_message(websocket: WebSocket, msg: ChatMessage):
                     "content": block.get("content", ""),
                     "stdout": stdout,
                     "stderr": stderr,
-                    "is_error": block.get("is_error", False)
+                    "is_error": block.get("is_error", False),
+                    "timestamp": datetime.now().isoformat()
                 })
 
     elif msg_type == "result":
@@ -238,3 +241,22 @@ async def handle_chat_message(websocket: WebSocket, msg: ChatMessage):
             "cost_usd": data.get("total_cost_usd"),
             "usage": data.get("usage", {})
         })
+
+    elif msg_type == "progress":
+        # Progress message (e.g., during /compact)
+        await websocket.send_json({
+            "type": "progress",
+            "message": data.get("message", ""),
+            "data": data
+        })
+
+    else:
+        # Unknown message type - log and forward for debugging
+        logger.debug(f"Unknown chat message type: {msg_type}, data: {data}")
+        # Forward as system message so frontend can display it
+        if msg_type:
+            await websocket.send_json({
+                "type": "system_info",
+                "original_type": msg_type,
+                "data": data
+            })

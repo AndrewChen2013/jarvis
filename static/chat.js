@@ -663,7 +663,7 @@ const ChatMode = {
 
       case 'tool_call':
         this.hideTypingIndicator();
-        this.addToolMessage('call', data.tool_name, data.input);
+        this.addToolMessage('call', data.tool_name, data.input, data.timestamp);
         break;
 
       case 'tool_result':
@@ -693,6 +693,7 @@ const ChatMode = {
 
       case 'result':
         this.hideTypingIndicator();
+        this.hideProgressMessage();
         this.isStreaming = false;
         if (data.cost_usd) {
           this.showResultBadge(data);
@@ -701,6 +702,7 @@ const ChatMode = {
 
       case 'error':
         this.hideTypingIndicator();
+        this.hideProgressMessage();
         this.addMessage('system', `Error: ${data.message}`);
         // If permanent error, unsubscribe to prevent retry on reconnect
         if (data.permanent && this.sessionId) {
@@ -794,7 +796,7 @@ const ChatMode = {
 
       case 'tool_call':
         this.hideTypingIndicator();
-        this.addToolMessage('call', data.tool_name, data.input);
+        this.addToolMessage('call', data.tool_name, data.input, data.timestamp);
         break;
 
       case 'tool_result':
@@ -824,6 +826,7 @@ const ChatMode = {
 
       case 'result':
         this.hideTypingIndicator();
+        this.hideProgressMessage();
         this.isStreaming = false;
         if (data.cost_usd) {
           this.showResultBadge(data);
@@ -832,6 +835,7 @@ const ChatMode = {
 
       case 'error':
         this.hideTypingIndicator();
+        this.hideProgressMessage();
         this.addMessage('system', `Error: ${data.message}`);
         // If permanent error, unsubscribe to prevent retry on reconnect
         if (data.permanent && this.sessionId) {
@@ -913,6 +917,20 @@ const ChatMode = {
 
       case 'pong':
         // Heartbeat response
+        break;
+
+      case 'progress':
+        // Progress message (e.g., during /compact)
+        this.showProgressMessage(data.message || 'Processing...');
+        break;
+
+      case 'system_info':
+        // System info for unknown message types (forwarded from backend)
+        this.log(`System info: ${data.original_type}`);
+        // Optionally display to user if relevant
+        if (data.original_type === 'compact') {
+          this.showProgressMessage('Compacting conversation...');
+        }
         break;
     }
   },
@@ -1113,7 +1131,7 @@ const ChatMode = {
   /**
    * Add tool call message
    */
-  addToolMessage(action, toolName, data) {
+  addToolMessage(action, toolName, data, timestamp) {
     if (this.emptyEl) {
       this.emptyEl.style.display = 'none';
     }
@@ -1154,7 +1172,7 @@ const ChatMode = {
 
     // Get tool icon
     const toolIcon = this.getToolIcon(toolName);
-    
+
     // Descriptive pending message
     const pendingMsgs = {
       'Bash': 'Executing command...',
@@ -1166,11 +1184,16 @@ const ChatMode = {
     };
     const pendingText = pendingMsgs[toolName] || pendingMsgs.default;
 
+    // Format timestamp
+    const timeStr = timestamp ? this.formatTimestamp(timestamp) : '';
+    const timeHtml = timeStr ? `<span class="tool-time">${timeStr}</span>` : '';
+
     msgEl.innerHTML = `
       <div class="chat-bubble">
         <div class="tool-header" onclick="ChatMode.toggleToolContent('${msgId}', event)">
           <span class="tool-icon">${toolIcon}</span>
           <span class="tool-name">${toolName}</span>
+          ${timeHtml}
           <div class="tool-actions">
             <button class="tool-action-btn" onclick="ChatMode.showFullscreenTool('${msgId}', event)" title="Fullscreen">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1857,6 +1880,42 @@ const ChatMode = {
     if (content) {
       content.classList.toggle('show');
       toggle?.classList.toggle('expanded');
+    }
+  },
+
+  /**
+   * Show progress message (e.g., during /compact)
+   */
+  showProgressMessage(message) {
+    // Check if progress indicator already exists
+    let progressEl = this.messagesEl?.querySelector('#progressIndicator');
+
+    if (!progressEl) {
+      progressEl = document.createElement('div');
+      progressEl.id = 'progressIndicator';
+      progressEl.className = 'chat-message system progress';
+      this.messagesEl.appendChild(progressEl);
+    }
+
+    progressEl.innerHTML = `
+      <div class="chat-bubble progress-bubble">
+        <span class="progress-spinner"></span>
+        <span class="progress-text">${this.escapeHtml(message)}</span>
+      </div>
+    `;
+
+    this.scrollToBottom();
+
+    // Auto-hide after result message (will be cleaned up by result handler)
+  },
+
+  /**
+   * Hide progress message
+   */
+  hideProgressMessage() {
+    const progressEl = this.messagesEl?.querySelector('#progressIndicator');
+    if (progressEl) {
+      progressEl.remove();
     }
   },
 
