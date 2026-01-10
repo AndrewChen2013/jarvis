@@ -16,17 +16,17 @@
 定时任务执行器
 
 执行流程（使用 claude -p 非交互模式）：
-1. 构建任务 prompt
+1. 构建任务 prompt（包含飞书通知指令）
 2. 使用 claude -p 执行任务
-3. 解析输出判断成功/失败
-4. 通过飞书推送结果
+3. 任务内的 Claude 自行调用 lark-mcp 发送飞书通知
+4. 解析输出判断成功/失败
 5. 记录执行结果
 """
 import asyncio
 import os
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Tuple
 
 from app.core.logging import logger
 from app.services.database import db
@@ -42,16 +42,8 @@ class TaskExecutor:
     MAX_TURNS = None  # 不传 --max-turns 参数
 
     def __init__(self):
-        self._feishu_notifier = None  # 延迟导入
         # 任务锁，避免同一任务同时执行多次
         self._task_locks: Dict[int, asyncio.Lock] = {}
-
-    def _get_feishu_notifier(self):
-        """获取飞书通知器（延迟导入）"""
-        if self._feishu_notifier is None:
-            from app.services.feishu_notifier import feishu_notifier
-            self._feishu_notifier = feishu_notifier
-        return self._feishu_notifier
 
     async def execute(self, task: Dict[str, Any]) -> bool:
         """执行任务
@@ -143,9 +135,7 @@ class TaskExecutor:
                     error=stderr if status == 'failed' else None
                 )
 
-                # 飞书推送（仅失败时由系统发送，成功时由任务中的 Claude 自己发送）
-                if notify_feishu and status != 'success':
-                    await self._notify_error(task_name, start_time, error_msg, feishu_chat_id)
+                # 飞书通知由任务内的 Claude 通过 prompt 指令自己发送，不再单独启动进程
 
                 return status == 'success'
 
@@ -157,8 +147,6 @@ class TaskExecutor:
                 finished_at=datetime.now(),
                 error=f'Execution timed out after {self.DEFAULT_TIMEOUT}s'
             )
-            if notify_feishu:
-                await self._notify_error(task_name, start_time, "执行超时", feishu_chat_id)
             return False
 
         except Exception as e:
@@ -169,8 +157,6 @@ class TaskExecutor:
                 finished_at=datetime.now(),
                 error=str(e)
             )
-            if notify_feishu:
-                await self._notify_error(task_name, start_time, str(e), feishu_chat_id)
             return False
 
     async def _run_claude(
@@ -307,58 +293,6 @@ class TaskExecutor:
 
         base_prompt += "\n\n请开始执行。"
         return base_prompt
-
-    async def _notify_success(
-        self,
-        task_name: str,
-        start_time: datetime,
-        duration: float,
-        output_summary: str,
-        receive_id: Optional[str] = None
-    ):
-        """推送成功通知"""
-        try:
-            notifier = self._get_feishu_notifier()
-            await notifier.send_task_success(
-                task_name=task_name,
-                time_str=start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                duration=f"{duration:.0f}秒",
-                result=output_summary,
-                receive_id=receive_id
-            )
-        except Exception as e:
-            logger.error(f"[TaskExecutor] Failed to send success notification: {e}")
-
-    async def _notify_error(
-        self,
-        task_name: str,
-        start_time: datetime,
-        error: str,
-        receive_id: Optional[str] = None
-    ):
-        """推送失败通知"""
-        try:
-            notifier = self._get_feishu_notifier()
-            await notifier.send_task_error(
-                task_name=task_name,
-                time_str=start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                error=error,
-                receive_id=receive_id
-            )
-        except Exception as e:
-            logger.error(f"[TaskExecutor] Failed to send error notification: {e}")
-
-    async def _notify_skipped(self, task_name: str, reason: str, receive_id: Optional[str] = None):
-        """推送跳过通知"""
-        try:
-            notifier = self._get_feishu_notifier()
-            await notifier.send_task_skipped(
-                task_name=task_name,
-                reason=reason,
-                receive_id=receive_id
-            )
-        except Exception as e:
-            logger.error(f"[TaskExecutor] Failed to send skipped notification: {e}")
 
 
 # 全局实例
