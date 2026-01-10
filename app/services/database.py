@@ -833,44 +833,47 @@ class Database:
                 row = cursor.fetchone()
                 return dict(row) if row else None
 
-    def _encrypt_password(self, password: str) -> str:
-        """使用 AUTH_TOKEN 加密密码"""
+    def _get_fernet_key(self) -> bytes:
+        """从 AUTH_TOKEN 派生 Fernet 密钥（32 字节 URL-safe base64）"""
         import base64
         import hashlib
         from app.core.config import settings
+
+        # 使用 SHA256 派生 32 字节密钥，然后 URL-safe base64 编码
+        key_bytes = hashlib.sha256(settings.AUTH_TOKEN.encode()).digest()
+        return base64.urlsafe_b64encode(key_bytes)
+
+    def _encrypt_password(self, password: str) -> str:
+        """使用 Fernet (AES-128-CBC + HMAC) 加密密码
+
+        Bug fix: 替换不安全的 XOR 加密为 Fernet 认证加密
+        - 提供机密性（AES-128-CBC）
+        - 提供完整性（HMAC-SHA256）
+        - 防止已知明文攻击
+        """
+        from cryptography.fernet import Fernet
 
         if not password:
             return ""
 
-        # 从 AUTH_TOKEN 派生密钥
-        key = hashlib.sha256(settings.AUTH_TOKEN.encode()).digest()
-
-        # XOR 加密
-        password_bytes = password.encode('utf-8')
-        encrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(password_bytes))
-
-        # Base64 编码
-        return base64.b64encode(encrypted).decode()
+        try:
+            fernet = Fernet(self._get_fernet_key())
+            encrypted = fernet.encrypt(password.encode('utf-8'))
+            return encrypted.decode('utf-8')
+        except Exception as e:
+            logger.error(f"Encrypt password error: {e}")
+            return ""
 
     def _decrypt_password(self, encrypted: str) -> str:
-        """使用 AUTH_TOKEN 解密密码"""
-        import base64
-        import hashlib
-        from app.core.config import settings
+        """使用 Fernet (AES-128-CBC + HMAC) 解密密码"""
+        from cryptography.fernet import Fernet
 
         if not encrypted:
             return ""
 
         try:
-            # 从 AUTH_TOKEN 派生密钥
-            key = hashlib.sha256(settings.AUTH_TOKEN.encode()).digest()
-
-            # Base64 解码
-            encrypted_bytes = base64.b64decode(encrypted)
-
-            # XOR 解密（XOR 是对称的）
-            decrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(encrypted_bytes))
-
+            fernet = Fernet(self._get_fernet_key())
+            decrypted = fernet.decrypt(encrypted.encode('utf-8'))
             return decrypted.decode('utf-8')
         except Exception as e:
             logger.error(f"Decrypt password error: {e}")

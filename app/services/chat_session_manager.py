@@ -33,19 +33,27 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Dict, Optional, Any, Callable, List
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _utc_now() -> datetime:
+    """Return current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ChatMessage:
-    """A structured chat message."""
+    """A structured chat message.
+
+    BUG FIX: Use timezone-aware UTC datetime for consistent comparison.
+    """
     type: str  # system, assistant, user, result
     content: Any
     session_id: str
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=_utc_now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -173,8 +181,9 @@ class ChatSession:
                     if data.get("type") != "stream_event":
                         self._message_history.append(msg)
 
-                    # Notify all callbacks
-                    for callback in self._callbacks:
+                    # BUG FIX: Copy callbacks list before iteration to avoid skipping
+                    # callbacks if one removes itself or if list is modified during iteration
+                    for callback in list(self._callbacks):
                         try:
                             callback(msg)
                         except Exception as e:
@@ -270,7 +279,6 @@ class ChatSession:
     async def close(self):
         """Close the session and cleanup."""
         self._is_running = False
-        self._callbacks.clear()
 
         if self._reader_task:
             self._reader_task.cancel()
@@ -278,6 +286,10 @@ class ChatSession:
                 await self._reader_task
             except asyncio.CancelledError:
                 pass
+
+        # BUG FIX: Clear callbacks AFTER reader task is cancelled
+        # to avoid clearing while iteration is in progress
+        self._callbacks.clear()
 
         if self._process:
             try:
@@ -363,7 +375,8 @@ class ChatSession:
                             continue
 
                         # Parse timestamp from Claude session file
-                        msg_timestamp = datetime.now()
+                        # BUG FIX: Use UTC-aware datetime for consistent comparison
+                        msg_timestamp = _utc_now()
                         if "timestamp" in data:
                             try:
                                 # Claude uses ISO format with Z suffix

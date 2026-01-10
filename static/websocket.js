@@ -807,8 +807,14 @@ const AppWebSocket = {
 
       // 300ms 后检查：如果仍卡在 CONNECTING，关闭并创建第二个连接
       setTimeout(() => {
-        // 确保是同一个 WebSocket 且仍在 CONNECTING 状态
-        if (this.ws === firstWs && this.ws.readyState === WebSocket.CONNECTING) {
+        // BUG-F5 FIX: Check if ws was already replaced (e.g., by rapid reconnect or onopen processing)
+        if (this.ws !== firstWs) {
+          this.debugLog('iOS: ws already replaced, skip workaround');
+          return;
+        }
+
+        // 确保仍在 CONNECTING 状态（not OPEN - onopen may have fired）
+        if (firstWs.readyState === WebSocket.CONNECTING) {
           this.debugLog('iOS: 1st still CONNECTING after 300ms, close and retry');
           // 先移除事件处理器，避免 onclose 触发额外的重连
           firstWs.onopen = null;
@@ -842,6 +848,9 @@ const AppWebSocket = {
             this.isConnecting = false;
             this.updateConnectStatus('failed', e.message);
           }
+        } else if (firstWs.readyState === WebSocket.OPEN) {
+          // BUG-F5 FIX: Connection succeeded during the 300ms, no need for workaround
+          this.debugLog('iOS: 1st ws already OPEN, workaround not needed');
         }
       }, 300);
     }
@@ -1073,18 +1082,29 @@ const AppWebSocket = {
           if (this.delayedFitTimer) {
             clearTimeout(this.delayedFitTimer);
           }
+          // BUG-F6 FIX: Capture session and terminal to avoid operating on wrong terminal after session switch
+          const capturedSessionForFit = sessionId;
+          const capturedTerminalForFit = this.terminal;
           this.delayedFitTimer = setTimeout(() => {
+            // BUG-F6 FIX: Check if session changed during the 2s delay
+            if (this.currentSession !== capturedSessionForFit) {
+              this.debugLog(`delayed refresh: session changed (${capturedSessionForFit?.substring(0, 8)} -> ${this.currentSession?.substring(0, 8)}), skip`);
+              this.delayedFitTimer = null;
+              return;
+            }
             this.debugLog('delayed refresh: 2s passed, triggering full redraw');
-            if (this.terminal && this.terminal.xterm) {
+            // BUG-F6 FIX: Use captured terminal reference
+            if (capturedTerminalForFit && capturedTerminalForFit.xterm) {
               // 临时改变字体大小再改回来，强制 xterm.js 完整重绘
-              const currentSize = this.terminal.fontSize;
-              this.terminal.xterm.options.fontSize = currentSize + 1;
-              this.terminal.fit();
+              const currentSize = capturedTerminalForFit.fontSize;
+              capturedTerminalForFit.xterm.options.fontSize = currentSize + 1;
+              capturedTerminalForFit.fit();
               setTimeout(() => {
-                if (this.terminal && this.terminal.xterm) {
-                  this.terminal.xterm.options.fontSize = currentSize;
-                  this.terminal.fit();
-                  this.terminal.xterm.scrollToBottom();
+                // Double-check session is still active
+                if (this.currentSession === capturedSessionForFit && capturedTerminalForFit && capturedTerminalForFit.xterm) {
+                  capturedTerminalForFit.xterm.options.fontSize = currentSize;
+                  capturedTerminalForFit.fit();
+                  capturedTerminalForFit.xterm.scrollToBottom();
                   this.debugLog('delayed refresh: scrolled to bottom');
                 }
               }, 50);
@@ -1285,6 +1305,13 @@ const AppWebSocket = {
 
     btn.addEventListener('mouseup', stopScroll);
     btn.addEventListener('mouseleave', stopScroll);
+
+    // BUG-F7 FIX: Store cleanup function to be called on disconnect
+    // This ensures timers are cleaned up even if button is removed from DOM
+    if (!this._scrollButtonCleanups) {
+      this._scrollButtonCleanups = [];
+    }
+    this._scrollButtonCleanups.push(stopScroll);
   },
 
   /**
@@ -1820,6 +1847,14 @@ const AppWebSocket = {
     if (this.countdownInterval) {
       clearInterval(this.countdownInterval);
       this.countdownInterval = null;
+    }
+
+    // BUG-F7 FIX: Clean up scroll button timers
+    if (this._scrollButtonCleanups) {
+      for (const cleanup of this._scrollButtonCleanups) {
+        cleanup();
+      }
+      this._scrollButtonCleanups = [];
     }
 
     if (this.ws) {

@@ -756,8 +756,9 @@ describe('Chat Container 切换', () => {
 
       // 模拟收到 session1 的消息
       // handleMuxMessageForSession(type, data, targetSession, targetSessionId)
+      // 注意：使用 'user' 类型而不是 'user_ack'，因为 'user_ack' 只是确认消息，不会添加到 UI
       ChatMode.handleMuxMessageForSession(
-        'user_ack',
+        'user',
         { content: 'Message for session 1' },
         session1,
         session1.id
@@ -814,8 +815,9 @@ describe('Chat Container 切换', () => {
       ChatMode.connect(session2.id, session2.workDir);
 
       // 模拟两个 session 交替收到消息
-      ChatMode.handleMuxMessageForSession('user_ack', { content: 'User message 1' }, session1, session1.id);
-      ChatMode.handleMuxMessageForSession('user_ack', { content: 'User message 2' }, session2, session2.id);
+      // 注意：使用 'user' 类型而不是 'user_ack'，因为 'user_ack' 只是确认消息，不会添加到 UI
+      ChatMode.handleMuxMessageForSession('user', { content: 'User message 1' }, session1, session1.id);
+      ChatMode.handleMuxMessageForSession('user', { content: 'User message 2' }, session2, session2.id);
       ChatMode.handleMuxMessageForSession('assistant', { content: 'Response 1' }, session1, session1.id);
       ChatMode.handleMuxMessageForSession('assistant', { content: 'Response 2' }, session2, session2.id);
 
@@ -992,9 +994,10 @@ describe('Chat Container 切换', () => {
       session2.workDir = '/path/to/project2';
 
       // session1 连接并发送消息
+      // 注意：使用 'user' 类型而不是 'user_ack'，因为 'user_ack' 只是确认消息，不会添加到 UI
       sessionManager.activeId = session1.id;
       ChatMode.connect(session1.id, session1.workDir);
-      ChatMode.handleMuxMessageForSession('user_ack', { content: 'Message 1' }, session1, session1.id);
+      ChatMode.handleMuxMessageForSession('user', { content: 'Message 1' }, session1, session1.id);
 
       // 切换到 session2
       sessionManager.activeId = session2.id;

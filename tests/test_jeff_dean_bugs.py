@@ -24,52 +24,35 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class TestBug1TaskLockRaceCondition:
     """
-    Bug 1: task_executor.py 第 66-68 行
+    Bug 1: task_executor.py 任务锁创建竞态条件
 
-    问题代码:
+    原问题代码:
         if task_id not in self._task_locks:
             self._task_locks[task_id] = asyncio.Lock()
         lock = self._task_locks[task_id]
 
     问题: 两个协程同时检查 `task_id not in self._task_locks` 可能都返回 True，
     然后各自创建一个新的 Lock 对象，导致同一个任务可能同时执行两次。
+
+    修复: 使用 _locks_lock 保护 _task_locks 字典，通过 _get_task_lock() 方法实现线程安全。
     """
 
     @pytest.mark.asyncio
     async def test_concurrent_lock_creation_race(self):
-        """复现: 并发创建任务锁的竞态条件"""
+        """验证修复: 并发获取任务锁应该返回同一个锁对象"""
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor()
         task_id = 999
 
-        # 用于检测竞态的计数器
-        lock_creation_count = [0]
-        original_dict_setitem = dict.__setitem__
+        # 并发调用实际的 _get_task_lock 方法（已经用 _locks_lock 保护）
+        locks = await asyncio.gather(*[executor._get_task_lock(task_id) for _ in range(10)])
 
-        def counting_setitem(d, key, value):
-            if isinstance(value, asyncio.Lock):
-                lock_creation_count[0] += 1
-            return original_dict_setitem(d, key, value)
-
-        # 创建多个并发任务，都尝试获取同一个 task_id 的锁
-        async def get_lock():
-            if task_id not in executor._task_locks:
-                # 模拟竞态：在检查和创建之间加入延迟
-                await asyncio.sleep(0.001)
-                executor._task_locks[task_id] = asyncio.Lock()
-            return executor._task_locks[task_id]
-
-        # 并发执行
-        locks = await asyncio.gather(*[get_lock() for _ in range(10)])
-
-        # 检查是否创建了多个不同的锁对象
+        # 检查是否所有锁都是同一个对象
         unique_locks = set(id(lock) for lock in locks)
 
-        # 如果有多个不同的锁对象，说明存在竞态条件
-        # 注意：这个测试可能不是 100% 稳定触发，因为竞态条件是随机的
-        if len(unique_locks) > 1:
-            pytest.fail(f"Race condition detected! Created {len(unique_locks)} different locks for same task_id")
+        # 修复后，应该只有一个锁对象
+        assert len(unique_locks) == 1, f"Race condition detected! Created {len(unique_locks)} different locks for same task_id"
 
 
 class TestBug2DetectFeishuIdTypeNone:
@@ -84,14 +67,15 @@ class TestBug2DetectFeishuIdTypeNone:
     """
 
     def test_detect_feishu_id_type_with_none(self):
-        """复现: _detect_feishu_id_type 传入 None 时崩溃"""
+        """验证修复: _detect_feishu_id_type 传入 None 时返回默认值"""
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor()
 
-        # 这应该抛出 TypeError: argument of type 'NoneType' is not iterable
-        with pytest.raises(TypeError):
-            executor._detect_feishu_id_type(None)
+        # 修复后应该返回默认值 ("open_id", "")，而不是抛出 TypeError
+        id_type, instruction = executor._detect_feishu_id_type(None)
+        assert id_type == "open_id"
+        assert instruction == ""
 
     def test_detect_feishu_id_type_with_empty_string(self):
         """边界条件: 空字符串"""

@@ -42,7 +42,7 @@ import hmac
 import uuid
 from typing import Dict, Set, Optional, Callable, Any
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import WebSocket, WebSocketDisconnect
 
 from app.core.logging import logger
@@ -188,12 +188,18 @@ def _pack_message(channel: str, session_id: Optional[str], msg_type: str, data: 
     return msg
 
 
+def _utc_now() -> datetime:
+    """Return current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
 @dataclass
 class MuxClient:
     """Represents a multiplexed client connection."""
     client_id: str
     websocket: WebSocket
-    connected_at: datetime = field(default_factory=datetime.now)
+    # BUG FIX: Use UTC-aware datetime for consistent comparison
+    connected_at: datetime = field(default_factory=_utc_now)
     subscriptions: Set[str] = field(default_factory=set)  # session_ids
     authenticated: bool = False
     is_closed: bool = False  # Track if connection is closing/closed to avoid sending to dead connections
@@ -217,6 +223,9 @@ class MuxConnectionManager:
         # session_id -> set of client_ids (for broadcasting)
         self.session_subscribers: Dict[str, Set[str]] = {}
         self._lock = asyncio.Lock()
+        # Track current content block type per (client_id, session_id) for proper content_block_stop handling
+        # BUG FIX: This prevents sending wrong message type on content_block_stop
+        self._current_block_type: Dict[tuple, str] = {}
 
     async def connect(self, client_id: str, websocket: WebSocket) -> MuxClient:
         """Register a new client connection."""
@@ -337,7 +346,8 @@ class MuxConnectionManager:
         except Exception as e:
             # Mark as closed on send error to prevent further attempts
             client.is_closed = True
-            logger.debug(f"[Mux] Client {client_id[:8]} connection closed, marked as closed")
+            # BUG FIX: Include exception details in log for debugging
+            logger.debug(f"[Mux] Client {client_id[:8]} connection closed: {e}")
 
     async def broadcast_to_session(self, session_id: str, channel: str, msg_type: str, data: Any):
         """Broadcast a message to all clients subscribed to a session."""
@@ -350,7 +360,9 @@ class MuxConnectionManager:
             "data": data
         }
 
-        for client_id in subscribers:
+        # BUG FIX: Copy set before iteration to avoid "Set changed size during iteration"
+        # This can happen when clients disconnect during broadcast
+        for client_id in list(subscribers):
             await self.send_to_client(client_id, message)
 
     async def route_message(self, client_id: str, message: dict):
@@ -460,7 +472,6 @@ class MuxConnectionManager:
 
             # Subscribe to this terminal
             await self.subscribe(client_id, session_id, "terminal")
-            terminal_manager.increment_websocket_count(session_id)
 
             # BUG FIX: Clean up old callback before registering new one
             # This prevents duplicate output when client reconnects
@@ -483,6 +494,9 @@ class MuxConnectionManager:
 
             terminal.add_output_callback(output_callback)
             client.terminal_callbacks[session_id] = output_callback
+            # BUG FIX: Move increment AFTER callback registration succeeds
+            # to prevent count mismatch if registration fails
+            terminal_manager.increment_websocket_count(session_id)
 
             # Send connected message with original_session_id so frontend can update its handler
             await self.send_to_client(client_id, {
@@ -604,6 +618,18 @@ class MuxConnectionManager:
                         "data": {"message": f"Failed to start session: {e}"}
                     })
                     return
+
+            # BUG FIX: Check if session is valid after creation
+            # This handles race conditions where client disconnects during session creation
+            if not session:
+                logger.warning(f"[Mux] Session {session_id[:8]} not found after creation, client may have disconnected")
+                return
+
+            # Also re-check if client is still connected (race condition protection)
+            client = self.clients.get(client_id)
+            if not client:
+                logger.warning(f"[Mux] Client {client_id[:8]} disconnected during session setup")
+                return
 
             # Subscribe to this chat session
             await self.subscribe(client_id, session_id, "chat")
@@ -733,12 +759,18 @@ class MuxConnectionManager:
     async def _process_chat_message(self, session, content: str):
         """Helper to process chat message without blocking the router."""
         try:
+            # BUG FIX: Check if session is still valid before processing
+            # This prevents race condition where session is closed between get and use
+            if not session or not session.is_running:
+                logger.warning("Session no longer running, skipping message processing")
+                return
             async for _ in session.send_message(content):
                 # We just consume the generator to keep the session alive and busy
                 # The actual messages are forwarded via the chat_callback
                 pass
         except Exception as e:
-            logger.error(f"Error processing chat message: {e}")
+            # BUG FIX: Use logger.exception() to include full stack trace for debugging
+            logger.exception(f"Error processing chat message: {e}")
 
     async def _forward_chat_message(self, client_id: str, session_id: str, msg: ChatMessage):
         """Forward a chat message to the client in the appropriate format."""
@@ -763,11 +795,15 @@ class MuxConnectionManager:
         elif msg_type == "stream_event":
             event = content.get("event", {})
             event_type = event.get("type")
+            block_key = (client_id, session_id)
 
-            # Handle content block start (for thinking blocks)
+            # Handle content block start (track block type for proper stop handling)
             if event_type == "content_block_start":
                 block = event.get("content_block", {})
-                if block.get("type") == "thinking":
+                block_type = block.get("type")
+                # BUG FIX: Track current block type to send correct message on stop
+                self._current_block_type[block_key] = block_type
+                if block_type == "thinking":
                     await self.send_to_client(client_id, {
                         "channel": "chat",
                         "session_id": session_id,
@@ -795,15 +831,17 @@ class MuxConnectionManager:
                         "data": {"text": delta.get("thinking", "")}
                     })
 
-            # Handle content block stop (for thinking blocks)
+            # Handle content block stop
             elif event_type == "content_block_stop":
-                # Send thinking_end to finalize thinking block
-                await self.send_to_client(client_id, {
-                    "channel": "chat",
-                    "session_id": session_id,
-                    "type": "thinking_end",
-                    "data": {}
-                })
+                # BUG FIX: Only send thinking_end if the stopped block was a thinking block
+                current_type = self._current_block_type.pop(block_key, None)
+                if current_type == "thinking":
+                    await self.send_to_client(client_id, {
+                        "channel": "chat",
+                        "session_id": session_id,
+                        "type": "thinking_end",
+                        "data": {}
+                    })
 
         elif msg_type == "assistant":
             message = content.get("message", {})

@@ -423,7 +423,8 @@ async def handle_toggle_task(db, args: dict):
 
 async def handle_update_task(db, args: dict):
     """Update task"""
-    task_id = args.pop("task_id")
+    # Bug fix: 使用 get() 而不是 pop() 避免修改原始 dict
+    task_id = args.get("task_id")
 
     task = db.get_scheduled_task(task_id)
     if not task:

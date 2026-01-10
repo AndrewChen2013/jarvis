@@ -44,6 +44,15 @@ class TaskExecutor:
     def __init__(self):
         # 任务锁，避免同一任务同时执行多次
         self._task_locks: Dict[int, asyncio.Lock] = {}
+        # 保护 _task_locks 字典的锁，避免竞态条件
+        self._locks_lock = asyncio.Lock()
+
+    async def _get_task_lock(self, task_id: int) -> asyncio.Lock:
+        """线程安全地获取任务锁"""
+        async with self._locks_lock:
+            if task_id not in self._task_locks:
+                self._task_locks[task_id] = asyncio.Lock()
+            return self._task_locks[task_id]
 
     async def execute(self, task: Dict[str, Any]) -> bool:
         """执行任务
@@ -62,10 +71,8 @@ class TaskExecutor:
         feishu_chat_id = task.get('feishu_chat_id')
         execution_mode = task.get('execution_mode', 'resume')
 
-        # 获取或创建任务锁
-        if task_id not in self._task_locks:
-            self._task_locks[task_id] = asyncio.Lock()
-        lock = self._task_locks[task_id]
+        # 获取任务锁（线程安全）
+        lock = await self._get_task_lock(task_id)
 
         # 检查是否已经在执行
         if lock.locked():
@@ -260,6 +267,10 @@ class TaskExecutor:
             - id_type: email, open_id, chat_id, phone
             - instruction: 如果是 phone，需要先查询 open_id 的指令
         """
+        # Bug fix: 处理 None 或空字符串
+        if not receive_id:
+            return "open_id", ""
+
         if "@" in receive_id:
             return "email", ""
         elif receive_id.startswith("ou_"):

@@ -42,6 +42,8 @@ class SchedulerService:
         self._started = False
         self._task_executor = None  # 延迟导入，避免循环依赖
         self._loaded_task_ids: set = set()  # 已加载的任务 ID 集合
+        # Bug fix: 保存后台任务的引用，避免被 GC 回收
+        self._background_tasks: set = set()
 
     def _get_task_executor(self):
         """获取任务执行器（延迟导入）"""
@@ -263,7 +265,10 @@ class SchedulerService:
 
         try:
             executor = self._get_task_executor()
-            asyncio.create_task(executor.execute(task))
+            # Bug fix: 保存任务引用，避免被 GC 回收
+            bg_task = asyncio.create_task(executor.execute(task))
+            self._background_tasks.add(bg_task)
+            bg_task.add_done_callback(self._background_tasks.discard)
             return True
         except Exception as e:
             logger.error(f"[Scheduler] Failed to run task {task_id}: {e}")

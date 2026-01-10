@@ -27,6 +27,20 @@ const ChatMode = {
   sendBtn: null,
   initialized: false,
 
+  // BUG-F3 FIX: Store document click handler for cleanup
+  _documentClickHandler: null,
+
+  // BUG-F4 FIX: Counter for unique message IDs
+  _messageCounter: 0,
+
+  /**
+   * Generate unique message ID
+   * Uses counter + timestamp + random to guarantee uniqueness
+   */
+  _generateMessageId() {
+    return 'msg-' + (++this._messageCounter) + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+  },
+
   /**
    * Debug log helper - uses app's debugLog
    */
@@ -288,12 +302,17 @@ const ChatMode = {
         }
       });
 
-      // Close panel when clicking outside
-      document.addEventListener('click', (e) => {
+      // BUG-F3 FIX: Close panel when clicking outside
+      // Clean up previous handler before adding new one
+      if (this._documentClickHandler) {
+        document.removeEventListener('click', this._documentClickHandler);
+      }
+      this._documentClickHandler = (e) => {
         if (!moreCmdsPanel.contains(e.target) && !moreCmdsBtn?.contains(e.target)) {
           moreCmdsPanel.classList.remove('show');
         }
-      });
+      };
+      document.addEventListener('click', this._documentClickHandler);
     }
   },
 
@@ -1027,7 +1046,7 @@ const ChatMode = {
    * Create message DOM element (without inserting)
    */
   createMessageElement(type, content, extra = {}) {
-    const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+    const msgId = this._generateMessageId();  // BUG-F4 FIX: Use counter-based unique ID
     const msgEl = document.createElement('div');
     msgEl.className = `chat-message ${type}`;
     msgEl.id = msgId;
@@ -1056,7 +1075,7 @@ const ChatMode = {
       this.emptyEl.style.display = 'none';
     }
 
-    const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+    const msgId = this._generateMessageId();  // BUG-F4 FIX: Use counter-based unique ID
     const msgEl = document.createElement('div');
     msgEl.className = `chat-message ${type}`;
     msgEl.id = msgId;
@@ -2121,6 +2140,12 @@ const ChatMode = {
     }
     this.isConnected = false;
     this.isStreaming = false;
+
+    // BUG-F3 FIX: Clean up document click handler
+    if (this._documentClickHandler) {
+      document.removeEventListener('click', this._documentClickHandler);
+      this._documentClickHandler = null;
+    }
   }
 };
 

@@ -274,6 +274,12 @@ class MuxWebSocket {
       this.ws = new WebSocket(wsUrl);
       this.ws.binaryType = 'arraybuffer';
 
+      // BUG-F2 FIX: Clear previous timeout before creating new one
+      // Prevents timer leak if connect() is called multiple times quickly
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+      }
+
       // Connection timeout
       this.connectionTimeout = setTimeout(() => {
         if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
@@ -751,9 +757,13 @@ class MuxWebSocket {
 
     for (const message of ops) {
       this._sendRaw(message);
-      // Track connect messages to avoid duplicates in _resendSubscriptions
-      if (message.type === 'connect' && message.channel && message.session_id) {
-        processedKeys.add(`${message.channel}:${message.session_id}`);
+      // BUG-F1 FIX: Track connect messages to avoid duplicates in _resendSubscriptions
+      // Messages use optimized format {c, s, t, d} not old format {channel, session_id, type, data}
+      const isConnect = message.t === 'connect' || message.type === 'connect';
+      const channel = message.c !== undefined ? CODE_TO_CHANNEL[message.c] : message.channel;
+      const sessionId = message.s || message.session_id;
+      if (isConnect && channel && sessionId) {
+        processedKeys.add(`${channel}:${sessionId}`);
       }
     }
 
