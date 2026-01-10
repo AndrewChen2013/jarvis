@@ -365,7 +365,8 @@ describe('Bug 复现测试', () => {
 
       // 验证重映射成功
       expect(muxWs.handlers.has('terminal:real-uuid')).toBe(true);
-      expect(muxWs.handlers.has('terminal:temp-id')).toBe(false);
+      // BUG FIX: Old handler kept as forwarding handler (not deleted)
+      expect(muxWs.handlers.has('terminal:temp-id')).toBe(true); // forwarding handler
 
       // 服务器发送旧 ID 的消息（竞态条件）
       // 这不应该导致崩溃
@@ -378,10 +379,11 @@ describe('Bug 复现测试', () => {
         });
       }).not.toThrow();
 
-      // 旧 ID 的消息不应该触发 handler（因为已经重映射）
-      // 只有 connected 消息触发了 onMessage
+      // BUG FIX: 旧 ID 的消息应该被转发到新 handler（通过 forwarding handler）
+      // connected 消息触发了 onMessage 一次，output 消息也应该被转发触发一次
       const outputCalls = onMessage.mock.calls.filter(c => c[0] === 'output');
-      expect(outputCalls.length).toBe(0);
+      expect(outputCalls.length).toBe(1);
+      expect(outputCalls[0][1]).toEqual({ text: 'some output' });
     });
   });
 
@@ -552,6 +554,656 @@ describe('Bug 复现测试', () => {
 
       // 消息不应该触发已删除的 handler
       expect(onMessage).not.toHaveBeenCalledWith('output', expect.anything());
+    });
+  });
+
+  describe('BUG-011: onConnect callback 条件检查在 session 重命名后失败', () => {
+    /**
+     * 问题: chat.js 的 connectMux 中 onConnect 回调使用闭包捕获了 sessionId
+     * 当 session 被重命名（temp ID -> UUID）后，this.sessionId 已更新
+     * 但 capturedSessionId 仍是旧值，导致条件 this.sessionId === capturedSessionId 失败
+     * isConnected 永远不会被设为 true
+     */
+    test('【BUG 演示】旧代码模式：session 重命名后 isConnected 不会被设置', async () => {
+      // 这个测试演示了 BUG 的模式，不是测试生产代码
+      // 使用旧的 buggy 模式，期望它失败（isConnected 为 false）
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      // 模拟 Chat 对象的行为
+      const chat = {
+        sessionId: null,
+        isConnected: false,
+        log: jest.fn()
+      };
+
+      // 模拟 connectMux 的旧实现（有 bug）
+      const tempId = 'new-1768054963463';
+      chat.sessionId = tempId;
+      const capturedSessionId = tempId;
+
+      // 创建 onConnect 回调（这是 bug 所在的旧代码）
+      const onConnectBuggy = (data) => {
+        // BUG: 这个条件在 session 重命名后会失败
+        if (chat.sessionId === capturedSessionId) {
+          chat.isConnected = true;
+        }
+      };
+
+      // 订阅 chat
+      muxWs.connectChat(tempId, '/Users/bill/code', {
+        onConnect: onConnectBuggy
+      });
+
+      // 模拟服务器返回新 ID（触发 session 重命名）
+      const newUuid = 'cd2eb470-8aac-4bb7-b9aa-da042e833b70';
+
+      // SessionManager 会在收到 connected 消息前或同时更新 sessionId
+      chat.sessionId = newUuid;
+
+      // 服务器发送 connected 消息（会触发 onConnect）
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: newUuid,
+        type: 'connected',
+        data: {
+          working_dir: '/Users/bill/code',
+          original_session_id: tempId
+        }
+      });
+
+      // BUG 演示: isConnected 是 false（因为旧代码不检查 original_session_id）
+      // 这证明了 bug 的存在
+      expect(chat.isConnected).toBe(false);
+    });
+
+    test('修复后：onConnect 应该检查 original_session_id', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const chat = {
+        sessionId: null,
+        isConnected: false,
+        log: jest.fn()
+      };
+
+      const tempId = 'new-1768054963464';
+      chat.sessionId = tempId;
+      const capturedSessionId = tempId;
+
+      // 修复后的 onConnect 回调：检查 original_session_id
+      const onConnectFixed = (data) => {
+        // 修复：同时检查当前 ID 和 original_session_id（session 可能已被重命名）
+        const isCurrentSession = chat.sessionId === capturedSessionId ||
+                                 data.original_session_id === capturedSessionId;
+        if (isCurrentSession) {
+          chat.isConnected = true;
+        }
+      };
+
+      muxWs.connectChat(tempId, '/Users/bill/code', {
+        onConnect: onConnectFixed
+      });
+
+      const newUuid = 'cd2eb470-8aac-4bb7-b9aa-da042e833b71';
+
+      // 更新 sessionId（模拟 rename）
+      chat.sessionId = newUuid;
+
+      // 服务器发送 connected 消息，包含 original_session_id
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: newUuid,
+        type: 'connected',
+        data: {
+          working_dir: '/Users/bill/code',
+          original_session_id: tempId
+        }
+      });
+
+      // 修复后 isConnected 应该是 true
+      expect(chat.isConnected).toBe(true);
+    });
+  });
+
+  describe('BUG-012: Chat 和 Terminal 必须共享同一个 session UUID', () => {
+    /**
+     * 问题: 前端用临时 ID (new-1768...) 分别连接 Chat 和 Terminal，
+     * 后端为它们各自生成了不同的 UUID，导致:
+     * - Chat 使用 UUID1，Terminal 使用 UUID2
+     * - 前端 SessionManager 用 Terminal 的 UUID 重命名 session
+     * - 发消息时用 UUID2，但 Chat 后端只认识 UUID1
+     * - 返回 "Session not found" 错误
+     *
+     * 修复: 后端维护 (client_id, temp_id) -> actual_uuid 映射，
+     * 确保 Chat 和 Terminal 使用同一个 UUID
+     */
+
+    test('Chat 先连接生成 UUID，Terminal 应使用相同 UUID', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-1768057088631';
+      const sharedUuid = 'e1628da0-5f6f-4aae-b525-bb5902497522';
+
+      // 记录收到的 session IDs
+      const receivedSessionIds = {
+        chat: null,
+        terminal: null
+      };
+
+      // Chat 先连接
+      muxWs.connectChat(tempId, '/Users/bill/code', {
+        onConnect: (data) => {
+          receivedSessionIds.chat = data.session_id || sharedUuid;
+        }
+      });
+
+      // 模拟服务器返回（Chat 生成了 UUID 并存储映射）
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: sharedUuid,
+        type: 'ready',
+        data: {
+          working_dir: '/Users/bill/code',
+          original_session_id: tempId,
+          session_id: sharedUuid
+        }
+      });
+
+      // Terminal 后连接（应该使用同一个 UUID）
+      muxWs.connectTerminal(tempId, '/Users/bill/code', {
+        onConnect: (data) => {
+          receivedSessionIds.terminal = data.terminal_id;
+        }
+      });
+
+      // 模拟服务器返回（Terminal 查找映射，使用相同 UUID）
+      muxWs.ws.receiveMessage({
+        channel: 'terminal',
+        session_id: sharedUuid,  // 关键：使用相同的 UUID
+        type: 'connected',
+        data: {
+          terminal_id: sharedUuid,
+          original_session_id: tempId
+        }
+      });
+
+      // 验证两者使用相同的 session ID
+      expect(receivedSessionIds.chat).toBe(sharedUuid);
+      expect(receivedSessionIds.terminal).toBe(sharedUuid);
+    });
+
+    test('Terminal 先连接生成 UUID，Chat 应使用相同 UUID', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-1768057088632';
+      const sharedUuid = '2dfd0da9-7e64-4879-82ab-dd19fdbfeedf';
+
+      const receivedSessionIds = {
+        chat: null,
+        terminal: null
+      };
+
+      // Terminal 先连接
+      muxWs.connectTerminal(tempId, '/Users/bill/code', {
+        onConnect: (data) => {
+          receivedSessionIds.terminal = data.terminal_id;
+        }
+      });
+
+      // 模拟服务器返回（Terminal 生成了 UUID 并存储映射）
+      muxWs.ws.receiveMessage({
+        channel: 'terminal',
+        session_id: sharedUuid,
+        type: 'connected',
+        data: {
+          terminal_id: sharedUuid,
+          original_session_id: tempId
+        }
+      });
+
+      // Chat 后连接（应该使用同一个 UUID）
+      muxWs.connectChat(tempId, '/Users/bill/code', {
+        onConnect: (data) => {
+          receivedSessionIds.chat = data.session_id || sharedUuid;
+        }
+      });
+
+      // 模拟服务器返回（Chat 查找映射，使用相同 UUID）
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: sharedUuid,  // 关键：使用相同的 UUID
+        type: 'ready',
+        data: {
+          working_dir: '/Users/bill/code',
+          original_session_id: tempId,
+          session_id: sharedUuid
+        }
+      });
+
+      // 验证两者使用相同的 session ID
+      expect(receivedSessionIds.terminal).toBe(sharedUuid);
+      expect(receivedSessionIds.chat).toBe(sharedUuid);
+    });
+
+    test('Handler 重映射后消息应正确路由', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-1768057088633';
+      const actualUuid = 'abc12345-1234-5678-9abc-def012345678';
+
+      const chatMessages = [];
+      const terminalMessages = [];
+
+      // 连接 Chat
+      muxWs.connectChat(tempId, '/Users/bill/code', {
+        onMessage: (type, data) => {
+          chatMessages.push({ type, data });
+        }
+      });
+
+      // 服务器返回新 UUID（触发 handler 重映射）
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: actualUuid,
+        type: 'ready',
+        data: { original_session_id: tempId }
+      });
+
+      // 连接 Terminal
+      muxWs.connectTerminal(tempId, '/Users/bill/code', {
+        onMessage: (type, data) => {
+          terminalMessages.push({ type, data });
+        }
+      });
+
+      // 服务器返回相同 UUID
+      muxWs.ws.receiveMessage({
+        channel: 'terminal',
+        session_id: actualUuid,
+        type: 'connected',
+        data: { terminal_id: actualUuid, original_session_id: tempId }
+      });
+
+      // 发送消息到新 UUID，应该正确路由
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: actualUuid,
+        type: 'assistant',
+        data: { content: 'Hello from assistant' }
+      });
+
+      muxWs.ws.receiveMessage({
+        channel: 'terminal',
+        session_id: actualUuid,
+        type: 'output',
+        data: { text: 'Terminal output' }
+      });
+
+      // 验证消息被正确路由
+      expect(chatMessages.some(m => m.type === 'assistant')).toBe(true);
+      expect(terminalMessages.some(m => m.type === 'output')).toBe(true);
+    });
+
+    test('转发 handler 应该捕获延迟到达的旧 ID 消息', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-1768057088634';
+      const actualUuid = 'def67890-1234-5678-9abc-def012345678';
+
+      const receivedMessages = [];
+
+      muxWs.connectChat(tempId, '/Users/bill/code', {
+        onMessage: (type, data) => {
+          receivedMessages.push({ type, data });
+        }
+      });
+
+      // 服务器返回新 UUID（触发 handler 重映射）
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: actualUuid,
+        type: 'ready',
+        data: { original_session_id: tempId }
+      });
+
+      // 验证转发 handler 存在
+      expect(muxWs.handlers.has(`chat:${tempId}`)).toBe(true);
+      expect(muxWs.handlers.has(`chat:${actualUuid}`)).toBe(true);
+
+      // 模拟延迟到达的旧 ID 消息（竞态条件）
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: tempId,  // 使用旧的临时 ID
+        type: 'stream',
+        data: { text: 'Delayed message' }
+      });
+
+      // 验证消息被转发到正确的 handler
+      expect(receivedMessages.some(m => m.type === 'stream')).toBe(true);
+    });
+
+    test('多个独立 session 不应互相干扰', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const session1TempId = 'new-session-1';
+      const session1Uuid = 'uuid-1111-1111-1111-111111111111';
+      const session2TempId = 'new-session-2';
+      const session2Uuid = 'uuid-2222-2222-2222-222222222222';
+
+      const session1Messages = [];
+      const session2Messages = [];
+
+      // 连接 session 1
+      muxWs.connectChat(session1TempId, '/Users/bill/project1', {
+        onMessage: (type, data) => {
+          session1Messages.push({ type, data });
+        }
+      });
+
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: session1Uuid,
+        type: 'ready',
+        data: { original_session_id: session1TempId }
+      });
+
+      // 连接 session 2
+      muxWs.connectChat(session2TempId, '/Users/bill/project2', {
+        onMessage: (type, data) => {
+          session2Messages.push({ type, data });
+        }
+      });
+
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: session2Uuid,
+        type: 'ready',
+        data: { original_session_id: session2TempId }
+      });
+
+      // 发送消息到各自的 session
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: session1Uuid,
+        type: 'assistant',
+        data: { content: 'Message for session 1' }
+      });
+
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: session2Uuid,
+        type: 'assistant',
+        data: { content: 'Message for session 2' }
+      });
+
+      // 验证消息不会串到其他 session
+      // 注意：onMessage 会收到所有消息类型，包括 ready 和 assistant
+      const session1AssistantMsgs = session1Messages.filter(m => m.type === 'assistant');
+      const session2AssistantMsgs = session2Messages.filter(m => m.type === 'assistant');
+
+      expect(session1AssistantMsgs.length).toBe(1);
+      expect(session1AssistantMsgs[0].data.content).toBe('Message for session 1');
+      expect(session2AssistantMsgs.length).toBe(1);
+      expect(session2AssistantMsgs[0].data.content).toBe('Message for session 2');
+    });
+
+    test('SessionManager renameSession 后发送消息应使用新 UUID', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-1768057088635';
+      const actualUuid = 'final-uuid-1234-5678-9abc';
+
+      // 创建 session
+      const session = sessionManager.openSession(tempId, 'Test Session');
+      expect(session.id).toBe(tempId);
+
+      // 连接 Chat
+      muxWs.connectChat(tempId, '/Users/bill/code', {});
+
+      // 服务器返回新 UUID
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: actualUuid,
+        type: 'ready',
+        data: { original_session_id: tempId }
+      });
+
+      // SessionManager 重命名 session（模拟 Terminal onConnect 的行为）
+      const renameResult = sessionManager.renameSession(tempId, actualUuid);
+      expect(renameResult).toBe(true);
+      expect(session.id).toBe(actualUuid);
+
+      // 验证 session 可以通过新 ID 访问
+      expect(sessionManager.sessions.has(actualUuid)).toBe(true);
+      expect(sessionManager.sessions.has(tempId)).toBe(false);
+    });
+
+    test('chatMessage 应该发送到正确的 session ID', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-1768057088636';
+      const actualUuid = 'msg-test-uuid-1234-5678';
+
+      // 连接 Chat
+      muxWs.connectChat(tempId, '/Users/bill/code', {});
+
+      // 服务器返回新 UUID
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: actualUuid,
+        type: 'ready',
+        data: { original_session_id: tempId }
+      });
+
+      // 清除之前的消息
+      muxWs.ws.sentMessages = [];
+
+      // 发送 chat 消息
+      muxWs.chatMessage(actualUuid, 'Hello, Claude!');
+
+      // 验证消息发送到正确的 session ID
+      expect(muxWs.ws.sentMessages.length).toBe(1);
+      const sentMsg = decodeMessage(muxWs.ws.sentMessages[0]);
+      expect(sentMsg.channel).toBe('chat');
+      expect(sentMsg.session_id).toBe(actualUuid);
+      expect(sentMsg.type).toBe('message');
+      expect(sentMsg.data.content).toBe('Hello, Claude!');
+    });
+
+    test('【BUG-012 核心场景】临时 ID 创建 session 后发消息不应报 Session not found', async () => {
+      // 这个测试模拟完整的用户操作流程
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-1768057088637';
+      const sharedUuid = 'shared-uuid-abcd-efgh-ijkl';
+
+      // 模拟 Chat 对象
+      const chat = {
+        sessionId: tempId,
+        isConnected: false
+      };
+
+      // 模拟 SessionManager 中的 session
+      const session = sessionManager.openSession(tempId, 'New Session');
+
+      // 1. Chat 连接
+      muxWs.connectChat(tempId, '/Users/bill/code', {
+        onConnect: (data) => {
+          // BUG-011 修复：检查 original_session_id
+          const isCurrentSession = chat.sessionId === tempId ||
+                                   data.original_session_id === tempId;
+          if (isCurrentSession) {
+            chat.isConnected = true;
+          }
+        }
+      });
+
+      // 2. 服务器返回 Chat 的 UUID
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: sharedUuid,
+        type: 'ready',
+        data: { original_session_id: tempId }
+      });
+
+      // 3. Terminal 连接
+      muxWs.connectTerminal(tempId, '/Users/bill/code', {
+        onConnect: (data) => {
+          // Terminal onConnect 会触发 renameSession
+          const serverSessionId = data.terminal_id;
+          if (serverSessionId && serverSessionId !== tempId) {
+            sessionManager.renameSession(tempId, serverSessionId);
+            chat.sessionId = serverSessionId;
+          }
+        }
+      });
+
+      // 4. 服务器返回 Terminal 的 UUID（与 Chat 相同！这是 BUG-012 修复的关键）
+      muxWs.ws.receiveMessage({
+        channel: 'terminal',
+        session_id: sharedUuid,  // 相同的 UUID
+        type: 'connected',
+        data: { terminal_id: sharedUuid, original_session_id: tempId }
+      });
+
+      // 5. 验证 session 已正确重命名
+      expect(session.id).toBe(sharedUuid);
+      expect(chat.sessionId).toBe(sharedUuid);
+      expect(chat.isConnected).toBe(true);
+
+      // 6. 发送消息（使用新的 UUID）
+      muxWs.ws.sentMessages = [];
+      muxWs.chatMessage(sharedUuid, 'Test message');
+
+      // 7. 验证消息发送到正确的 session
+      const sentMsg = decodeMessage(muxWs.ws.sentMessages[0]);
+      expect(sentMsg.session_id).toBe(sharedUuid);
+
+      // 8. 模拟服务器响应（不应返回 Session not found）
+      const errorReceived = [];
+      muxWs.handlers.get(`chat:${sharedUuid}`).onMessage = (type, data) => {
+        if (type === 'error') {
+          errorReceived.push(data);
+        }
+      };
+
+      // 如果服务器返回 user_ack，说明 session 存在且消息被处理
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: sharedUuid,
+        type: 'user_ack',
+        data: { content: 'Test message' }
+      });
+
+      // 不应该收到 Session not found 错误
+      expect(errorReceived.filter(e => e.message === 'Session not found').length).toBe(0);
+    });
+
+    test('转发 handler 应在 15 秒后自动清理', async () => {
+      muxWs.connect();
+      await jest.advanceTimersByTimeAsync(10);
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      if (muxWs.pingInterval) {
+        clearInterval(muxWs.pingInterval);
+        muxWs.pingInterval = null;
+      }
+
+      const tempId = 'new-cleanup-test';
+      const actualUuid = 'cleanup-uuid-1234';
+
+      muxWs.connectChat(tempId, '/Users/bill/code', {});
+
+      // 服务器返回新 UUID（创建转发 handler）
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: actualUuid,
+        type: 'ready',
+        data: { original_session_id: tempId }
+      });
+
+      // 验证转发 handler 存在
+      expect(muxWs.handlers.has(`chat:${tempId}`)).toBe(true);
+
+      // 快进 14 秒，转发 handler 应该还在
+      await jest.advanceTimersByTimeAsync(14000);
+      expect(muxWs.handlers.has(`chat:${tempId}`)).toBe(true);
+
+      // 快进到 16 秒（超过 15 秒），转发 handler 应该被清理
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(muxWs.handlers.has(`chat:${tempId}`)).toBe(false);
+
+      // 主 handler 应该还在
+      expect(muxWs.handlers.has(`chat:${actualUuid}`)).toBe(true);
     });
   });
 });

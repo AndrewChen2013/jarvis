@@ -605,7 +605,30 @@ class MuxWebSocket {
       if (originalHandler) {
         // Re-map handler from original key to new key
         this.log(`Remapping handler: ${originalKey} -> ${handlerKey}`);
-        this.handlers.delete(originalKey);
+
+        // BUG FIX: Create a forwarding handler to handle delayed messages for the old session ID
+        // Some messages may arrive with the old session ID after remapping (race condition)
+        const forwardHandler = {
+          channel: originalHandler.channel,
+          sessionId: originalHandler.sessionId,
+          onMessage: (type, data) => {
+            this.log(`Forwarding ${type} from ${originalKey} to ${handlerKey}`);
+            originalHandler.onMessage(type, data);
+          },
+          onConnect: originalHandler.onConnect,
+          onDisconnect: originalHandler.onDisconnect
+        };
+
+        // Keep forwarding handler for 15 seconds to catch delayed messages
+        this.handlers.set(originalKey, forwardHandler);
+        setTimeout(() => {
+          if (this.handlers.get(originalKey) === forwardHandler) {
+            this.handlers.delete(originalKey);
+            this.log(`Cleaned up forwarding handler for ${originalKey}`);
+          }
+        }, 15000);
+
+        // Set up the new handler
         this.handlers.set(handlerKey, originalHandler);
         // Update sessionId in handler
         originalHandler.sessionId = session_id;

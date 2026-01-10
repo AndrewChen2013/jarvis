@@ -226,6 +226,10 @@ class MuxConnectionManager:
         # Track current content block type per (client_id, session_id) for proper content_block_stop handling
         # BUG FIX: This prevents sending wrong message type on content_block_stop
         self._current_block_type: Dict[tuple, str] = {}
+        # BUG-012 FIX: Map original temp session IDs to actual UUIDs
+        # This ensures Chat and Terminal share the same session UUID when created with same temp ID
+        # Format: (client_id, original_session_id) -> actual_uuid
+        self._session_id_mapping: Dict[tuple, str] = {}
 
     async def connect(self, client_id: str, websocket: WebSocket) -> MuxClient:
         """Register a new client connection."""
@@ -267,6 +271,13 @@ class MuxConnectionManager:
                     session = chat_manager.get_session(session_id)
                     if session:
                         session.remove_callback(client.chat_callbacks[session_id])
+
+            # BUG-012 FIX: Clean up session ID mappings for this client
+            keys_to_remove = [k for k in self._session_id_mapping if k[0] == client_id]
+            for key in keys_to_remove:
+                del self._session_id_mapping[key]
+            if keys_to_remove:
+                logger.debug(f"[Mux] Cleaned up {len(keys_to_remove)} session ID mappings for client {client_id[:8]}")
 
             logger.info(f"[Mux] Client {client_id[:8]} disconnected, cleaned up {len(client.subscriptions)} subscriptions")
 
@@ -450,9 +461,16 @@ class MuxConnectionManager:
                     uuid.UUID(session_id)
                     actual_session_id = session_id
                 except (ValueError, TypeError):
-                    # Not a valid UUID, will create a new session
-                    logger.debug(f"[Mux] Non-UUID session_id '{session_id}', will generate new UUID")
-                    actual_session_id = None
+                    # Not a valid UUID - check if we already have a mapping (from Chat)
+                    # BUG-012 FIX: Share UUID between Chat and Terminal
+                    mapping_key = (client_id, session_id)
+                    if mapping_key in self._session_id_mapping:
+                        actual_session_id = self._session_id_mapping[mapping_key]
+                        logger.debug(f"[Mux] Using existing UUID mapping for '{session_id}': {actual_session_id[:8]}")
+                    else:
+                        # Will generate new UUID below
+                        logger.debug(f"[Mux] Non-UUID session_id '{session_id}', will generate new UUID")
+                        actual_session_id = None
 
             # Check if terminal exists (only for valid UUIDs)
             terminal = None
@@ -469,6 +487,13 @@ class MuxConnectionManager:
                 )
             # Update session_id to the actual terminal ID (may be newly generated)
             session_id = terminal.terminal_id
+
+            # BUG-012 FIX: Store the mapping so Chat can use the same UUID
+            if original_session_id and original_session_id != session_id:
+                mapping_key = (client_id, original_session_id)
+                if mapping_key not in self._session_id_mapping:
+                    self._session_id_mapping[mapping_key] = session_id
+                    logger.debug(f"[Mux] Stored UUID mapping: '{original_session_id}' -> {session_id[:8]}")
 
             # Subscribe to this terminal
             await self.subscribe(client_id, session_id, "terminal")
@@ -579,9 +604,17 @@ class MuxConnectionManager:
                     uuid.UUID(session_id)
                     actual_session_id = session_id
                 except (ValueError, TypeError):
-                    # Not a valid UUID, generate new one
-                    logger.debug(f"[Mux] Non-UUID session_id '{session_id}', generating new UUID")
-                    actual_session_id = str(uuid.uuid4())
+                    # Not a valid UUID - check if we already have a mapping (from Terminal)
+                    # BUG-012 FIX: Share UUID between Chat and Terminal
+                    mapping_key = (client_id, session_id)
+                    if mapping_key in self._session_id_mapping:
+                        actual_session_id = self._session_id_mapping[mapping_key]
+                        logger.debug(f"[Mux] Using existing UUID mapping for '{session_id}': {actual_session_id[:8]}")
+                    else:
+                        # Generate new UUID and store the mapping
+                        actual_session_id = str(uuid.uuid4())
+                        self._session_id_mapping[mapping_key] = actual_session_id
+                        logger.debug(f"[Mux] Generated and stored UUID mapping: '{session_id}' -> {actual_session_id[:8]}")
             else:
                 actual_session_id = str(uuid.uuid4())
 

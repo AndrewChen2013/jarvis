@@ -253,8 +253,9 @@ describe('多 Session 完整流程', () => {
       });
 
       // Handler 应该被重映射
-      expect(muxWs.handlers.has(`terminal:${tempId}`)).toBe(false);
-      expect(muxWs.handlers.has(`terminal:${realUuid}`)).toBe(true);
+      // BUG FIX: Old handler kept as forwarding handler (not deleted)
+      expect(muxWs.handlers.has(`terminal:${tempId}`)).toBe(true); // forwarding handler
+      expect(muxWs.handlers.has(`terminal:${realUuid}`)).toBe(true); // new handler
     });
   });
 

@@ -418,8 +418,8 @@ describe('MuxWebSocket', () => {
         data: { original_session_id: 'new-12345' }
       });
 
-      // Old key should be removed
-      expect(muxWs.handlers.has('terminal:new-12345')).toBe(false);
+      // BUG FIX: Old key should be kept as forwarding handler (not removed)
+      expect(muxWs.handlers.has('terminal:new-12345')).toBe(true);
       // New key should exist
       expect(muxWs.handlers.has('terminal:real-uuid-abc')).toBe(true);
       // Handler should be called
@@ -466,8 +466,60 @@ describe('MuxWebSocket', () => {
         data: { original_session_id: 'new-chat-12345' }
       });
 
-      expect(muxWs.handlers.has('chat:new-chat-12345')).toBe(false);
+      // BUG FIX: Old key should be kept as forwarding handler (not removed)
+      expect(muxWs.handlers.has('chat:new-chat-12345')).toBe(true);
       expect(muxWs.handlers.has('chat:chat-uuid')).toBe(true);
+    });
+
+    test('重映射后收到针对旧 session ID 的错误消息应该被正确处理', async () => {
+      // BUG: Handler 重映射后，针对旧 session ID 的消息会被忽略
+      // 这可能导致 UI 状态不一致，输入框无法启用
+
+      const handler = {
+        onMessage: jest.fn(),
+        onConnect: jest.fn(),
+        onDisconnect: jest.fn()
+      };
+
+      // 1. 使用临时 ID 订阅 chat
+      muxWs.subscribe('new-1768', 'chat', handler);
+
+      muxWs.connect();
+      jest.runAllTimers();
+      muxWs.ws.receiveMessage({ channel: 'system', type: 'auth_success', data: {} });
+
+      // 2. 收到 ready 消息，触发重映射
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: '0ececac5-4c33-4065-8452-ebfea9301bb6',
+        type: 'ready',
+        data: {
+          original_session_id: 'new-1768',
+          working_dir: '/Users/bill/code'
+        }
+      });
+
+      // 验证重映射成功
+      // BUG FIX: 旧 handler 应该被保留作为转发 handler，而不是被删除
+      expect(muxWs.handlers.has('chat:new-1768')).toBe(true); // 转发 handler
+      expect(muxWs.handlers.has('chat:0ececac5-4c33-4065-8452-ebfea9301bb6')).toBe(true); // 新 handler
+      expect(handler.onConnect).toHaveBeenCalledTimes(1);
+
+      // 清除之前的调用记录
+      handler.onMessage.mockClear();
+
+      // 3. 模拟后端发送针对旧 session ID 的 error 消息
+      // 这是真实场景中发生的情况 - 重映射后 2 秒收到
+      muxWs.ws.receiveMessage({
+        channel: 'chat',
+        session_id: 'new-1768',
+        type: 'error',
+        data: { message: 'Some error from backend' }
+      });
+
+      // 4. 验证错误消息应该被处理（通过转发到新 handler）
+      // 目前这个测试会失败，因为旧 handler 已被删除，消息被忽略
+      expect(handler.onMessage).toHaveBeenCalledWith('error', { message: 'Some error from backend' });
     });
   });
 

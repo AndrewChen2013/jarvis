@@ -511,7 +511,12 @@ const ChatMode = {
       onConnect: (data) => {
         this.log(`[MuxWS] Chat connected, workingDir=${data.working_dir}`);
         // 只有当前活跃的 session 才更新 UI 状态
-        if (this.sessionId === capturedSessionId) {
+        // BUG-011 FIX: 同时检查 original_session_id，因为 session 可能已被重命名
+        // 当 session 从临时 ID（如 new-1768...）重命名为 UUID 时，
+        // this.sessionId 已更新但 capturedSessionId 仍是旧值
+        const isCurrentSession = this.sessionId === capturedSessionId ||
+                                 data.original_session_id === capturedSessionId;
+        if (isCurrentSession) {
           this.isConnected = true;
           this.updateStatus('connected');
           if (this.sendBtn && this.inputEl) {
@@ -539,7 +544,11 @@ const ChatMode = {
       onDisconnect: () => {
         this.log(`[MuxWS] Chat disconnected for ${capturedSessionId?.substring(0, 8)}`);
         // 只有当前活跃的 session 才更新 UI 状态
-        if (this.sessionId === capturedSessionId) {
+        // BUG-011 FIX: 使用捕获的 session 来判断，因为 session 可能已被重命名
+        const session = capturedSession;
+        const isCurrentSession = this.sessionId === capturedSessionId ||
+                                 (session && session.id === this.sessionId);
+        if (isCurrentSession) {
           this.isConnected = false;
           this.updateStatus('disconnected');
         }
@@ -1033,8 +1042,11 @@ const ChatMode = {
     this.addMessage('user', content, { timestamp: new Date().toISOString() });
     this.showTypingIndicator();
 
+    // BUG FIX: Use session.id instead of this.sessionId to get the latest ID
+    // after potential remapping (temp ID -> UUID)
+    const currentSessionId = session?.id || this.sessionId;
     if (window.muxWs) {
-      window.muxWs.chatMessage(this.sessionId, content);
+      window.muxWs.chatMessage(currentSessionId, content);
     }
 
     this.inputEl.value = '';
