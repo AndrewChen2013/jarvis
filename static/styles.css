@@ -6426,6 +6426,12 @@ html, body {
   font-size: var(--font-sm);
 }
 
+.task-mode-badge {
+  font-size: var(--font-sm);
+  color: var(--color-primary);
+  margin-left: 4px;
+}
+
 .task-body {
   margin-bottom: 12px;
 }

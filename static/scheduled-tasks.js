@@ -152,6 +152,7 @@ window.AppScheduledTasks = {
           <div class="task-schedule">
             <span class="task-cron">${this.escapeHtml(task.cron_human || task.cron_expr)}</span>
             ${task.notify_feishu ? '<span class="task-notify-badge" title="Feishu notification enabled">⚑</span>' : ''}
+            ${task.execution_mode === 'new' ? '<span class="task-mode-badge" title="Independent execution (new session each time)">⟳</span>' : ''}
           </div>
         </div>
         <div class="task-body">
@@ -349,6 +350,7 @@ window.AppScheduledTasks = {
     document.getElementById('task-edit-workdir').value = task.working_dir;
     document.getElementById('task-edit-session').value = task.session_id || '';
     document.getElementById('task-edit-feishu').checked = task.notify_feishu;
+    document.getElementById('task-edit-execution-mode').value = task.execution_mode || 'resume';
 
     modal.classList.add('active');
   },
@@ -394,6 +396,16 @@ window.AppScheduledTasks = {
             <div class="form-group">
               <label data-i18n="tasks.session">Session ID (optional)</label>
               <input type="text" id="task-edit-session" class="form-input" placeholder="Leave empty to create new session">
+            </div>
+            <div class="form-group">
+              <label data-i18n="tasks.executionMode">Execution Mode</label>
+              <select id="task-edit-execution-mode" class="form-input">
+                <option value="resume">Resume (continue from previous session)</option>
+                <option value="new">New (independent execution each time)</option>
+              </select>
+              <div class="form-hint">
+                Use "New" mode for stock/market analysis tasks that should run independently
+              </div>
             </div>
             <div class="form-group form-checkbox">
               <label>
@@ -447,7 +459,8 @@ window.AppScheduledTasks = {
       cron_expr: document.getElementById('task-edit-cron').value,
       working_dir: document.getElementById('task-edit-workdir').value,
       session_id: document.getElementById('task-edit-session').value || null,
-      notify_feishu: document.getElementById('task-edit-feishu').checked
+      notify_feishu: document.getElementById('task-edit-feishu').checked,
+      execution_mode: document.getElementById('task-edit-execution-mode').value
     };
 
     try {

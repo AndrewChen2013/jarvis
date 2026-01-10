@@ -44,6 +44,7 @@ class ScheduledTaskUpdate(BaseModel):
     enabled: Optional[bool] = None
     notify_feishu: Optional[bool] = None
     feishu_chat_id: Optional[str] = None
+    execution_mode: Optional[str] = None  # "resume" or "new"
 
 
 # ==================== API Endpoints ====================
@@ -128,7 +129,8 @@ async def update_task(
             timezone=request.timezone,
             enabled=request.enabled,
             notify_feishu=request.notify_feishu,
-            feishu_chat_id=request.feishu_chat_id
+            feishu_chat_id=request.feishu_chat_id,
+            execution_mode=request.execution_mode
         )
 
         if not success:
