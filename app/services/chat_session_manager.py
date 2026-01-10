@@ -362,10 +362,21 @@ class ChatSession:
                         if msg_type in ("summary", "stream_event"):
                             continue
 
+                        # Parse timestamp from Claude session file
+                        msg_timestamp = datetime.now()
+                        if "timestamp" in data:
+                            try:
+                                # Claude uses ISO format with Z suffix
+                                ts_str = data["timestamp"].replace("Z", "+00:00")
+                                msg_timestamp = datetime.fromisoformat(ts_str)
+                            except (ValueError, TypeError):
+                                pass
+
                         msg = ChatMessage(
                             type=msg_type,
                             content=data,
                             session_id=self.session_id,
+                            timestamp=msg_timestamp,
                             metadata={"from_file": True}
                         )
                         messages.append(msg)
