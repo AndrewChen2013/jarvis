@@ -478,14 +478,19 @@ class MuxWebSocket {
       if (options.onMessage) handler.onMessage = options.onMessage;
       if (options.onConnect) handler.onConnect = options.onConnect;
       if (options.onDisconnect) handler.onDisconnect = options.onDisconnect;
-      
+
       // Trigger onConnect immediately since we're already connected
       if (this.state === 'connected' || this.state === 'authenticating') {
-        // We might not have the full data from the original ready message, 
+        // We might not have the full data from the original ready message,
         // but we know it's active.
         setTimeout(() => {
           if (options.onConnect) options.onConnect({ working_dir: workingDir, already_connected: true });
         }, 0);
+      } else {
+        // BUG FIX: If not connected yet, mark handler as pending so onConnect
+        // will be triggered when connection is established
+        handler.pendingConnect = { working_dir: workingDir, already_connected: true };
+        this.log(`Chat ${sessionId.substring(0, 8)} not yet connected (state=${this.state}), will trigger onConnect later`);
       }
       return;
     }
@@ -685,6 +690,10 @@ class MuxWebSocket {
         this._resendSubscriptions(processedKeys);
       }
 
+      // BUG FIX: Trigger pending onConnect callbacks for handlers that were
+      // updated while disconnected (e.g., switching chat sessions)
+      this._processPendingConnects();
+
     } else if (type === 'auth_failed') {
       this.log('Authentication failed: ' + data.reason);
       // BUG-003 FIX: Reset authenticated on auth_failed
@@ -708,7 +717,7 @@ class MuxWebSocket {
     this._setState('disconnected');
 
     // Notify all handlers
-    for (const [key, handler] of this.handlers) {
+    for (const handler of this.handlers.values()) {
       handler.onDisconnect();
     }
 
@@ -808,6 +817,23 @@ class MuxWebSocket {
     for (const [key, sub] of toResend) {
       this.log(`Re-subscribing to ${key.substring(0, sub.channel.length + 9)}`);
       this._sendRaw(packMessage(sub.channel, sub.sessionId, 'connect', sub.data));
+    }
+  }
+
+  /**
+   * Process pending onConnect callbacks for handlers that were updated while disconnected
+   * This fixes the bug where switching chat sessions while disconnected leaves isConnected=false
+   */
+  _processPendingConnects() {
+    for (const [key, handler] of this.handlers) {
+      if (handler.pendingConnect && handler.onConnect) {
+        this.log(`Triggering pending onConnect for ${key}`);
+        const pendingData = handler.pendingConnect;
+        delete handler.pendingConnect;
+        setTimeout(() => {
+          handler.onConnect(pendingData);
+        }, 0);
+      }
     }
   }
 

@@ -180,7 +180,6 @@ class App {
   initKeyboardHandler() {
     const toolbar = document.querySelector('#terminal-view .toolbar');
     const fontControls = document.querySelector('.font-controls-float');
-    if (!toolbar) return;
 
     // 使用 visualViewport API（iOS Safari 支持）
     if (window.visualViewport) {
@@ -188,9 +187,15 @@ class App {
         // visualViewport.offsetTop 是可视区域相对于布局视口的偏移
         // 当软键盘弹出时，页面会往上推，offsetTop 变成负值或视口变小
         const offsetTop = window.visualViewport.offsetTop;
+        const viewportHeight = window.visualViewport.height;
+        const layoutHeight = document.documentElement.clientHeight;
+        // 键盘高度 = 布局视口高度 - 可视视口高度
+        const keyboardHeight = layoutHeight - viewportHeight - offsetTop;
 
-        // 工具栏
-        toolbar.style.transform = `translateY(${offsetTop}px)`;
+        // Terminal 工具栏
+        if (toolbar) {
+          toolbar.style.transform = `translateY(${offsetTop}px)`;
+        }
 
         // 字体控制按钮
         if (fontControls) {
@@ -200,6 +205,25 @@ class App {
         // 悬浮按钮
         if (this.floatingButton && this.floatingButton.element) {
           this.floatingButton.element.style.transform = `translateY(${offsetTop}px)`;
+        }
+
+        // Chat 输入区域：当键盘弹出时，将输入区域移到键盘上方
+        const chatInputArea = document.querySelector('#chat-view.active .chat-input-area');
+        if (chatInputArea && keyboardHeight > 50) {
+          // 键盘弹出，将输入区域上移
+          chatInputArea.style.transform = `translateY(${-keyboardHeight}px)`;
+          // 同时调整消息区域的 padding，避免被输入框遮挡
+          const chatMessages = document.querySelector('#chat-view.active .chat-messages');
+          if (chatMessages) {
+            chatMessages.style.paddingBottom = `${keyboardHeight + 80}px`;
+          }
+        } else if (chatInputArea) {
+          // 键盘收起，恢复原位
+          chatInputArea.style.transform = '';
+          const chatMessages = document.querySelector('#chat-view.active .chat-messages');
+          if (chatMessages) {
+            chatMessages.style.paddingBottom = '';
+          }
         }
       };
 
@@ -1014,15 +1038,16 @@ class App {
     this.debugLog(`switchToTerminalMode: ${sessionId}, ${workingDir}`);
     // Don't disconnect chat - keep connection alive for quick switching
 
-    // 使用 Chat 模式更新的 claudeSessionId（如果有）
+    // 使用 Terminal 专用的 session ID，不被 Chat 覆盖
     const session = this.sessionManager?.getActive();
     if (session) {
       session.viewMode = 'terminal';
     }
-    const actualSessionId = session?.claudeSessionId || sessionId;
-    this.debugLog(`switchToTerminalMode: using claudeSessionId=${actualSessionId?.substring(0, 8)}`);
+    // 优先使用 terminalSessionId（Terminal 专用），避免被 Chat 的 session ID 覆盖
+    const actualSessionId = session?.terminalSessionId || session?.claudeSessionId || sessionId;
+    this.debugLog(`switchToTerminalMode: using terminalSessionId=${actualSessionId?.substring(0, 8)}`);
 
-    // 重新连接 Terminal，使用 Chat 的 session ID 恢复历史
+    // 重新连接 Terminal，使用 Terminal 的 session ID 恢复历史
     // Note: connectTerminal calls showChat by default, so we override it below
     this.connectTerminal(workingDir, actualSessionId, workingDir.split('/').pop());
 

@@ -19,6 +19,11 @@ const ChatMode = {
   hasMoreHistory: false,   // Whether there are more older messages
   isLoadingHistory: false, // Loading indicator
   pendingHistoryMessages: [], // Collect messages during history loading
+  historyLoadingForSession: null, // BUG-014 FIX: Track which session is loading history
+
+  // Auto-scroll state
+  autoScrollEnabled: true,  // Whether to auto-scroll on new content
+  scrollThreshold: 100,     // Distance from bottom to consider "at bottom"
 
   // DOM elements
   container: null,
@@ -255,11 +260,39 @@ const ChatMode = {
       this.sendMessage();
     });
 
-    // Scroll detection for infinite history loading
+    // Focus handling: scroll input into view when keyboard appears (mobile)
+    this.inputEl.addEventListener('focus', () => {
+      // 延迟执行，等待键盘弹出
+      setTimeout(() => {
+        // 滚动消息区域到底部
+        this.scrollToBottom();
+        // 确保输入框在可视区域内
+        this.inputEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 300);
+    });
+
+    // Scroll detection for infinite history loading and auto-scroll management
     this.messagesEl.addEventListener('scroll', () => {
       // When scrolled to top, load more history
       if (this.messagesEl.scrollTop < 100 && this.hasMoreHistory && !this.isLoadingHistory) {
         this.loadMoreHistory();
+      }
+
+      // Auto-scroll management: check if user is near bottom
+      const distanceFromBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight;
+      const wasEnabled = this.autoScrollEnabled;
+      this.autoScrollEnabled = distanceFromBottom < this.scrollThreshold;
+
+      // Show/hide "new messages" button based on scroll position
+      if (!this.autoScrollEnabled && this.isStreaming) {
+        this.showNewMessagesButton();
+      } else if (this.autoScrollEnabled) {
+        this.hideNewMessagesButton();
+      }
+
+      // Log state change for debugging
+      if (wasEnabled !== this.autoScrollEnabled) {
+        this.log(`Auto-scroll ${this.autoScrollEnabled ? 'enabled' : 'disabled'} (distance: ${Math.round(distanceFromBottom)}px)`);
       }
     });
 
@@ -342,6 +375,7 @@ const ChatMode = {
     }
 
     this.isLoadingHistory = true;
+    this.historyLoadingForSession = this.sessionId;  // BUG-014 FIX: Track which session is loading
     this.log(`Loading more history, before index: ${this.historyOldestIndex}`);
 
     // Show loading indicator at top
@@ -401,6 +435,15 @@ const ChatMode = {
           oldSession.chatInputValue = this.inputEl.value;
         }
       }
+
+      // BUG-014 FIX: Reset history loading state when switching to different session
+      // This prevents history messages from one session being inserted into another
+      if (this.isLoadingHistory && this.historyLoadingForSession !== sessionId) {
+        this.log(`BUG-014 FIX: Resetting history loading state (was loading for ${this.historyLoadingForSession?.substring(0, 8)})`);
+        this.isLoadingHistory = false;
+        this.pendingHistoryMessages = [];
+        this.historyLoadingForSession = null;
+      }
     }
 
     // Always update current sessionId
@@ -437,6 +480,10 @@ const ChatMode = {
       this.messages = session.chatMessages;
 
       this.log(`connect: restored container, messages=${this.messages.length}`);
+
+      // Scroll to bottom when switching to existing container
+      // (hidden containers skip scroll, so we need to scroll when becoming visible)
+      this.scrollToBottom();
     } else {
       // æ–°å®¹å™¨ï¼Œéœ€è¦æ¸²æŸ“
       this.container = session.chatContainer;
@@ -887,6 +934,20 @@ const ChatMode = {
         // Additional history page loaded - insert all collected messages
         this.log(`History page loaded: ${data.count} messages, oldest_index=${data.oldest_index}, hasMore=${data.has_more}`);
 
+        // BUG-014 FIX: Validate that this history page is for the current session
+        // If we switched sessions while loading, ignore the stale history
+        if (this.historyLoadingForSession && this.historyLoadingForSession !== this.sessionId) {
+          this.log(`BUG-014 FIX: Ignoring history_page_end for ${this.historyLoadingForSession?.substring(0, 8)}, current session is ${this.sessionId?.substring(0, 8)}`);
+          // Clean up stale state
+          this.isLoadingHistory = false;
+          this.pendingHistoryMessages = [];
+          this.historyLoadingForSession = null;
+          // Remove loading indicator if present
+          const staleLoadingEl = this.messagesEl.querySelector('#historyLoadingIndicator');
+          if (staleLoadingEl) staleLoadingEl.remove();
+          break;
+        }
+
         // Remove loading indicator
         const loadingEl = this.messagesEl.querySelector('#historyLoadingIndicator');
         if (loadingEl) {
@@ -931,6 +992,7 @@ const ChatMode = {
 
         // Update state
         this.isLoadingHistory = false;
+        this.historyLoadingForSession = null;  // BUG-014 FIX: Clear tracking
         this.historyOldestIndex = data.oldest_index;
         this.hasMoreHistory = data.has_more;
 
@@ -1024,6 +1086,10 @@ const ChatMode = {
   sendMessage() {
     const content = this.inputEl.value.trim();
     if (!content || !this.isConnected || this.isStreaming) return;
+
+    // 发送消息时强制启用自动滚动
+    this.autoScrollEnabled = true;
+    this.hideNewMessagesButton();
 
     // 确保 messagesEl 指向正确的容器
     // 修复：在发送消息前重新获取当前 session 的容器，避免引用不一致
@@ -2053,16 +2119,81 @@ const ChatMode = {
 
   /**
    * Scroll to bottom
+   * BUG FIX: Capture messagesEl reference to avoid scrolling wrong container
+   * when context switches between sessions during async requestAnimationFrame
+   * @param {boolean} force - Force scroll even if autoScrollEnabled is false
    */
-  scrollToBottom() {
+  scrollToBottom(force = false) {
+    // Skip if auto-scroll is disabled (user is reading history) unless forced
+    if (!force && !this.autoScrollEnabled) {
+      // Show new messages button if streaming
+      if (this.isStreaming) {
+        this.showNewMessagesButton();
+      }
+      return;
+    }
+
+    // Capture current messagesEl reference before async callback
+    const targetEl = this.messagesEl;
+
+    // Skip scrolling for hidden/non-visible containers (performance optimization)
+    // Hidden containers will scroll when they become visible
+    if (targetEl && targetEl.offsetParent === null) {
+      return;
+    }
+
     requestAnimationFrame(() => {
-      if (this.messagesEl) {
-        this.messagesEl.scrollTo({
-          top: this.messagesEl.scrollHeight,
+      if (targetEl) {
+        targetEl.scrollTo({
+          top: targetEl.scrollHeight,
           behavior: 'smooth'
         });
+        // Re-enable auto-scroll after forced scroll
+        if (force) {
+          this.autoScrollEnabled = true;
+          this.hideNewMessagesButton();
+        }
       }
     });
+  },
+
+  /**
+   * Show "new messages" button when user scrolls up during streaming
+   */
+  showNewMessagesButton() {
+    if (!this.messagesEl) return;
+
+    let btn = this.messagesEl.parentElement?.querySelector('.chat-new-messages-btn');
+    if (!btn) {
+      const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
+      btn = document.createElement('button');
+      btn.className = 'chat-new-messages-btn';
+      btn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12l7 7 7-7"/>
+        </svg>
+        <span>${t('chat.newMessages', 'New messages')}</span>
+      `;
+      btn.addEventListener('click', () => {
+        this.scrollToBottom(true);
+      });
+      // Insert before input area
+      const inputArea = this.messagesEl.parentElement?.querySelector('.chat-input-area');
+      if (inputArea) {
+        inputArea.parentElement.insertBefore(btn, inputArea);
+      }
+    }
+    btn.classList.add('show');
+  },
+
+  /**
+   * Hide "new messages" button
+   */
+  hideNewMessagesButton() {
+    const btn = this.messagesEl?.parentElement?.querySelector('.chat-new-messages-btn');
+    if (btn) {
+      btn.classList.remove('show');
+    }
   },
 
   /**

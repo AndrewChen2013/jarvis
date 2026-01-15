@@ -171,6 +171,7 @@ const i18n = {
       'chat.tool.calling': '正在调用',
       'chat.tool.result': '执行结果',
       'chat.send': '发送',
+      'chat.newMessages': '有新消息',
 
       // 悬浮按钮
       'float.noBackgroundSession': '没有后台会话',
