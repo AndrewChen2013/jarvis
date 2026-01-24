@@ -36,6 +36,8 @@ from typing import AsyncIterator, Dict, Optional, Any, Callable, List
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.services.database import db
+
 
 def _utc_now() -> datetime:
     """Return current UTC time as timezone-aware datetime."""
@@ -94,6 +96,7 @@ class ChatSession:
         self._is_running = False
         self._is_busy = False
         self._reader_task: Optional[asyncio.Task] = None
+        self._stderr_task: Optional[asyncio.Task] = None
         # BUG-014 FIX: Add maxsize to prevent unbounded queue growth
         self._message_queue: asyncio.Queue[ChatMessage] = asyncio.Queue(maxsize=1000)
         self._claude_session_id: Optional[str] = None  # Claude's internal session ID
@@ -101,16 +104,59 @@ class ChatSession:
 
     def _find_claude(self) -> str:
         """Find claude executable path."""
+        import glob
+        import subprocess
+
         # Check common locations
         possible_paths = [
             shutil.which("claude"),
             os.path.expanduser("~/.claude/local/claude"),
             "/usr/local/bin/claude",
         ]
+
+        # Search for nvm installed claude (symlink in bin directory)
+        nvm_bin_pattern = os.path.expanduser("~/.nvm/versions/node/*/bin/claude")
+        nvm_bin_paths = glob.glob(nvm_bin_pattern)
+        possible_paths.extend(nvm_bin_paths)
+
         for path in possible_paths:
-            if path and os.path.exists(path):
-                return path
+            if path:
+                try:
+                    if os.path.exists(path):
+                        return path
+                except Exception:
+                    continue
+
+        # Last resort: use login shell to find claude (handles nvm, aliases, etc.)
+        try:
+            result = subprocess.run(
+                ["/bin/zsh", "-l", "-c", "which claude"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                path = result.stdout.strip()
+                if os.path.exists(path):
+                    return path
+        except Exception as e:
+            logger.warning(f"Failed to find claude via shell: {e}")
+
         raise FileNotFoundError("Claude CLI not found")
+
+    def _check_session_file_exists(self, session_id: str) -> bool:
+        """Check if a Claude session file exists for the given session ID.
+
+        Claude stores sessions in: ~/.claude/projects/{encoded_path}/{session_id}.jsonl
+        """
+        try:
+            # Encode the working directory path (Claude replaces / and spaces with -)
+            encoded_path = self.working_dir.replace("/", "-").replace(" ", "-").replace("~", "-")
+            session_file = Path.home() / ".claude" / "projects" / encoded_path / f"{session_id}.jsonl"
+            exists = session_file.exists()
+            logger.debug(f"Session file check: {session_file} -> {exists}")
+            return exists
+        except Exception as e:
+            logger.warning(f"Error checking session file: {e}")
+            return False
 
     async def start(self) -> bool:
         """Start the Claude CLI process."""
@@ -128,10 +174,15 @@ class ChatSession:
                 "--dangerously-skip-permissions",  # For automated use
             ]
 
-            # If resuming an existing session, add --resume flag
+            # If resuming an existing session, verify session file exists first
             if self.resume_session_id:
-                cmd.extend(["--resume", self.resume_session_id])
-                logger.info(f"Chat session resuming from: {self.resume_session_id[:8]}...")
+                session_file_exists = self._check_session_file_exists(self.resume_session_id)
+                if session_file_exists:
+                    cmd.extend(["--resume", self.resume_session_id])
+                    logger.info(f"Chat session resuming from: {self.resume_session_id[:8]}...")
+                else:
+                    logger.warning(f"Session file not found for {self.resume_session_id[:8]}, creating new session")
+                    self.resume_session_id = None  # Clear so we don't try to load history from non-existent file
 
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -139,15 +190,19 @@ class ChatSession:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self.working_dir,
+                limit=10 * 1024 * 1024,  # 10MB，支持大图片和长输出
             )
 
             self._is_running = True
             self._reader_task = asyncio.create_task(self._read_output())
+            # Also read stderr in background for debugging
+            self._stderr_task = asyncio.create_task(self._read_stderr())
 
             # Load history from file if resuming
             await self.load_history_if_resume()
 
             logger.info(f"Chat session {self.session_id} started in {self.working_dir}")
+            logger.info(f"Claude command: {' '.join(cmd)}")
             return True
 
         except Exception as e:
@@ -181,8 +236,12 @@ class ChatSession:
                     if data.get("type") != "stream_event":
                         self._message_history.append(msg)
 
+                    # Save to database for persistent history
+                    self._save_message_to_db(msg)
+
                     # BUG FIX: Copy callbacks list before iteration to avoid skipping
                     # callbacks if one removes itself or if list is modified during iteration
+                    logger.debug(f"[ChatSession:{self.session_id[:8]}] Invoking {len(self._callbacks)} callbacks for msg type={data.get('type')}")
                     for callback in list(self._callbacks):
                         try:
                             callback(msg)
@@ -209,6 +268,25 @@ class ChatSession:
             logger.error(f"Error reading output: {e}")
         finally:
             self._is_running = False
+            logger.warning(f"Chat session {self.session_id[:8]} reader stopped, _is_running=False")
+
+    async def _read_stderr(self):
+        """Background task to read Claude's stderr for debugging."""
+        if not self._process or not self._process.stderr:
+            return
+
+        try:
+            while self._is_running:
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                stderr_text = line.decode('utf-8').strip()
+                if stderr_text:
+                    logger.warning(f"[ChatSession:{self.session_id[:8]}] stderr: {stderr_text}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Error reading stderr: {e}")
 
     async def send_message(self, content: str) -> AsyncIterator[ChatMessage]:
         """
@@ -220,10 +298,14 @@ class ChatSession:
         Yields:
             ChatMessage objects as they arrive
         """
+        logger.info(f"[ChatSession:{self.session_id[:8]}] send_message called: _is_running={self._is_running}, _is_busy={self._is_busy}, callbacks={len(self._callbacks)}, queue_size={self._message_queue.qsize()}")
+
         if not self._is_running or not self._process or not self._process.stdin:
+            logger.error(f"[ChatSession:{self.session_id[:8]}] Session not running! _is_running={self._is_running}, process={self._process is not None}")
             raise RuntimeError("Session not running")
 
         if self._is_busy:
+            logger.warning(f"[ChatSession:{self.session_id[:8]}] Session is busy!")
             raise RuntimeError("Session is busy processing another message")
 
         self._is_busy = True
@@ -243,6 +325,17 @@ class ChatSession:
             line = json.dumps(input_msg) + "\n"
             self._process.stdin.write(line.encode('utf-8'))
             await self._process.stdin.drain()
+
+            # Save user message to database
+            # Prefer Claude's internal ID, then resume ID (for history), then local ID
+            session_id = self._claude_session_id or self.resume_session_id or self.session_id
+            db.save_chat_message(
+                session_id=session_id,
+                role="user",
+                content=content,
+                timestamp=_utc_now(),
+                source="realtime"
+            )
         except Exception as e:
             self._is_busy = False
             logger.error(f"Failed to send message: {e}")
@@ -342,6 +435,51 @@ class ChatSession:
         """Get total number of messages in history."""
         return len(self._message_history)
 
+    def _save_message_to_db(self, msg: ChatMessage):
+        """Save a message to database for persistent history.
+
+        Only saves meaningful messages (assistant/user) with content.
+        Skips stream_event, system, and other internal messages.
+        """
+        try:
+            msg_type = msg.type
+            content_data = msg.content
+
+            # Only save assistant messages with actual content
+            # User messages are saved separately in send_message()
+            if msg_type == "assistant":
+                # Extract text content from assistant message
+                message_data = content_data.get("message", {})
+                text_content = ""
+                if isinstance(message_data.get("content"), list):
+                    # Content is a list of blocks
+                    for block in message_data["content"]:
+                        if block.get("type") == "text":
+                            text_content += block.get("text", "")
+                elif isinstance(message_data.get("content"), str):
+                    text_content = message_data["content"]
+
+                if text_content.strip():
+                    # Use Claude session ID for consistent storage
+                    # Prefer Claude's internal ID, then resume ID (for history), then local ID
+                    session_id = self._claude_session_id or self.resume_session_id or self.session_id
+                    db.save_chat_message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=text_content,
+                        timestamp=msg.timestamp,
+                        extra={"raw_type": msg_type},
+                        source="realtime"
+                    )
+
+            elif msg_type == "result":
+                # Result message often contains the final assistant response
+                # It's already captured by the assistant message above
+                pass
+
+        except Exception as e:
+            logger.error(f"Error saving message to db: {e}")
+
     def _load_history_from_file(self) -> List[ChatMessage]:
         """
         Load message history from Claude's session file.
@@ -403,10 +541,102 @@ class ChatSession:
             logger.error(f"Error loading history from file: {e}")
             return []
 
+    def _sync_history_to_db(self):
+        """Sync history messages from Claude file to database.
+
+        This is used as backup to ensure database has all messages.
+        Uses deduplication to avoid duplicate messages.
+        """
+        if not self.resume_session_id:
+            return
+
+        try:
+            # Encode the working directory path
+            encoded_path = self.working_dir.replace("/", "-").replace(" ", "-").replace("~", "-")
+            session_file = Path.home() / ".claude" / "projects" / encoded_path / f"{self.resume_session_id}.jsonl"
+
+            if not session_file.exists():
+                logger.debug(f"Session file not found for sync: {session_file}")
+                return
+
+            messages_to_sync = []
+            with open(session_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        msg_type = data.get("type", "unknown")
+
+                        # Only sync user and assistant messages
+                        if msg_type not in ("user", "assistant"):
+                            continue
+
+                        # Parse timestamp
+                        msg_timestamp = _utc_now()
+                        if "timestamp" in data:
+                            try:
+                                ts_str = data["timestamp"].replace("Z", "+00:00")
+                                msg_timestamp = datetime.fromisoformat(ts_str)
+                            except (ValueError, TypeError):
+                                pass
+
+                        # Extract content based on message type
+                        role = msg_type
+                        content = ""
+
+                        if msg_type == "user":
+                            message_data = data.get("message", {})
+                            content_blocks = message_data.get("content", [])
+                            if isinstance(content_blocks, str):
+                                content = content_blocks
+                            elif isinstance(content_blocks, list):
+                                for block in content_blocks:
+                                    if isinstance(block, str):
+                                        content += block
+                                    elif isinstance(block, dict) and block.get("type") == "text":
+                                        content += block.get("text", "")
+
+                        elif msg_type == "assistant":
+                            message_data = data.get("message", {})
+                            content_blocks = message_data.get("content", [])
+                            if isinstance(content_blocks, str):
+                                content = content_blocks
+                            elif isinstance(content_blocks, list):
+                                for block in content_blocks:
+                                    if isinstance(block, dict) and block.get("type") == "text":
+                                        content += block.get("text", "")
+
+                        if content.strip():
+                            messages_to_sync.append({
+                                "session_id": self.resume_session_id,
+                                "role": role,
+                                "content": content,
+                                "timestamp": msg_timestamp,
+                                "source": "sync"
+                            })
+
+                    except json.JSONDecodeError:
+                        continue
+
+            # Batch save to database (with deduplication)
+            if messages_to_sync:
+                inserted = db.save_chat_messages_batch(messages_to_sync)
+                if inserted > 0:
+                    logger.info(f"Synced {inserted} new messages from Claude file to database")
+
+        except Exception as e:
+            logger.error(f"Error syncing history to db: {e}")
+
     async def load_history_if_resume(self):
-        """Load history from file if this is a resume session."""
-        if self.resume_session_id and not self._message_history:
-            self._message_history = self._load_history_from_file()
+        """Load history from file if this is a resume session and sync to database."""
+        if self.resume_session_id:
+            # First sync from Claude file to database (as backup)
+            self._sync_history_to_db()
+            # Then load into memory for backward compatibility
+            if not self._message_history:
+                self._message_history = self._load_history_from_file()
 
 
 class ChatSessionManager:

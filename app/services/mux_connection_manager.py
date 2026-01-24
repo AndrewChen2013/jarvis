@@ -49,6 +49,7 @@ from app.core.logging import logger
 from app.core.config import settings
 from app.services.terminal_manager import terminal_manager, Terminal
 from app.services.chat_session_manager import chat_manager, ChatMessage
+from app.services.database import db
 
 
 # ============================================================================
@@ -207,6 +208,10 @@ class MuxClient:
     terminal_callbacks: Dict[str, Callable] = field(default_factory=dict)
     # Track chat output callbacks for cleanup
     chat_callbacks: Dict[str, Callable] = field(default_factory=dict)
+    # BUG-015 FIX: Message queues to ensure ordered delivery per session
+    chat_message_queues: Dict[str, asyncio.Queue] = field(default_factory=dict)
+    # Consumer tasks for processing message queues
+    chat_consumer_tasks: Dict[str, asyncio.Task] = field(default_factory=dict)
 
 
 class MuxConnectionManager:
@@ -226,6 +231,9 @@ class MuxConnectionManager:
         # Track current content block type per (client_id, session_id) for proper content_block_stop handling
         # BUG FIX: This prevents sending wrong message type on content_block_stop
         self._current_block_type: Dict[tuple, str] = {}
+        # Track pending tool_use info per (client_id, session_id) for streaming mode
+        # Accumulates input_json_delta until content_block_stop
+        self._pending_tool_use: Dict[tuple, dict] = {}
         # BUG-012 FIX: Map original temp session IDs to actual UUIDs
         # This ensures Chat and Terminal share the same session UUID when created with same temp ID
         # Format: (client_id, original_session_id) -> actual_uuid
@@ -271,6 +279,12 @@ class MuxConnectionManager:
                     session = chat_manager.get_session(session_id)
                     if session:
                         session.remove_callback(client.chat_callbacks[session_id])
+
+                # BUG-015 FIX: Cleanup chat consumer task and queue
+                if session_id in client.chat_consumer_tasks:
+                    client.chat_consumer_tasks[session_id].cancel()
+                if session_id in client.chat_message_queues:
+                    pass  # Queue will be garbage collected
 
             # BUG-012 FIX: Clean up session ID mappings for this client
             keys_to_remove = [k for k in self._session_id_mapping if k[0] == client_id]
@@ -325,6 +339,13 @@ class MuxConnectionManager:
                 if session:
                     session.remove_callback(client.chat_callbacks[session_id])
                 del client.chat_callbacks[session_id]
+
+            # BUG-015 FIX: Cleanup chat consumer task and queue
+            if session_id in client.chat_consumer_tasks:
+                client.chat_consumer_tasks[session_id].cancel()
+                del client.chat_consumer_tasks[session_id]
+            if session_id in client.chat_message_queues:
+                del client.chat_message_queues[session_id]
 
             logger.debug(f"[Mux] Client {client_id[:8]} unsubscribed from {session_id[:8]}")
 
@@ -674,18 +695,42 @@ class MuxConnectionManager:
                 session.remove_callback(old_callback)
                 logger.debug(f"[Mux] Removed old callback for client {client_id[:8]} session {session_id[:8]}")
 
-            # Setup callback for this specific client to ensure broadcasting
+            # BUG-015 FIX: Clean up old consumer task and queue
+            if session_id in client.chat_consumer_tasks:
+                old_task = client.chat_consumer_tasks[session_id]
+                old_task.cancel()
+                del client.chat_consumer_tasks[session_id]
+            if session_id in client.chat_message_queues:
+                del client.chat_message_queues[session_id]
+
+            # BUG-015 FIX: Create message queue for ordered delivery
+            message_queue: asyncio.Queue = asyncio.Queue()
+            client.chat_message_queues[session_id] = message_queue
+
+            # Start consumer task to process messages in order
+            consumer_task = asyncio.create_task(
+                self._chat_message_consumer(client_id, session_id, message_queue)
+            )
+            client.chat_consumer_tasks[session_id] = consumer_task
+
+            # Setup callback that enqueues messages instead of creating tasks
             # Use default parameter binding to capture current values and avoid closure issues
-            def chat_callback(msg: ChatMessage, cid=client_id, sid=session_id):
-                # Create a task to forward the message asynchronously
-                asyncio.create_task(self._forward_chat_message(cid, sid, msg))
+            def chat_callback(msg: ChatMessage, q=message_queue):
+                # BUG-015 FIX: Put message in queue instead of creating task
+                # This ensures messages are processed in order
+                try:
+                    q.put_nowait(msg)
+                except asyncio.QueueFull:
+                    logger.warning(f"[Mux] Chat message queue full, dropping message")
 
             session.add_callback(chat_callback)
             client.chat_callbacks[session_id] = chat_callback
 
             # Send ready with history count and original_session_id for handler remapping
-            history = session.get_history()
-            logger.info(f"[Mux] Sending ready: session_id={session_id[:8]}, original={original_session_id[:8] if original_session_id else 'None'}")
+            # Use Claude session ID for database lookup (consistent with how messages are stored)
+            claude_sid = session.claude_session_id or resume or session_id
+            total_count = db.get_chat_message_count(claude_sid)
+            logger.info(f"[Mux] Sending ready: session_id={session_id[:8]}, claude_sid={claude_sid[:8] if claude_sid else 'None'}, history={total_count}")
             await self.send_to_client(client_id, {
                 "channel": "chat",
                 "session_id": session_id,
@@ -693,22 +738,23 @@ class MuxConnectionManager:
                 "data": {
                     "working_dir": session.working_dir,
                     "original_session_id": original_session_id,
-                    "history_count": len(history)
+                    "history_count": total_count,
+                    "claude_session_id": claude_sid  # Send to frontend for history loading
                 }
             })
 
-            # Send message history (limit to initial small batch for speed)
+            # Send message history from database (limit to initial small batch for speed)
             MAX_INITIAL_HISTORY = 15
-            if history:
-                total_count = len(history)
-                if total_count > MAX_INITIAL_HISTORY:
-                    # Only send the most recent N messages initially
-                    history = history[-MAX_INITIAL_HISTORY:]
-                    logger.info(f"[Mux] Limiting initial history from {total_count} to {len(history)} messages")
+            if total_count > 0:
+                # Get most recent messages from database (descending order)
+                db_messages = db.get_chat_messages_desc(claude_sid, limit=MAX_INITIAL_HISTORY)
+                # Reverse to send in chronological order
+                db_messages = list(reversed(db_messages))
 
-                logger.info(f"[Mux] Sending {len(history)} initial history messages to client {client_id[:8]}")
-                for msg in history:
-                    await self._forward_chat_message(client_id, session_id, msg)
+                if db_messages:
+                    logger.info(f"[Mux] Sending {len(db_messages)} initial history messages from DB to client {client_id[:8]}")
+                    for db_msg in db_messages:
+                        await self._forward_db_message(client_id, session_id, db_msg)
 
                 # Send history_end marker with total count so frontend knows there is more
                 await self.send_to_client(client_id, {
@@ -716,10 +762,11 @@ class MuxConnectionManager:
                     "session_id": session_id,
                     "type": "history_end",
                     "data": {
-                        "count": len(history),
+                        "count": len(db_messages),
                         "total": total_count,
                         "has_more": total_count > MAX_INITIAL_HISTORY,
-                        "oldest_index": total_count - MAX_INITIAL_HISTORY if total_count > MAX_INITIAL_HISTORY else 0
+                        "oldest_index": total_count - MAX_INITIAL_HISTORY if total_count > MAX_INITIAL_HISTORY else 0,
+                        "claude_session_id": claude_sid
                     }
                 })
 
@@ -758,19 +805,29 @@ class MuxConnectionManager:
             asyncio.create_task(self._process_chat_message(session, content))
 
         elif msg_type == "load_more_history":
-            # Load more history (pagination)
+            # Load more history (pagination) from database
             session = chat_manager.get_session(session_id)
-            if not session:
-                return
+            claude_sid = data.get("claude_session_id")
 
-            before_index = data.get("before_index", 0)
+            # Try to get claude_session_id from different sources
+            if not claude_sid and session:
+                claude_sid = session.claude_session_id or session.resume_session_id
+            if not claude_sid:
+                claude_sid = session_id
+
+            offset = data.get("offset", 0)
             limit = min(data.get("limit", 50), 100)  # Cap at 100
 
-            messages, has_more = session.get_history_page(before_index, limit)
+            # Get messages from database (descending order, then reverse for chronological)
+            db_messages = db.get_chat_messages_desc(claude_sid, limit=limit, offset=offset)
+            db_messages = list(reversed(db_messages))
 
-            if messages:
-                for msg in messages:
-                    await self._forward_chat_message(client_id, session_id, msg)
+            total_count = db.get_chat_message_count(claude_sid)
+            has_more = (offset + limit) < total_count
+
+            if db_messages:
+                for db_msg in db_messages:
+                    await self._forward_db_message(client_id, session_id, db_msg)
 
             # Send history_page_end marker
             await self.send_to_client(client_id, {
@@ -778,9 +835,10 @@ class MuxConnectionManager:
                 "session_id": session_id,
                 "type": "history_page_end",
                 "data": {
-                    "count": len(messages),
+                    "count": len(db_messages),
                     "has_more": has_more,
-                    "oldest_index": before_index - len(messages) if messages else before_index
+                    "next_offset": offset + len(db_messages),
+                    "total": total_count
                 }
             })
 
@@ -788,6 +846,36 @@ class MuxConnectionManager:
             await self.unsubscribe(client_id, session_id)
             await chat_manager.close_session(session_id)
             logger.info(f"[Mux] Chat {session_id[:8]} closed by client {client_id[:8]}")
+
+    async def _chat_message_consumer(self, client_id: str, session_id: str, queue: asyncio.Queue):
+        """
+        BUG-015 FIX: Consumer task that processes chat messages in order.
+
+        This ensures messages are forwarded to the client in the same order
+        they were received from Claude CLI, preventing message reordering.
+        """
+        try:
+            while True:
+                # Wait for next message from queue
+                msg = await queue.get()
+
+                # Check if client is still connected
+                client = self.clients.get(client_id)
+                if not client or client.is_closed:
+                    logger.debug(f"[Mux] Consumer stopping: client {client_id[:8]} disconnected")
+                    break
+
+                # Forward message in order
+                try:
+                    await self._forward_chat_message(client_id, session_id, msg)
+                except Exception as e:
+                    logger.error(f"[Mux] Error forwarding chat message: {e}")
+
+                queue.task_done()
+        except asyncio.CancelledError:
+            logger.debug(f"[Mux] Chat consumer task cancelled for {client_id[:8]}:{session_id[:8]}")
+        except Exception as e:
+            logger.exception(f"[Mux] Chat consumer error: {e}")
 
     async def _process_chat_message(self, session, content: str):
         """Helper to process chat message without blocking the router."""
@@ -804,6 +892,52 @@ class MuxConnectionManager:
         except Exception as e:
             # BUG FIX: Use logger.exception() to include full stack trace for debugging
             logger.exception(f"Error processing chat message: {e}")
+
+    async def _forward_db_message(self, client_id: str, session_id: str, db_msg: dict):
+        """Forward a database message to the client.
+
+        Database messages have a simpler format:
+        - role: user/assistant/system
+        - content: text content
+        - timestamp: ISO format string
+        """
+        role = db_msg.get("role", "")
+        content = db_msg.get("content", "")
+        timestamp = db_msg.get("timestamp")
+
+        if role == "user":
+            await self.send_to_client(client_id, {
+                "channel": "chat",
+                "session_id": session_id,
+                "type": "user",
+                "data": {
+                    "content": content,
+                    "timestamp": timestamp,
+                    "from_db": True
+                }
+            })
+        elif role == "assistant":
+            await self.send_to_client(client_id, {
+                "channel": "chat",
+                "session_id": session_id,
+                "type": "assistant",
+                "data": {
+                    "content": content,
+                    "timestamp": timestamp,
+                    "from_db": True
+                }
+            })
+        elif role == "system":
+            await self.send_to_client(client_id, {
+                "channel": "chat",
+                "session_id": session_id,
+                "type": "system",
+                "data": {
+                    "content": content,
+                    "timestamp": timestamp,
+                    "from_db": True
+                }
+            })
 
     async def _forward_chat_message(self, client_id: str, session_id: str, msg: ChatMessage):
         """Forward a chat message to the client in the appropriate format."""
@@ -843,6 +977,14 @@ class MuxConnectionManager:
                         "type": "thinking_start",
                         "data": {}
                     })
+                elif block_type == "tool_use":
+                    # Store tool_use info, will send tool_call on content_block_stop
+                    # because input may arrive via input_json_delta
+                    self._pending_tool_use[block_key] = {
+                        "tool_name": block.get("name"),
+                        "tool_id": block.get("id"),
+                        "input_json": ""  # Will accumulate from input_json_delta
+                    }
 
             # Handle content block delta (streaming text or thinking)
             elif event_type == "content_block_delta":
@@ -863,6 +1005,10 @@ class MuxConnectionManager:
                         "type": "thinking_delta",
                         "data": {"text": delta.get("thinking", "")}
                     })
+                elif delta_type == "input_json_delta":
+                    # Accumulate tool input JSON
+                    if block_key in self._pending_tool_use:
+                        self._pending_tool_use[block_key]["input_json"] += delta.get("partial_json", "")
 
             # Handle content block stop
             elif event_type == "content_block_stop":
@@ -875,6 +1021,27 @@ class MuxConnectionManager:
                         "type": "thinking_end",
                         "data": {}
                     })
+                elif current_type == "tool_use":
+                    # Send tool_call with accumulated input
+                    pending = self._pending_tool_use.pop(block_key, None)
+                    if pending:
+                        # Parse accumulated JSON
+                        try:
+                            tool_input = json.loads(pending["input_json"]) if pending["input_json"] else {}
+                        except json.JSONDecodeError:
+                            tool_input = {"raw": pending["input_json"]}
+
+                        await self.send_to_client(client_id, {
+                            "channel": "chat",
+                            "session_id": session_id,
+                            "type": "tool_call",
+                            "data": {
+                                "tool_name": pending["tool_name"],
+                                "tool_id": pending["tool_id"],
+                                "input": tool_input,
+                                "timestamp": None
+                            }
+                        })
 
         elif msg_type == "assistant":
             message = content.get("message", {})

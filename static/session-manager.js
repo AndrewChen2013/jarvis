@@ -49,6 +49,10 @@ class SessionInstance {
     // rename 后 this.id === this.claudeSessionId
     this.claudeSessionId = null;
 
+    // Terminal 模式的 session ID（独立于 Chat 模式）
+    // 用于切换回 Terminal 时恢复正确的会话
+    this.terminalSessionId = null;
+
     // 重连状态（每个 session 独立）
     // 用于 websocket.js 中的 attemptReconnectForSession()
     this.shouldReconnect = false;   // 是否应该自动重连
@@ -83,6 +87,7 @@ class SessionInstance {
     this.chatIsStreaming = false;   // 是否正在流式输出
     this.chatStreamingMessageId = null;  // 当前流式消息 ID
     this.chatInputValue = '';       // Chat 输入框内容（切换时暂存）
+    this.chatClaudeSessionId = null; // Chat 模式独立的 Claude session ID（与 Terminal 分离）
   }
 
   /**

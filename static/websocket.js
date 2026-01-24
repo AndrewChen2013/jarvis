@@ -36,8 +36,9 @@ const AppWebSocket = {
    * @param {string} workDir - 工作目录
    * @param {string} sessionId - Claude session_id（null 表示新建）
    * @param {string} sessionName - 显示名称
+   * @param {string} chatClaudeSessionId - Chat 模式专用的 session ID
    */
-  connectTerminal(workDir, sessionId, sessionName) {
+  connectTerminal(workDir, sessionId, sessionName, chatClaudeSessionId) {
     this.closeCreateModal();
 
     // ========== 关键日志：记录调用时的状态 ==========
@@ -45,7 +46,7 @@ const AppWebSocket = {
     const prevWorkDir = this.currentWorkDir;
     const isNewSession = !sessionId;
     this.debugLog(`=== connectTerminal START ===`);
-    this.debugLog(`connectTerminal: isNew=${isNewSession}, workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}`);
+    this.debugLog(`connectTerminal: isNew=${isNewSession}, workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}, chatSid=${chatClaudeSessionId?.substring(0, 8)}`);
     this.debugLog(`connectTerminal: prev session=${prevSession?.substring(0, 8)}, prev workDir=${prevWorkDir}`);
 
     // 保存当前工作目录和会话信息
@@ -67,6 +68,11 @@ const AppWebSocket = {
       // 恢复 app 层面的状态
       this.terminal = existingSession.terminal;
       this.shouldReconnect = existingSession.shouldReconnect;
+
+      // 如果传入了新的 chatClaudeSessionId，更新它
+      if (chatClaudeSessionId) {
+        existingSession.chatClaudeSessionId = chatClaudeSessionId;
+      }
 
       // 切换到该 session
       this.sessionManager.switchTo(this.currentSession);
@@ -108,6 +114,8 @@ const AppWebSocket = {
     // 保存连接参数到 session（每个 session 独立）
     session.workDir = workDir;
     session.claudeSessionId = sessionId;
+    session.terminalSessionId = sessionId;  // Terminal 专用，不被 Chat 覆盖
+    session.chatClaudeSessionId = chatClaudeSessionId; // Chat 专用
 
     this.debugLog(`connectTerminal: session registered, sessions.size=${this.sessionManager.sessions.size}`);
 
@@ -626,6 +634,14 @@ const AppWebSocket = {
         this.shouldReconnect = true;
         this.updateConnectStatus('connected', '');
 
+        // BUG FIX: Update session status to 'connected'
+        // Without this, switchToTerminalMode would think the session is not connected
+        // and create a new terminal, overwriting terminalSessionId
+        if (session) {
+          session.status = 'connected';
+          this.debugLog(`[MuxWS] Updated session.status to connected`);
+        }
+
         // 如果服务端返回了不同的 session_id，需要更新 SessionManager
         const serverSessionId = data.terminal_id;
         if (serverSessionId && serverSessionId !== muxSessionId) {
@@ -646,11 +662,15 @@ const AppWebSocket = {
             const renamedSession = this.sessionManager.sessions.get(serverSessionId);
             if (renamedSession) {
               renamedSession.claudeSessionId = serverSessionId;
+              renamedSession.terminalSessionId = serverSessionId;  // Terminal 专用
+              renamedSession.status = 'connected';  // BUG FIX: Also set status after rename
             }
           }
         } else if (session) {
           // Session ID 未变，只更新 claudeSessionId
           session.claudeSessionId = serverSessionId;
+          session.terminalSessionId = serverSessionId;  // Terminal 专用
+          session.status = 'connected';  // BUG FIX: Ensure status is set
           this.debugLog(`[MuxWS] Updated claudeSessionId: ${serverSessionId?.substring(0, 8)}`);
         }
       },
@@ -1056,6 +1076,7 @@ const AppWebSocket = {
                 newSession._oldId = sessionId;
                 // 同步更新 claudeSessionId（Chat 模式 --resume 需要）
                 newSession.claudeSessionId = message.terminal_id;
+                newSession.terminalSessionId = message.terminal_id;  // Terminal 专用
                 this.debugLog(`connected: _oldId alias saved, claudeSessionId updated`);
               } else {
                 this.debugLog(`connected: ERROR - newSession not found after rename!`);
@@ -1072,6 +1093,7 @@ const AppWebSocket = {
             const existingSession = this.sessionManager.sessions.get(sessionId);
             if (existingSession && !existingSession.claudeSessionId && message.terminal_id) {
               existingSession.claudeSessionId = message.terminal_id;
+              existingSession.terminalSessionId = message.terminal_id;  // Terminal 专用
               this.debugLog(`connected: updated claudeSessionId for existing session`);
             }
           }
@@ -1488,6 +1510,7 @@ const AppWebSocket = {
         // 更新 claudeSessionId
         if (data.session_id) {
           session.claudeSessionId = data.session_id;
+          session.terminalSessionId = data.session_id;  // Terminal 专用
         }
         // 如果是当前活跃 session，更新 UI
         if (sessionId === this.currentSession) {

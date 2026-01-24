@@ -470,6 +470,10 @@ class MuxWebSocket {
   connectChat(sessionId, workingDir, options = {}) {
     const key = `chat:${sessionId}`;
 
+    // DIAG: Log all current handlers for debugging multi-session issues
+    this.log(`[DIAG] connectChat called: sessionId=${sessionId?.substring(0, 8)}, key=${key}`);
+    this.log(`[DIAG] Current handlers: ${Array.from(this.handlers.keys()).join(', ')}`);
+
     // Check if already connected to this chat session
     if (this.handlers.has(key)) {
       this.log(`Chat ${sessionId.substring(0, 8)} already connected, updating callbacks`);
@@ -661,7 +665,10 @@ class MuxWebSocket {
       // Always call onMessage for all messages
       handler.onMessage(type, data);
     } else {
-      this.log(`No handler for ${handlerKey}, type=${type}`);
+      // DIAG: More detailed logging when handler is missing
+      this.log(`[DIAG] No handler for ${handlerKey}, type=${type}`);
+      this.log(`[DIAG] Available handlers: ${Array.from(this.handlers.keys()).join(', ')}`);
+      this.log(`[DIAG] original_session_id in data: ${data?.original_session_id?.substring(0, 8)}`);
     }
   }
 

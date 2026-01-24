@@ -26,6 +26,7 @@ from typing import List, Optional
 from app.api.auth import verify_token
 from app.services.claude_projects import claude_projects
 from app.services.naming_store import naming_store
+from app.services.database import db
 from app.core.logging import logger
 
 router = APIRouter(prefix="/api", tags=["projects"])
@@ -50,6 +51,7 @@ class SessionResponse(BaseModel):
     updated_at: str
     file_size: int
     total_tokens: int           # 总 token 消耗
+    chat_session_id: Optional[str] = None # 关联的 Chat 模式 Session ID
     # Context 信息 - 基础字段
     context_used: int = 0         # 已用 token
     context_max: int = 200000     # 最大 token
@@ -100,6 +102,7 @@ async def list_sessions(
         for s in sessions:
             custom_name = naming_store.get_name(s.session_id)
             display_name = custom_name or s.summary or s.session_id[:8]
+            chat_session_id = db.get_chat_session_id(s.session_id)
 
             result.append(SessionResponse(
                 session_id=s.session_id,
@@ -111,6 +114,7 @@ async def list_sessions(
                 updated_at=s.updated_at.isoformat(),
                 file_size=s.file_size,
                 total_tokens=s.total_tokens,
+                chat_session_id=chat_session_id,
                 context_used=s.context_used,
                 context_max=s.context_max,
                 context_percentage=s.context_percentage,
@@ -148,6 +152,7 @@ async def get_session(
 
         custom_name = naming_store.get_name(session_id)
         display_name = custom_name or session.summary or session_id[:8]
+        chat_session_id = db.get_chat_session_id(session_id)
 
         return SessionResponse(
             session_id=session.session_id,
@@ -159,6 +164,7 @@ async def get_session(
             updated_at=session.updated_at.isoformat(),
             file_size=session.file_size,
             total_tokens=session.total_tokens,
+            chat_session_id=chat_session_id,
             context_used=session.context_used,
             context_max=session.context_max,
             context_percentage=session.context_percentage,

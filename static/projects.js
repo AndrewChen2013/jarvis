@@ -199,7 +199,7 @@ const AppProjects = {
         `;
         item.addEventListener('click', () => {
           // 直接连接终端，使用 session 的真实 working_dir（而非项目目录）
-          this.connectTerminal(session.working_dir, session.session_id, session.display_name);
+          this.connectTerminal(session.working_dir, session.session_id, session.display_name, session.chat_session_id);
         });
         container.appendChild(item);
       });
@@ -513,7 +513,7 @@ const AppProjects = {
         // 用自定义名称或摘要作为显示名
         const displayName = customName || claudeSummary || session.session_id.substring(0, 8);
         // 使用 session 的真实 working_dir（而非项目目录 workDir）
-        this.connectTerminal(session.working_dir, session.session_id, displayName);
+        this.connectTerminal(session.working_dir, session.session_id, displayName, session.chat_session_id);
       });
 
       // 点击置顶按钮

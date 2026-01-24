@@ -268,6 +268,41 @@ class Database:
                     ON task_executions(task_id, started_at DESC)
                 """)
 
+                # 聊天消息表（用于存储聊天历史，替代直接读取 Claude 文件）
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS chat_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        content_hash TEXT NOT NULL,
+                        timestamp DATETIME NOT NULL,
+                        extra TEXT,
+                        source TEXT DEFAULT 'realtime',
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(session_id, timestamp, role, content_hash)
+                    )
+                """)
+                # 按会话和时间查询索引
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_chat_messages_session
+                    ON chat_messages(session_id, timestamp ASC)
+                """)
+                # 按时间查询索引
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_chat_messages_created
+                    ON chat_messages(created_at DESC)
+                """)
+
+                # 会话映射表（Terminal Session -> Chat Session）
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS session_mappings (
+                        terminal_session_id TEXT PRIMARY KEY,
+                        chat_session_id TEXT,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
                 logger.info("Database initialized")
 
     def _migrate_pinned_sessions(self, cursor):
@@ -381,6 +416,34 @@ class Database:
                 cursor = conn.cursor()
                 cursor.execute("SELECT session_id, name FROM session_names")
                 return {row["session_id"]: row["name"] for row in cursor.fetchall()}
+
+    # ==================== 会话映射 ====================
+
+    def get_chat_session_id(self, terminal_session_id: str) -> Optional[str]:
+        """获取 Terminal Session 对应的 Chat Session ID"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT chat_session_id FROM session_mappings WHERE terminal_session_id = ?",
+                    (terminal_session_id,)
+                )
+                row = cursor.fetchone()
+                return row["chat_session_id"] if row else None
+
+    def set_chat_session_id(self, terminal_session_id: str, chat_session_id: str):
+        """设置 Terminal Session 对应的 Chat Session ID"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO session_mappings (terminal_session_id, chat_session_id, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(terminal_session_id) DO UPDATE SET
+                        chat_session_id = excluded.chat_session_id,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (terminal_session_id, chat_session_id))
+        logger.info(f"Set chat mapping: {terminal_session_id[:8]}... -> {chat_session_id[:8]}...")
 
     # ==================== IP 黑名单 ====================
 
@@ -1370,6 +1433,246 @@ class Database:
                 """, (f"-{days} days",))
                 if cursor.rowcount > 0:
                     logger.info(f"Cleaned up {cursor.rowcount} old task execution records")
+
+    # ==================== 聊天消息 ====================
+
+    def _compute_content_hash(self, content: str) -> str:
+        """计算内容的 SHA256 哈希值（取前16位）"""
+        import hashlib
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
+
+    def save_chat_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        timestamp: datetime,
+        extra: Dict[str, Any] = None,
+        source: str = "realtime"
+    ) -> Optional[int]:
+        """保存聊天消息（自动去重）
+
+        Args:
+            session_id: 会话ID
+            role: 角色（user/assistant/system）
+            content: 消息内容
+            timestamp: 消息时间戳
+            extra: 额外信息（如 tool_call 等），会序列化为 JSON
+            source: 来源（realtime=实时写入, sync=从Claude文件同步）
+
+        Returns:
+            新消息的ID，如果重复则返回 None
+        """
+        content_hash = self._compute_content_hash(content)
+        extra_json = json.dumps(extra, ensure_ascii=False) if extra else None
+
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("""
+                        INSERT INTO chat_messages
+                        (session_id, role, content, content_hash, timestamp, extra, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (session_id, role, content, content_hash,
+                          timestamp.isoformat(), extra_json, source))
+                    return cursor.lastrowid
+                except sqlite3.IntegrityError:
+                    # 重复消息，忽略
+                    return None
+
+    def save_chat_messages_batch(
+        self,
+        messages: List[Dict[str, Any]]
+    ) -> int:
+        """批量保存聊天消息（用于从 Claude 文件同步）
+
+        Args:
+            messages: 消息列表，每个消息包含:
+                - session_id: 会话ID
+                - role: 角色
+                - content: 内容
+                - timestamp: 时间戳（datetime 或 ISO 字符串）
+                - extra: 额外信息（可选）
+                - source: 来源（可选，默认 'sync'）
+
+        Returns:
+            成功插入的消息数量
+        """
+        inserted = 0
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                for msg in messages:
+                    content = msg['content']
+                    content_hash = self._compute_content_hash(content)
+                    timestamp = msg['timestamp']
+                    if isinstance(timestamp, datetime):
+                        timestamp = timestamp.isoformat()
+                    extra = msg.get('extra')
+                    extra_json = json.dumps(extra, ensure_ascii=False) if extra else None
+                    source = msg.get('source', 'sync')
+
+                    try:
+                        cursor.execute("""
+                            INSERT INTO chat_messages
+                            (session_id, role, content, content_hash, timestamp, extra, source)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (msg['session_id'], msg['role'], content, content_hash,
+                              timestamp, extra_json, source))
+                        inserted += 1
+                    except sqlite3.IntegrityError:
+                        # 重复消息，忽略
+                        pass
+        if inserted > 0:
+            logger.info(f"Batch saved {inserted} chat messages")
+        return inserted
+
+    def get_chat_messages(
+        self,
+        session_id: str,
+        limit: int = 100,
+        offset: int = 0,
+        before_timestamp: datetime = None
+    ) -> List[Dict[str, Any]]:
+        """获取聊天消息（按时间升序）
+
+        Args:
+            session_id: 会话ID
+            limit: 返回数量限制
+            offset: 偏移量（分页用）
+            before_timestamp: 只获取此时间之前的消息（用于加载更早历史）
+
+        Returns:
+            消息列表，按时间升序排序
+        """
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                if before_timestamp:
+                    cursor.execute("""
+                        SELECT id, session_id, role, content, content_hash,
+                               timestamp, extra, source, created_at
+                        FROM chat_messages
+                        WHERE session_id = ? AND timestamp < ?
+                        ORDER BY timestamp ASC
+                        LIMIT ? OFFSET ?
+                    """, (session_id, before_timestamp.isoformat(), limit, offset))
+                else:
+                    cursor.execute("""
+                        SELECT id, session_id, role, content, content_hash,
+                               timestamp, extra, source, created_at
+                        FROM chat_messages
+                        WHERE session_id = ?
+                        ORDER BY timestamp ASC
+                        LIMIT ? OFFSET ?
+                    """, (session_id, limit, offset))
+
+                results = []
+                for row in cursor.fetchall():
+                    item = dict(row)
+                    # 解析 extra JSON
+                    if item['extra']:
+                        try:
+                            item['extra'] = json.loads(item['extra'])
+                        except json.JSONDecodeError:
+                            pass
+                    results.append(item)
+                return results
+
+    def get_chat_messages_desc(
+        self,
+        session_id: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """获取聊天消息（按时间降序，用于分页加载历史）
+
+        Args:
+            session_id: 会话ID
+            limit: 返回数量限制
+            offset: 偏移量
+
+        Returns:
+            消息列表，按时间降序排序
+        """
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, session_id, role, content, content_hash,
+                           timestamp, extra, source, created_at
+                    FROM chat_messages
+                    WHERE session_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ? OFFSET ?
+                """, (session_id, limit, offset))
+
+                results = []
+                for row in cursor.fetchall():
+                    item = dict(row)
+                    if item['extra']:
+                        try:
+                            item['extra'] = json.loads(item['extra'])
+                        except json.JSONDecodeError:
+                            pass
+                    results.append(item)
+                return results
+
+    def get_chat_message_count(self, session_id: str) -> int:
+        """获取会话的消息数量"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(*) as cnt FROM chat_messages
+                    WHERE session_id = ?
+                """, (session_id,))
+                row = cursor.fetchone()
+                return row["cnt"] if row else 0
+
+    def get_latest_chat_timestamp(self, session_id: str) -> Optional[datetime]:
+        """获取会话最新消息的时间戳（用于增量同步）"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT MAX(timestamp) as latest FROM chat_messages
+                    WHERE session_id = ?
+                """, (session_id,))
+                row = cursor.fetchone()
+                if row and row["latest"]:
+                    return datetime.fromisoformat(row["latest"])
+                return None
+
+    def delete_chat_messages(self, session_id: str) -> int:
+        """删除会话的所有消息
+
+        Returns:
+            删除的消息数量
+        """
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM chat_messages WHERE session_id = ?
+                """, (session_id,))
+                count = cursor.rowcount
+                if count > 0:
+                    logger.info(f"Deleted {count} chat messages for session {session_id[:8]}...")
+                return count
+
+    def cleanup_old_chat_messages(self, days: int = 90):
+        """清理旧的聊天消息"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM chat_messages
+                    WHERE created_at < datetime('now', ?)
+                """, (f"-{days} days",))
+                if cursor.rowcount > 0:
+                    logger.info(f"Cleaned up {cursor.rowcount} old chat messages")
 
 
 # 全局实例

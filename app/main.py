@@ -24,8 +24,12 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 from contextlib import asynccontextmanager
+from urllib.parse import unquote
 import os
+import re
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -37,6 +41,9 @@ from app.api.terminal import handle_terminal_websocket
 from app.api.ssh_terminal import handle_ssh_websocket
 from app.api.debug import handle_debug_websocket
 from app.services.mux_connection_manager import mux_manager
+from app.services.socketio_manager import sio_app
+# 导入以注册事件处理器
+from app.services.socketio_connection_manager import socketio_manager
 
 # CLAUDE.md watcher (optional, graceful fallback if watchdog not installed)
 _claude_md_watcher = None
@@ -96,6 +103,48 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+class ProxyWebSocketFixMiddleware:
+    """
+    修复通过 HTTP 代理连接 WebSocket 时的路径问题。
+
+    当客户端通过 VPN/代理（如 Clash、V2Ray）连接 WebSocket 时，
+    某些代理会错误地将完整 URL 作为路径转发，例如：
+      ws%3A//121.43.155.101%3A8000/ws/mux
+
+    这个中间件会检测并修正这种畸形路径，提取出真正的路径部分。
+    """
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+        # 匹配 URL 编码的 WebSocket URL: ws%3A// 或 wss%3A//
+        self.proxy_path_pattern = re.compile(
+            r'^wss?%3A//[^/]+(.*)$',  # 匹配 ws://host 或 wss://host 后面的路径
+            re.IGNORECASE
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "websocket":
+            path = scope.get("path", "")
+
+            # 检测是否是代理导致的畸形路径
+            if path.startswith(("ws%3A", "wss%3A", "ws%3a", "wss%3a")):
+                # URL 解码
+                decoded_path = unquote(path)
+                # 提取真正的路径部分 (ws://host:port/real/path -> /real/path)
+                match = re.match(r'^wss?://[^/]+(/.*)?$', decoded_path, re.IGNORECASE)
+                if match:
+                    real_path = match.group(1) or "/"
+                    logger.info(f"[ProxyFix] Rewrote WebSocket path: {path[:50]}... -> {real_path}")
+                    scope = dict(scope)
+                    scope["path"] = real_path
+
+        await self.app(scope, receive, send)
+
+
+# 添加代理 WebSocket 修复中间件（最先执行）
+app.add_middleware(ProxyWebSocketFixMiddleware)
+
 # CORS 配置
 app.add_middleware(
     CORSMiddleware,
@@ -118,6 +167,9 @@ app.include_router(monitor.router)
 app.include_router(scheduled_tasks.router)
 app.include_router(debug.router)
 app.include_router(chat.router)
+
+# 挂载 Socket.IO（支持 WebSocket 降级到 HTTP Long Polling）
+app.mount("/socket.io", sio_app)
 
 # 挂载静态文件
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")

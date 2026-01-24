@@ -73,6 +73,17 @@ class App {
   }
 
   init() {
+    // Socket.IO / WebSocket 切换逻辑
+    // 默认使用 Socket.IO（支持代理降级），可通过 ?websocket 参数切换回原生 WebSocket
+    const forceWebSocket = new URLSearchParams(window.location.search).has('websocket') ||
+                           localStorage.getItem('use_websocket') === 'true';
+    if (!forceWebSocket && window.socketIOManager) {
+      window.muxWs = window.socketIOManager;
+      console.log('[App] Using Socket.IO transport (WebSocket + HTTP polling fallback)');
+    } else {
+      console.log('[App] Using native WebSocket transport');
+    }
+
     // 初始化国际化
     if (window.i18n) {
       window.i18n.init();
