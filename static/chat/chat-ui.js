@@ -158,8 +158,8 @@ Object.assign(ChatMode, {
     });
 
     // Send button
-    this.sendBtn.addEventListener('click', () => {
-      this.log(`[DIAG] sendBtn clicked, disabled=${this.sendBtn.disabled}`);
+    this.sendBtn.addEventListener('click', (e) => {
+      this.log(`[DIAG] sendBtn clicked, disabled=${this.sendBtn.disabled}, isConnected=${this.isConnected}, isStreaming=${this.isStreaming}, inputValue="${this.inputEl?.value?.substring(0,20)}"`);
       this.sendMessage();
     });
 
@@ -176,26 +176,38 @@ Object.assign(ChatMode, {
 
     // Scroll detection for infinite history loading and auto-scroll management
     this.messagesEl.addEventListener('scroll', () => {
+      // REFACTOR: Use session-level state
+      const session = this.getSession();
+      const hasMore = session?.chatHasMoreHistory ?? this.hasMoreHistory;
+      const isLoading = session?.chatIsLoadingHistory ?? this.isLoadingHistory;
+      const isStreaming = session?.chatIsStreaming ?? this.isStreaming;
+
       // When scrolled to top, load more history
-      if (this.messagesEl.scrollTop < 100 && this.hasMoreHistory && !this.isLoadingHistory) {
+      if (this.messagesEl.scrollTop < 100 && hasMore && !isLoading) {
         this.loadMoreHistory();
       }
 
       // Auto-scroll management: check if user is near bottom
       const distanceFromBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight;
-      const wasEnabled = this.autoScrollEnabled;
-      this.autoScrollEnabled = distanceFromBottom < this.scrollThreshold;
+      const wasEnabled = session?.chatAutoScrollEnabled ?? this.autoScrollEnabled;
+      const newEnabled = distanceFromBottom < this.scrollThreshold;
+
+      // Update both session-level and global state
+      if (session) {
+        session.chatAutoScrollEnabled = newEnabled;
+      }
+      this.autoScrollEnabled = newEnabled;
 
       // Show/hide "new messages" button based on scroll position
-      if (!this.autoScrollEnabled && this.isStreaming) {
+      if (!newEnabled && isStreaming) {
         this.showNewMessagesButton();
-      } else if (this.autoScrollEnabled) {
+      } else if (newEnabled) {
         this.hideNewMessagesButton();
       }
 
       // Log state change for debugging
-      if (wasEnabled !== this.autoScrollEnabled) {
-        this.log(`Auto-scroll ${this.autoScrollEnabled ? 'enabled' : 'disabled'} (distance: ${Math.round(distanceFromBottom)}px)`);
+      if (wasEnabled !== newEnabled) {
+        this.log(`Auto-scroll ${newEnabled ? 'enabled' : 'disabled'} (distance: ${Math.round(distanceFromBottom)}px)`);
       }
     });
 

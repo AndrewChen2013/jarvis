@@ -109,6 +109,10 @@ Object.assign(ChatMode, {
         });
       }
 
+      // CRITICAL FIX: Sync DOM with chatMessages array
+      // DOM and array can get out of sync when messages arrive while viewing another session
+      this._syncDomWithMessages();
+
       this.log(`connect: restored container, messages=${this.messages.length}`);
 
       // Scroll to bottom when switching to existing container
@@ -345,7 +349,21 @@ Object.assign(ChatMode, {
   handleMessageWithoutStatusUpdate(data, targetSession) {
     switch (data.type) {
       case 'ready':
-        // Don't update global status, only record to session
+        // BUG-018 FIX: Detect reconnect and set history loading state for non-active session
+        const existingMsgCountReady = this.messagesEl?.querySelectorAll('.chat-message').length || 0;
+        const isReconnectReady = existingMsgCountReady > 0;
+
+        if (data.history_count > 0) {
+          targetSession.chatIsLoadingHistory = true;
+          targetSession.chatPendingHistoryMessages = [];
+          targetSession.chatIsReconnect = isReconnectReady;
+
+          if (isReconnectReady) {
+            this.log(`BUG-018 FIX: Reconnect detected for non-active session ${targetSession.id?.substring(0, 8)}, will skip history`);
+          } else {
+            this.log(`Initial history loading for non-active session ${targetSession.id?.substring(0, 8)}, expecting ${data.history_count} messages`);
+          }
+        }
         break;
 
       case 'system':
@@ -362,6 +380,15 @@ Object.assign(ChatMode, {
         break;
 
       case 'user':
+        // BUG-018 FIX: Check if in history loading phase
+        if (targetSession.chatIsLoadingHistory) {
+          targetSession.chatPendingHistoryMessages.push({
+            type: 'user',
+            content: data.content,
+            extra: { timestamp: data.timestamp }
+          });
+          return;
+        }
         // User message deduplication
         if (this.isDuplicateMessage('user', data.content, data.timestamp)) {
           this.log('Skipping duplicate user message');
@@ -375,6 +402,19 @@ Object.assign(ChatMode, {
         break;
 
       case 'assistant':
+        // BUG-018 FIX: Check if in history loading phase
+        if (targetSession.chatIsLoadingHistory) {
+          const extraData = { timestamp: data.timestamp };
+          if (data.extra && data.extra.tool_calls) {
+            extraData.tool_calls = data.extra.tool_calls;
+          }
+          targetSession.chatPendingHistoryMessages.push({
+            type: 'assistant',
+            content: data.content,
+            extra: extraData
+          });
+          return;
+        }
         this.hideTypingIndicator();
         if (this.isStreaming) {
           this.finalizeStreaming(data.content);
@@ -465,6 +505,54 @@ Object.assign(ChatMode, {
 
       case 'pong':
         break;
+
+      case 'history_end':
+        // BUG-018 FIX: Handle history_end for non-active session
+        targetSession.chatHistoryOldestIndex = data.total - data.count;
+        targetSession.chatHasMoreHistory = targetSession.chatHistoryOldestIndex > 0;
+
+        this.log(`History loaded for non-active session: ${data.count}/${data.total} messages, isReconnect=${targetSession.chatIsReconnect}`);
+
+        // If reconnect, skip rendering
+        if (targetSession.chatIsReconnect) {
+          this.log(`BUG-018 FIX: Skipping history render on reconnect for non-active session ${targetSession.id?.substring(0, 8)}`);
+          targetSession.chatIsLoadingHistory = false;
+          targetSession.chatPendingHistoryMessages = [];
+          targetSession.chatIsReconnect = false;
+          break;
+        }
+
+        // Render history messages
+        const pendingMsgsNonActive = targetSession.chatPendingHistoryMessages || [];
+        if (pendingMsgsNonActive.length > 0) {
+          if (this.emptyEl) this.emptyEl.style.display = 'none';
+          for (const msg of pendingMsgsNonActive) {
+            if (msg.extra?.tool_calls) {
+              for (const tc of msg.extra.tool_calls) {
+                const toolEl = this.createToolMessageElement(tc.name, tc.input, msg.extra.timestamp);
+                this.messagesEl.appendChild(toolEl);
+              }
+            }
+            if (msg.content?.trim()) {
+              const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra);
+              this.messagesEl.appendChild(msgEl);
+            }
+          }
+          targetSession.chatPendingHistoryMessages = [];
+        }
+
+        targetSession.chatIsLoadingHistory = false;
+        targetSession.chatIsReconnect = false;
+        this.scrollToBottom();
+        break;
+
+      case 'history_page_end':
+        // BUG-018 FIX: Handle history_page_end for non-active session (simplified)
+        targetSession.chatHistoryOldestIndex = data.oldest_index;
+        targetSession.chatHasMoreHistory = data.has_more;
+        targetSession.chatIsLoadingHistory = false;
+        this.log(`History page loaded for non-active session: oldest_index=${data.oldest_index}, hasMore=${data.has_more}`);
+        break;
     }
   },
 
@@ -479,12 +567,33 @@ Object.assign(ChatMode, {
         this.isConnected = true;
         this.updateStatus('connected');
         this.sendBtn.disabled = !this.inputEl.value.trim();
+
+        // BUG-018 FIX: Check if this is a reconnect (DOM already has messages)
+        // If so, skip history loading to avoid duplicate messages
+        const existingMsgCount = this.messagesEl?.querySelectorAll('.chat-message').length || 0;
+        const isReconnect = existingMsgCount > 0;
+
         // Mark initial history loading phase
         // Backend will push history messages after ready, before history_end
         if (data.history_count > 0) {
+          // REFACTOR: Use session-level state instead of global
+          const session = this.getSession();
+          if (session) {
+            session.chatIsLoadingHistory = true;
+            session.chatPendingHistoryMessages = [];
+            // BUG-018 FIX: Mark as reconnect so history_end knows to skip rendering
+            session.chatIsReconnect = isReconnect;
+          }
+          // Keep backward compatible global state (will be removed later)
           this.isLoadingHistory = true;
           this.pendingHistoryMessages = [];
-          this.log(`Initial history loading started, expecting ${data.history_count} messages`);
+          this.historyLoadingForSession = this.sessionId;  // Track which session is loading history
+          this.isReconnect = isReconnect;  // BUG-018 FIX: Track reconnect state
+          if (isReconnect) {
+            this.log(`BUG-018 FIX: Reconnect detected (${existingMsgCount} messages in DOM), will skip history rendering`);
+          } else {
+            this.log(`Initial history loading started, expecting ${data.history_count} messages for session ${this.sessionId?.substring(0, 8)}`);
+          }
         }
         break;
 
@@ -509,9 +618,13 @@ Object.assign(ChatMode, {
 
       case 'user':
         // User message from history
-        if (this.isLoadingHistory) {
-          // Collect for batch insert at top
-          this.pendingHistoryMessages.push({
+        // REFACTOR: Check session-level state first, fallback to global
+        const sessionForUser = this.getSession();
+        const isLoadingHistoryUser = sessionForUser?.chatIsLoadingHistory ?? this.isLoadingHistory;
+        if (isLoadingHistoryUser) {
+          // Collect for batch insert at top - use session-level array
+          const pendingArray = sessionForUser?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
+          pendingArray.push({
             type: 'user',
             content: data.content,
             extra: { timestamp: data.timestamp }
@@ -532,14 +645,19 @@ Object.assign(ChatMode, {
 
       case 'assistant':
         this.hideTypingIndicator();
-        if (this.isLoadingHistory) {
+        // REFACTOR: Check session-level state first, fallback to global
+        const sessionForAssistant = this.getSession();
+        const isLoadingHistoryAssistant = sessionForAssistant?.chatIsLoadingHistory ?? this.isLoadingHistory;
+        if (isLoadingHistoryAssistant) {
           // Collect for batch insert at top
           // Include tool_calls from extra if present
           const extraData = { timestamp: data.timestamp };
           if (data.extra && data.extra.tool_calls) {
             extraData.tool_calls = data.extra.tool_calls;
           }
-          this.pendingHistoryMessages.push({
+          // Use session-level array
+          const pendingArray = sessionForAssistant?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
+          pendingArray.push({
             type: 'assistant',
             content: data.content,
             extra: extraData
@@ -652,18 +770,66 @@ Object.assign(ChatMode, {
 
       case 'history_end':
         // Initial history load complete
+        // REFACTOR: Use session-level state
+        const sessionForHistoryEnd = this.getSession();
+
+        // BUG-018 FIX: Check if this is a reconnect - skip rendering if so
+        const isReconnectHistoryEnd = sessionForHistoryEnd?.chatIsReconnect ?? this.isReconnect;
+
+        // Update session-level state
+        if (sessionForHistoryEnd) {
+          sessionForHistoryEnd.chatHistoryOldestIndex = data.total - data.count;
+          sessionForHistoryEnd.chatHasMoreHistory = sessionForHistoryEnd.chatHistoryOldestIndex > 0;
+        }
+        // Keep backward compatible global state
         this.historyOldestIndex = data.total - data.count;
         this.hasMoreHistory = this.historyOldestIndex > 0;
-        this.log(`History loaded: ${data.count}/${data.total} messages, oldest_index=${this.historyOldestIndex}, hasMore=${this.hasMoreHistory}, pendingMessages=${this.pendingHistoryMessages?.length || 0}`);
+
+        const pendingMsgs = sessionForHistoryEnd?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
+        this.log(`History loaded: ${data.count}/${data.total} messages, oldest_index=${this.historyOldestIndex}, hasMore=${this.hasMoreHistory}, pendingMessages=${pendingMsgs?.length || 0}, isReconnect=${isReconnectHistoryEnd}`);
+
+        // BUG FIX: Validate that this history is for the current session
+        // If user switched sessions while loading, ignore the stale history
+        if (this.historyLoadingForSession && this.historyLoadingForSession !== this.sessionId) {
+          this.log(`BUG FIX: Ignoring history_end for ${this.historyLoadingForSession?.substring(0, 8)}, current session is ${this.sessionId?.substring(0, 8)}`);
+          // Clear both session-level and global state
+          if (sessionForHistoryEnd) {
+            sessionForHistoryEnd.chatIsLoadingHistory = false;
+            sessionForHistoryEnd.chatPendingHistoryMessages = [];
+            sessionForHistoryEnd.chatIsReconnect = false;
+          }
+          this.isLoadingHistory = false;
+          this.pendingHistoryMessages = [];
+          this.historyLoadingForSession = null;
+          this.isReconnect = false;
+          break;
+        }
+
+        // BUG-018 FIX: Skip rendering on reconnect - messages already in DOM
+        if (isReconnectHistoryEnd) {
+          this.log(`BUG-018 FIX: Skipping history render on reconnect`);
+          // Clear state without rendering
+          if (sessionForHistoryEnd) {
+            sessionForHistoryEnd.chatIsLoadingHistory = false;
+            sessionForHistoryEnd.chatPendingHistoryMessages = [];
+            sessionForHistoryEnd.chatIsReconnect = false;
+          }
+          this.isLoadingHistory = false;
+          this.pendingHistoryMessages = [];
+          this.historyLoadingForSession = null;
+          this.isReconnect = false;
+          break;
+        }
 
         // Render collected initial history messages
-        if (this.pendingHistoryMessages && this.pendingHistoryMessages.length > 0) {
+        // REFACTOR: Use session-level pending array
+        if (pendingMsgs && pendingMsgs.length > 0) {
           // Hide empty state
           if (this.emptyEl) {
             this.emptyEl.style.display = 'none';
           }
 
-          for (const msg of this.pendingHistoryMessages) {
+          for (const msg of pendingMsgs) {
             // If message has tool_calls, render them first
             if (msg.extra && msg.extra.tool_calls && Array.isArray(msg.extra.tool_calls)) {
               for (const toolCall of msg.extra.tool_calls) {
@@ -677,23 +843,41 @@ Object.assign(ChatMode, {
               this.messagesEl.appendChild(msgEl);
             }
           }
+          // Clear both session-level and global pending arrays
+          if (sessionForHistoryEnd) {
+            sessionForHistoryEnd.chatPendingHistoryMessages = [];
+          }
           this.pendingHistoryMessages = [];
         }
 
+        // Clear loading state - both session-level and global
+        if (sessionForHistoryEnd) {
+          sessionForHistoryEnd.chatIsLoadingHistory = false;
+          sessionForHistoryEnd.chatIsReconnect = false;  // BUG-018 FIX
+        }
         this.isLoadingHistory = false;
+        this.historyLoadingForSession = null;  // Clear tracking
+        this.isReconnect = false;  // BUG-018 FIX
         // Scroll to bottom after initial history
         this.scrollToBottom();
         break;
 
       case 'history_page_end':
         // Additional history page loaded - insert all collected messages
+        // REFACTOR: Use session-level state
+        const sessionForPageEnd = this.getSession();
+        const pendingPageMsgs = sessionForPageEnd?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
         this.log(`History page loaded: ${data.count} messages, oldest_index=${data.oldest_index}, hasMore=${data.has_more}`);
 
         // BUG-014 FIX: Validate that this history page is for the current session
         // If we switched sessions while loading, ignore the stale history
         if (this.historyLoadingForSession && this.historyLoadingForSession !== this.sessionId) {
           this.log(`BUG-014 FIX: Ignoring history_page_end for ${this.historyLoadingForSession?.substring(0, 8)}, current session is ${this.sessionId?.substring(0, 8)}`);
-          // Clean up stale state
+          // Clean up stale state - both session-level and global
+          if (sessionForPageEnd) {
+            sessionForPageEnd.chatIsLoadingHistory = false;
+            sessionForPageEnd.chatPendingHistoryMessages = [];
+          }
           this.isLoadingHistory = false;
           this.pendingHistoryMessages = [];
           this.historyLoadingForSession = null;
@@ -710,12 +894,12 @@ Object.assign(ChatMode, {
         }
 
         // Insert collected messages at the top (in correct order)
-        if (this.pendingHistoryMessages.length > 0) {
+        if (pendingPageMsgs && pendingPageMsgs.length > 0) {
           // Sync with this.messages data structure (prepend to history)
           // pendingHistoryMessages are ordered [older -> newer]
           // this.messages are ordered [older -> newer]
           // So we unshift them in reverse order or spread
-          this.messages.unshift(...this.pendingHistoryMessages);
+          this.messages.unshift(...pendingPageMsgs);
 
           // Preserve scroll position
           const scrollHeightBefore = this.messagesEl.scrollHeight;
@@ -723,7 +907,7 @@ Object.assign(ChatMode, {
 
           // Create document fragment for batch insert
           const fragment = document.createDocumentFragment();
-          for (const msg of this.pendingHistoryMessages) {
+          for (const msg of pendingPageMsgs) {
             // If message has tool_calls, render them first (before the text content)
             if (msg.extra && msg.extra.tool_calls && Array.isArray(msg.extra.tool_calls)) {
               for (const toolCall of msg.extra.tool_calls) {
@@ -753,17 +937,27 @@ Object.assign(ChatMode, {
             this.messagesEl.scrollTop = scrollTopBefore + (scrollHeightAfter - scrollHeightBefore);
           });
 
+          // Clear both session-level and global pending arrays
+          if (sessionForPageEnd) {
+            sessionForPageEnd.chatPendingHistoryMessages = [];
+          }
           this.pendingHistoryMessages = [];
         }
 
-        // Update state
+        // Update state - both session-level and global
+        if (sessionForPageEnd) {
+          sessionForPageEnd.chatIsLoadingHistory = false;
+          sessionForPageEnd.chatHistoryOldestIndex = data.oldest_index;
+          sessionForPageEnd.chatHasMoreHistory = data.has_more;
+        }
         this.isLoadingHistory = false;
         this.historyLoadingForSession = null;  // BUG-014 FIX: Clear tracking
         this.historyOldestIndex = data.oldest_index;
         this.hasMoreHistory = data.has_more;
 
         // Show "no more history" message if at the beginning
-        if (!this.hasMoreHistory) {
+        const hasMore = sessionForPageEnd?.chatHasMoreHistory ?? this.hasMoreHistory;
+        if (!hasMore) {
           const noMoreEl = document.createElement('div');
           noMoreEl.className = 'chat-history-end';
           noMoreEl.textContent = window.i18n?.t('chat.historyEnd', 'Beginning of conversation') || 'Beginning of conversation';
@@ -788,6 +982,44 @@ Object.assign(ChatMode, {
           this.showProgressMessage('Compacting conversation...');
         }
         break;
+    }
+  },
+
+  /**
+   * CRITICAL FIX: Sync DOM with messages array
+   * When switching sessions, DOM might be out of sync with chatMessages array
+   * (e.g., messages arrived while viewing another session)
+   *
+   * Strategy: DOM is truth for existing messages, array may have newer messages at end.
+   * We only append missing messages, never remove or reorder.
+   */
+  _syncDomWithMessages() {
+    if (!this.messagesEl || !this.messages) return;
+
+    // Count non-UI DOM children (skip loading indicators, history markers, etc.)
+    const domMessages = this.messagesEl.querySelectorAll('.chat-message');
+    const domCount = domMessages.length;
+    const arrayCount = this.messages.length;
+
+    if (domCount >= arrayCount) {
+      // DOM has all messages (or more), no sync needed
+      return;
+    }
+
+    // Append missing messages from array
+    this.log(`_syncDomWithMessages: DOM has ${domCount}, array has ${arrayCount}, appending ${arrayCount - domCount} messages`);
+
+    const fragment = document.createDocumentFragment();
+    for (let i = domCount; i < arrayCount; i++) {
+      const msg = this.messages[i];
+      const msgEl = this.createMessageElement(msg.type, msg.content, msg);
+      fragment.appendChild(msgEl);
+    }
+    this.messagesEl.appendChild(fragment);
+
+    // Hide empty state if we added messages
+    if (this.emptyEl && arrayCount > 0) {
+      this.emptyEl.style.display = 'none';
     }
   }
 });

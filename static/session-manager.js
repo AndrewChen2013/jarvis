@@ -73,6 +73,19 @@ class SessionInstance {
     this.chatStreamingMessageId = null;  // 当前流式消息 ID
     this.chatInputValue = '';       // Chat 输入框内容（切换时暂存）
     this.chatClaudeSessionId = null; // Chat 模式独立的 Claude session ID
+
+    // Chat 历史加载状态（每个 session 独立）- 重构：从全局移到 session 级别
+    this.chatHistoryOldestIndex = -1;
+    this.chatHasMoreHistory = false;
+    this.chatIsLoadingHistory = false;
+    this.chatPendingHistoryMessages = [];
+
+    // Chat 自动滚动状态（每个 session 独立）
+    this.chatAutoScrollEnabled = true;
+
+    // Chat 思考状态（每个 session 独立）
+    this.chatThinkingMessageId = null;
+    this.chatIsThinking = false;
   }
 
   /**

@@ -34,6 +34,8 @@ Object.assign(ChatMode, {
    * Add message to chat
    */
   addMessage(type, content, extra = {}) {
+    this.log(`[DIAG] addMessage: type=${type}, content="${content?.substring(0, 30)}", messagesEl=${this.messagesEl?.id || 'null'}, childCount=${this.messagesEl?.childElementCount}, visible=${this.messagesEl?.offsetParent !== null}`);
+
     // Hide empty state
     if (this.emptyEl) {
       this.emptyEl.style.display = 'none';
@@ -103,6 +105,7 @@ Object.assign(ChatMode, {
       });
     } else {
       this.messagesEl.appendChild(msgEl);
+      this.log(`[DIAG] addMessage: appended ${msgId}, newChildCount=${this.messagesEl?.childElementCount}`);
       // Save message to current session
       const msg = { id: msgId, type, content, ...extra };
       this.saveMessageToSession(msg);
@@ -116,13 +119,23 @@ Object.assign(ChatMode, {
    * Load more chat history (older messages)
    */
   loadMoreHistory() {
-    if (!this.isConnected || this.isLoadingHistory || !this.hasMoreHistory) {
+    // REFACTOR: Use session-level state
+    const session = this.getSession();
+    const isLoading = session?.chatIsLoadingHistory ?? this.isLoadingHistory;
+    const hasMore = session?.chatHasMoreHistory ?? this.hasMoreHistory;
+    const oldestIndex = session?.chatHistoryOldestIndex ?? this.historyOldestIndex;
+
+    if (!this.isConnected || isLoading || !hasMore) {
       return;
     }
 
+    // Set loading state - both session-level and global
+    if (session) {
+      session.chatIsLoadingHistory = true;
+    }
     this.isLoadingHistory = true;
     this.historyLoadingForSession = this.sessionId;  // BUG-014 FIX: Track which session is loading
-    this.log(`Loading more history, before index: ${this.historyOldestIndex}`);
+    this.log(`Loading more history for session ${this.sessionId?.substring(0, 8)}, before index: ${oldestIndex}`);
 
     // Show loading indicator at top
     const loadingEl = document.createElement('div');
@@ -132,9 +145,10 @@ Object.assign(ChatMode, {
     this.messagesEl.insertBefore(loadingEl, this.messagesEl.firstChild);
 
     // Request more history via MuxWebSocket
+    // REFACTOR: Use session-level oldestIndex
     if (window.muxWs) {
       window.muxWs.send('chat', this.sessionId, 'load_more_history', {
-        before_index: this.historyOldestIndex,
+        before_index: oldestIndex,
         limit: 50
       });
     }
@@ -146,16 +160,21 @@ Object.assign(ChatMode, {
   isDuplicateMessage(type, content, timestamp) {
     // During history loading, we are receiving verified history from server,
     // so we don't need to perform duplicate checks which might skip valid history.
-    if (this.isLoadingHistory) return false;
+    // REFACTOR: Check session-level state first
+    const session = this.getSession();
+    const isLoading = session?.chatIsLoadingHistory ?? this.isLoadingHistory;
+    if (isLoading) return false;
 
-    if (!this.messages || this.messages.length === 0) return false;
+    // Use session-level messages array
+    const messages = session?.chatMessages ?? this.messages;
+    if (!messages || messages.length === 0) return false;
 
     // Check the last 50 messages
-    const checkCount = Math.min(this.messages.length, 50);
-    const startIndex = this.messages.length - checkCount;
+    const checkCount = Math.min(messages.length, 50);
+    const startIndex = messages.length - checkCount;
 
-    for (let i = this.messages.length - 1; i >= startIndex; i--) {
-      const msg = this.messages[i];
+    for (let i = messages.length - 1; i >= startIndex; i--) {
+      const msg = messages[i];
       if (msg.type === type) {
         // Content match
         let isContentMatch = false;
@@ -200,13 +219,20 @@ Object.assign(ChatMode, {
    */
   sendMessage() {
     const content = this.inputEl.value.trim();
-    this.log(`[DIAG] sendMessage: content="${content?.substring(0, 20)}", isConnected=${this.isConnected}, isStreaming=${this.isStreaming}, sessionId=${this.sessionId?.substring(0, 8)}, muxWs.state=${window.muxWs?.state}`);
-    if (!content || !this.isConnected || this.isStreaming) {
-      this.log(`[DIAG] sendMessage: BLOCKED - content=${!!content}, isConnected=${this.isConnected}, isStreaming=${this.isStreaming}`);
+    this.log(`[DIAG] sendMessage: content="${content?.substring(0, 20)}", isConnected=${this.isConnected}, sessionId=${this.sessionId?.substring(0, 8)}, muxWs.state=${window.muxWs?.state}`);
+    // 只检查内容和连接状态，不检查 isStreaming
+    // Claude CLI 支持并发消息，前端不需要阻止
+    if (!content || !this.isConnected) {
+      this.log(`[DIAG] sendMessage: BLOCKED - content=${!!content}, isConnected=${this.isConnected}`);
       return;
     }
 
     // Force enable auto-scroll when sending message
+    // REFACTOR: Update both session-level and global state
+    const sessionForSend = this.getSession();
+    if (sessionForSend) {
+      sessionForSend.chatAutoScrollEnabled = true;
+    }
     this.autoScrollEnabled = true;
     this.hideNewMessagesButton();
 
@@ -245,10 +271,15 @@ Object.assign(ChatMode, {
    * @param {boolean} force - Force scroll even if autoScrollEnabled is false
    */
   scrollToBottom(force = false) {
+    // REFACTOR: Use session-level state
+    const session = this.getSession();
+    const autoScrollEnabled = session?.chatAutoScrollEnabled ?? this.autoScrollEnabled;
+    const isStreaming = session?.chatIsStreaming ?? this.isStreaming;
+
     // Skip if auto-scroll is disabled (user is reading history) unless forced
-    if (!force && !this.autoScrollEnabled) {
+    if (!force && !autoScrollEnabled) {
       // Show new messages button if streaming
-      if (this.isStreaming) {
+      if (isStreaming) {
         this.showNewMessagesButton();
       }
       return;
@@ -270,7 +301,11 @@ Object.assign(ChatMode, {
           behavior: 'smooth'
         });
         // Re-enable auto-scroll after forced scroll
+        // REFACTOR: Update both session-level and global state
         if (force) {
+          if (session) {
+            session.chatAutoScrollEnabled = true;
+          }
           this.autoScrollEnabled = true;
           this.hideNewMessagesButton();
         }

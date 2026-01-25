@@ -135,8 +135,15 @@ Object.assign(ChatMode, {
       this.emptyEl.style.display = 'none';
     }
 
+    // REFACTOR: Set both session-level and global state
+    const session = this.getSession();
+    const thinkingId = 'thinking-' + Date.now();
+    if (session) {
+      session.chatIsThinking = true;
+      session.chatThinkingMessageId = thinkingId;
+    }
     this.isThinking = true;
-    this.thinkingMessageId = 'thinking-' + Date.now();
+    this.thinkingMessageId = thinkingId;
 
     const msgEl = document.createElement('div');
     msgEl.className = 'chat-message thinking';
@@ -173,9 +180,13 @@ Object.assign(ChatMode, {
    * Append text to streaming thinking
    */
   appendToThinking(text) {
-    if (!this.isThinking || !this.thinkingMessageId) return;
+    // REFACTOR: Check session-level state first
+    const session = this.getSession();
+    const isThinking = session?.chatIsThinking ?? this.isThinking;
+    const thinkingId = session?.chatThinkingMessageId ?? this.thinkingMessageId;
+    if (!isThinking || !thinkingId) return;
 
-    const contentEl = this.messagesEl?.querySelector(`#${this.thinkingMessageId}-content`);
+    const contentEl = this.messagesEl?.querySelector(`#${thinkingId}-content`);
     if (contentEl) {
       const currentText = contentEl.getAttribute('data-raw') || '';
       const newText = currentText + text;
@@ -189,9 +200,12 @@ Object.assign(ChatMode, {
    * Finalize thinking block
    */
   finalizeThinking() {
-    if (!this.thinkingMessageId) return;
+    // REFACTOR: Check session-level state first
+    const session = this.getSession();
+    const thinkingId = session?.chatThinkingMessageId ?? this.thinkingMessageId;
+    if (!thinkingId) return;
 
-    const msgEl = this.messagesEl?.querySelector(`#${this.thinkingMessageId}`);
+    const msgEl = this.messagesEl?.querySelector(`#${thinkingId}`);
     if (msgEl) {
       // Update label to show "Thought"
       const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
@@ -211,6 +225,11 @@ Object.assign(ChatMode, {
       }
     }
 
+    // REFACTOR: Clear both session-level and global state
+    if (session) {
+      session.chatIsThinking = false;
+      session.chatThinkingMessageId = null;
+    }
     this.isThinking = false;
     this.thinkingMessageId = null;
   },
