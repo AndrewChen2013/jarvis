@@ -9,7 +9,6 @@ python-multipart==0.0.6
 msgpack==1.0.7
 python-socketio[asyncio]>=5.10.0
 psutil==5.9.7
-asyncssh==2.14.2
 apscheduler==3.10.4
 cryptography>=42.0.0
 mcp>=1.0.0

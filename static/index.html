@@ -208,26 +208,7 @@
             </div>
           </div>
         </div>
-        <!-- 第四屏: 远程机器 -->
-        <div class="swipe-page" id="page-remote">
-          <!-- 下拉刷新指示器 -->
-          <div id="pull-refresh-remote" class="pull-refresh">
-            <div class="pull-refresh-spinner"></div>
-            <span class="pull-refresh-text" data-i18n="sessions.pullToRefresh">Pull to refresh</span>
-          </div>
-          <!-- 远程机器列表 -->
-          <div class="remote-machines-container" id="remote-machines-content">
-            <div id="remote-machines-list" class="remote-machines-list">
-              <div class="loading" data-i18n="sessions.loading">Loading...</div>
-            </div>
-            <!-- 添加按钮放在列表底部 -->
-            <button id="add-remote-machine-btn" class="remote-machine-add-btn" title="Add Remote Machine">
-              <span class="add-icon">+</span>
-              <span class="add-text" data-i18n="remote.addMachine">Add Machine</span>
-            </button>
-          </div>
-        </div>
-        <!-- 第五屏: 系统监控 -->
+        <!-- 第四屏: 系统监控 -->
         <div class="swipe-page" id="page-monitor">
           <!-- 下拉刷新指示器 -->
           <div id="pull-refresh-monitor" class="pull-refresh">
@@ -317,7 +298,6 @@
         <span class="page-dot" data-page="2"></span>
         <span class="page-dot" data-page="3"></span>
         <span class="page-dot" data-page="4"></span>
-        <span class="page-dot" data-page="5"></span>
       </div>
     </main>
 
@@ -402,45 +382,6 @@
           </div>
           <button id="create-new-session" class="btn btn-primary btn-block">New Session</button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 远程机器模态框 -->
-  <div id="remote-machine-modal" class="modal">
-    <div class="modal-content modal-small">
-      <div class="modal-header">
-        <h2 id="remote-machine-modal-title" data-i18n="remote.addMachine">Add Remote Machine</h2>
-        <button id="remote-machine-modal-close" class="btn-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="remote-machine-form" class="settings-form">
-          <div class="form-group">
-            <label data-i18n="remote.name">Name</label>
-            <input type="text" id="machine-name" class="form-input" data-i18n-placeholder="remote.namePlaceholder" placeholder="My Server" required>
-          </div>
-          <div class="form-group">
-            <label data-i18n="remote.host">Host</label>
-            <input type="text" id="machine-host" class="form-input" data-i18n-placeholder="remote.hostPlaceholder" placeholder="192.168.1.100 or example.com" required>
-          </div>
-          <div class="form-group">
-            <label data-i18n="remote.port">Port</label>
-            <input type="number" id="machine-port" class="form-input" value="22" min="1" max="65535">
-          </div>
-          <div class="form-group">
-            <label data-i18n="remote.username">Username</label>
-            <input type="text" id="machine-username" class="form-input" required>
-          </div>
-          <div class="form-group">
-            <label data-i18n="remote.password">Password</label>
-            <input type="password" id="machine-password" class="form-input">
-          </div>
-          <div id="test-connection-result" class="test-result"></div>
-          <div class="form-buttons">
-            <button type="button" id="test-connection-btn" class="btn btn-secondary" data-i18n="remote.testConnection">Test Connection</button>
-            <button type="button" id="save-remote-machine-btn" class="btn btn-primary" data-i18n="remote.save">Save</button>
-          </div>
-        </form>
       </div>
     </div>
   </div>
@@ -643,7 +584,6 @@
   <script defer src="/static/websocket.js?v=74"></script>
   <script defer src="/static/upload.js?v=5"></script>
   <script defer src="/static/download.js?v=3"></script>
-  <script defer src="/static/remote-machines.js?v=6"></script>
   <script defer src="/static/monitor.js?v=6"></script>
   <script defer src="/static/scheduled-tasks.js?v=9"></script>
   <script defer src="/static/app.js?v=48"></script>

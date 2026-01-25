@@ -33,10 +33,8 @@ import re
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.services.ssh_manager import ssh_manager
 from app.services.scheduler import scheduler
-from app.api import auth, projects, system, upload, download, pinned, remote_machines, monitor, scheduled_tasks, debug, chat
-from app.api.ssh_terminal import handle_ssh_websocket
+from app.api import auth, projects, system, upload, download, pinned, monitor, scheduled_tasks, debug, chat
 from app.api.debug import handle_debug_websocket
 from app.services.socketio_manager import sio_app
 # 导入以注册事件处理器
@@ -64,9 +62,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to start CLAUDE.md watcher: {e}")
 
-    # 启动 SSH 管理器
-    await ssh_manager.start()
-
     # 启动定时任务调度器
     await scheduler.start()
 
@@ -77,7 +72,6 @@ async def lifespan(app: FastAPI):
     # 清理
     logger.info("Application shutting down...")
     await scheduler.stop()
-    await ssh_manager.stop()
 
     # 停止 CLAUDE.md 监控器
     if _claude_md_watcher_available:
@@ -154,7 +148,6 @@ app.include_router(system.router)
 app.include_router(upload.router)
 app.include_router(download.router)
 app.include_router(pinned.router)
-app.include_router(remote_machines.router)
 app.include_router(monitor.router)
 app.include_router(scheduled_tasks.router)
 app.include_router(debug.router)
@@ -179,31 +172,6 @@ async def root():
 async def health():
     """健康检查"""
     return {"status": "healthy"}
-
-
-@app.websocket("/ws/ssh")
-async def websocket_ssh(
-    websocket: WebSocket,
-    machine_id: int = Query(...),
-    rows: int = Query(default=None),
-    cols: int = Query(default=None)
-):
-    """SSH 终端 WebSocket 端点
-
-    Args:
-        machine_id: 远程机器 ID（必填）
-        rows: 前端期望的终端行数（可选）
-        cols: 前端期望的终端列数（可选）
-
-    Note:
-        认证通过连接后的第一条消息完成：{ type: "auth", token: "xxx" }
-    """
-    await handle_ssh_websocket(
-        websocket=websocket,
-        machine_id=machine_id,
-        rows=rows,
-        cols=cols
-    )
 
 
 @app.websocket("/ws/debug")

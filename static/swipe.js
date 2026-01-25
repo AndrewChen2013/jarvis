@@ -19,8 +19,8 @@
  * Handles horizontal swipe navigation and pinned sessions grid
  */
 // Page constants (accessible to all methods)
-const SWIPE_PAGE_IDS = ['page-projects', 'page-all-sessions', 'page-files', 'page-remote', 'page-monitor', 'page-scheduled-tasks'];
-const SWIPE_PAGE_NAMES = { 'page-projects': 'Projects', 'page-all-sessions': 'Sessions', 'page-files': 'Files', 'page-remote': 'Remote', 'page-monitor': 'Monitor', 'page-scheduled-tasks': 'Tasks' };
+const SWIPE_PAGE_IDS = ['page-projects', 'page-all-sessions', 'page-files', 'page-monitor', 'page-scheduled-tasks'];
+const SWIPE_PAGE_NAMES = { 'page-projects': 'Projects', 'page-all-sessions': 'Sessions', 'page-files': 'Files', 'page-monitor': 'Monitor', 'page-scheduled-tasks': 'Tasks' };
 
 const AppSwipe = {
 
@@ -38,43 +38,44 @@ const AppSwipe = {
   _previewMode: false,
 
   /**
-   * Get page order from localStorage as array [0,1,2]
-   * Supports migration from old format (0 or 1)
+   * Get page order from localStorage as array [0,1,2,3,4]
+   * Supports migration from old format
    */
   getPageOrder() {
     const saved = localStorage.getItem('pageOrder');
 
     // Migration from old binary format
     if (saved === '0' || saved === null || saved === undefined) {
-      return [0, 1, 2, 3, 4, 5]; // Projects, Sessions, Files, Remote, Monitor, Tasks
+      return [0, 1, 2, 3, 4]; // Projects, Sessions, Files, Monitor, Tasks
     }
     if (saved === '1') {
-      return [1, 0, 2, 3, 4, 5]; // Sessions, Projects, Files, Remote, Monitor, Tasks
+      return [1, 0, 2, 3, 4]; // Sessions, Projects, Files, Monitor, Tasks
     }
 
     // New array format
     try {
       const order = JSON.parse(saved);
       if (Array.isArray(order)) {
-        // Migration: 3 pages -> 6 pages
+        // Migration: 3 pages -> 5 pages
         if (order.length === 3) {
-          return [...order, 3, 4, 5];
+          return [...order, 3, 4];
         }
-        // Migration: 4 pages -> 6 pages
+        // Migration: 4 pages -> 5 pages
         if (order.length === 4) {
-          return [...order, 4, 5];
+          return [...order, 4];
         }
-        // Migration: 5 pages -> 6 pages
-        if (order.length === 5) {
-          return [...order, 5];
-        }
+        // Migration: 6 pages -> 5 pages (remove index 3 which was Remote)
         if (order.length === 6) {
+          // Filter out old Remote page index (3) and remap higher indices
+          return order.filter(idx => idx !== 3).map(idx => idx > 3 ? idx - 1 : idx).slice(0, 5);
+        }
+        if (order.length === 5) {
           return order;
         }
       }
     } catch (e) {}
 
-    return [0, 1, 2, 3, 4, 5]; // Default
+    return [0, 1, 2, 3, 4]; // Default
   },
 
   /**
@@ -582,7 +583,7 @@ const AppSwipe = {
     // Restore last visited page from localStorage, default to middle page (2)
     const savedPage = localStorage.getItem('currentPageIndex');
     const initialPage = savedPage !== null ? parseInt(savedPage) : 2;
-    // Clamp to valid range (0-4)
+    // Clamp to valid range (0-4, now 5 pages total)
     this._currentPage = Math.max(0, Math.min(4, initialPage));
 
     // Scroll to saved page without animation on initial load
@@ -605,9 +606,6 @@ const AppSwipe = {
     }
     if (initialPageId === 'page-monitor' && window.AppMonitor) {
       window.AppMonitor.loadMonitorPage();
-    }
-    if (initialPageId === 'page-remote' && window.RemoteMachines) {
-      window.RemoteMachines.loadMachines();
     }
     if (initialPageId === 'page-scheduled-tasks' && window.AppScheduledTasks) {
       window.AppScheduledTasks.loadScheduledTasksPage();
@@ -723,11 +721,6 @@ const AppSwipe = {
       this.loadFilesPage();
     }
 
-    // Lazy load remote machines page
-    if (currentPageId === 'page-remote' && window.RemoteMachines) {
-      window.RemoteMachines.loadMachines();
-    }
-
     // Lazy load scheduled tasks page
     if (currentPageId === 'page-scheduled-tasks' && window.AppScheduledTasks) {
       window.AppScheduledTasks.loadScheduledTasksPage();
@@ -822,9 +815,6 @@ const AppSwipe = {
 
     let html = '';
     for (const session of this._pinnedSessions) {
-      const sessionType = session.type || 'claude';
-      const isSSH = sessionType === 'ssh';
-
       const isBackendActive = activeSessionIds.includes(session.session_id);
       const isFrontendConnected = frontendConnectedIds.has(session.session_id);
       const timeStr = this.formatRelativeTime(session.updated_at || session.created_at);
@@ -837,75 +827,49 @@ const AppSwipe = {
         statusClass = 'is-backend-active';
       }
 
-      if (isSSH) {
-        // SSH session card
-        const machineId = session.machine_id;
-        const displayName = session.display_name || 'SSH';
-        const hostInfo = session.machine_deleted
-          ? this.t('ssh.deleted', 'Machine deleted')
-          : `${session.machine_username || ''}@${session.machine_host || ''}`;
+      const projectName = this.getProjectDisplayName(session.working_dir);
 
-        html += `
-          <div class="session-grid-item session-grid-ssh ${statusClass}"
-               data-session-id="${session.session_id}"
-               data-session-type="ssh"
-               data-machine-id="${machineId}"
-               data-machine-name="${this.escapeHtml(displayName)}"
-               draggable="true">
-            <button class="btn-rename-session" title="${this.t('common.rename', 'Rename')}">✎</button>
-            <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
-            <div class="session-grid-name"><span class="ssh-icon">⌨</span> ${this.escapeHtml(displayName)}</div>
-            <div class="session-grid-project"><span class="project-name ssh-host">${this.escapeHtml(hostInfo)}</span></div>
-            <div class="session-grid-meta"><span class="session-grid-time">${timeStr}</span></div>
-          </div>
-        `;
-      } else {
-        // Claude session card
-        const projectName = this.getProjectDisplayName(session.working_dir);
-
-        // Token count (if available)
-        let tokenHtml = '';
-        let tokenLen = 0;
-        if (session.total_tokens > 0) {
-          const tokens = session.total_tokens;
-          let tokenStr;
-          if (tokens >= 1000000) {
-            tokenStr = (tokens / 1000000).toFixed(1) + 'M';
-          } else if (tokens >= 1000) {
-            tokenStr = (tokens / 1000).toFixed(1) + 'k';
-          } else {
-            tokenStr = tokens.toString();
-          }
-          tokenHtml = `<span class="session-grid-tokens">${tokenStr}</span>`;
-          tokenLen = tokenStr.length;
+      // Token count (if available)
+      let tokenHtml = '';
+      let tokenLen = 0;
+      if (session.total_tokens > 0) {
+        const tokens = session.total_tokens;
+        let tokenStr;
+        if (tokens >= 1000000) {
+          tokenStr = (tokens / 1000000).toFixed(1) + 'M';
+        } else if (tokens >= 1000) {
+          tokenStr = (tokens / 1000).toFixed(1) + 'k';
+        } else {
+          tokenStr = tokens.toString();
         }
-
-        // Context info (if available)
-        // 如果 token 字符串太长（>4），不显示百分比以节省空间
-        let contextHtml = '';
-        if (session.context_used > 0) {
-          const usedK = Math.round(session.context_used / 1000);
-          const pct = session.context_percentage || 0;
-          const showPct = tokenLen <= 4;
-          contextHtml = showPct
-            ? `<span class="session-grid-context">⛁ ${usedK}k ${pct}%</span>`
-            : `<span class="session-grid-context">⛁ ${usedK}k</span>`;
-        }
-
-        html += `
-          <div class="session-grid-item ${statusClass}"
-               data-session-id="${session.session_id}"
-               data-session-type="claude"
-               data-working-dir="${session.working_dir}"
-               draggable="true">
-            <button class="btn-rename-session" title="${this.t('common.rename', 'Rename')}">✎</button>
-            <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
-            <div class="session-grid-name">${this.escapeHtml(session.display_name || session.session_id.substring(0, 8))}</div>
-            <div class="session-grid-project">${this.escapeHtml(projectName)}</div>
-            <div class="session-grid-meta">${tokenHtml}${contextHtml}<span class="session-grid-time">${timeStr}</span></div>
-          </div>
-        `;
+        tokenHtml = `<span class="session-grid-tokens">${tokenStr}</span>`;
+        tokenLen = tokenStr.length;
       }
+
+      // Context info (if available)
+      // 如果 token 字符串太长（>4），不显示百分比以节省空间
+      let contextHtml = '';
+      if (session.context_used > 0) {
+        const usedK = Math.round(session.context_used / 1000);
+        const pct = session.context_percentage || 0;
+        const showPct = tokenLen <= 4;
+        contextHtml = showPct
+          ? `<span class="session-grid-context">⛁ ${usedK}k ${pct}%</span>`
+          : `<span class="session-grid-context">⛁ ${usedK}k</span>`;
+      }
+
+      html += `
+        <div class="session-grid-item ${statusClass}"
+             data-session-id="${session.session_id}"
+             data-working-dir="${session.working_dir}"
+             draggable="true">
+          <button class="btn-rename-session" title="${this.t('common.rename', 'Rename')}">✎</button>
+          <button class="btn-unpin" title="${this.t('sessions.unpin', 'Unpin')}">✕</button>
+          <div class="session-grid-name">${this.escapeHtml(session.display_name || session.session_id.substring(0, 8))}</div>
+          <div class="session-grid-project">${this.escapeHtml(projectName)}</div>
+          <div class="session-grid-meta">${tokenHtml}${contextHtml}<span class="session-grid-time">${timeStr}</span></div>
+        </div>
+      `;
     }
 
     grid.innerHTML = html;
@@ -922,27 +886,11 @@ const AppSwipe = {
           return;
         }
 
-        const sessionType = item.dataset.sessionType || 'claude';
-
-        if (sessionType === 'ssh') {
-          // Open SSH terminal
-          const machineId = parseInt(item.dataset.machineId, 10);
-          const machineName = item.dataset.machineName || 'SSH';
-          if (window.SSHTerminal && machineId) {
-            window.SSHTerminal.connect({
-              id: machineId,
-              name: machineName
-            });
-          } else {
-            console.error('SSHTerminal not available or invalid machine_id');
-          }
-        } else {
-          // Open Claude terminal
-          const sessionId = item.dataset.sessionId;
-          const workingDir = item.dataset.workingDir;
-          const displayName = item.querySelector('.session-grid-name')?.textContent || sessionId;
-          this.connectTerminal(workingDir, sessionId, displayName);
-        }
+        // Open Claude terminal
+        const sessionId = item.dataset.sessionId;
+        const workingDir = item.dataset.workingDir;
+        const displayName = item.querySelector('.session-grid-name')?.textContent || sessionId;
+        this.connectTerminal(workingDir, sessionId, displayName);
       });
 
       // Unpin button
@@ -1338,7 +1286,6 @@ const AppSwipe = {
     this.hideSessionContextMenu();
 
     const sessionId = item.dataset.sessionId;
-    const sessionType = item.dataset.sessionType || 'claude';
     const displayName = item.querySelector('.session-grid-name')?.textContent || sessionId;
 
     // Create menu overlay
