@@ -47,14 +47,14 @@ Object.assign(ChatMode, {
                 <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
             </button>
-            <span class="chat-title" id="chatTitle" style="cursor: pointer;" title="${t('debug.title', 'Debug Log')}">${t('chat.title', 'Chat')}</span>
-          </div>
-          <div class="chat-header-right">
             <button class="chat-minimize-btn" id="chatMinimizeBtn" title="${t('terminal.minimize', 'Minimize')}">
               <svg width="12" height="2" viewBox="0 0 12 2" fill="none">
                 <rect x="0" y="0" width="12" height="2" rx="1" fill="currentColor"/>
               </svg>
             </button>
+            <span class="chat-title" id="chatTitle" style="cursor: pointer;" title="${t('debug.title', 'Debug Log')}">${t('chat.title', 'Chat')}</span>
+          </div>
+          <div class="chat-header-right">
           </div>
         </div>
 
