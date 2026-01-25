@@ -74,22 +74,6 @@ Object.assign(ChatMode, {
           </div>
         </div>
 
-        <div class="chat-slash-commands" id="chatSlashCommands">
-          <button class="slash-cmd-btn" data-cmd="/context">/context</button>
-          <button class="slash-cmd-btn" data-cmd="/compact">/compact</button>
-          <button class="slash-cmd-btn" data-cmd="/cost">/cost</button>
-          <button class="slash-cmd-btn slash-cmd-more" id="chatMoreCmds">···</button>
-          <div class="chat-more-commands-panel" id="chatMoreCmdsPanel">
-            <div class="more-cmds-grid">
-              <button class="slash-cmd-btn" data-cmd="/review">/review</button>
-              <button class="slash-cmd-btn" data-cmd="/pr-comments">/pr-comments</button>
-              <button class="slash-cmd-btn" data-cmd="/security-review">/security-review</button>
-              <button class="slash-cmd-btn" data-cmd="/release-notes">/release-notes</button>
-              <button class="slash-cmd-btn" data-cmd="/init">/init</button>
-              <button class="slash-cmd-btn" data-cmd="/todos">/todos</button>
-            </div>
-          </div>
-        </div>
         <div class="chat-input-area">
           <div class="chat-input-wrapper">
             <textarea
@@ -261,74 +245,6 @@ Object.assign(ChatMode, {
       });
     });
 
-    // Slash command buttons
-    const slashCmdsEl = this.container.querySelector('#chatSlashCommands');
-    const moreCmdsPanel = this.container.querySelector('#chatMoreCmdsPanel');
-    const moreCmdsBtn = this.container.querySelector('#chatMoreCmds');
-
-    if (slashCmdsEl) {
-      // Handle all slash command button clicks
-      slashCmdsEl.addEventListener('click', (e) => {
-        const btn = e.target.closest('.slash-cmd-btn');
-        if (!btn) return;
-
-        // Toggle more commands panel
-        if (btn.id === 'chatMoreCmds') {
-          moreCmdsPanel?.classList.toggle('show');
-          return;
-        }
-
-        // Execute slash command
-        const cmd = btn.dataset.cmd;
-        if (cmd) {
-          this.executeSlashCommand(cmd);
-        }
-      });
-    }
-
-    // Handle more commands panel clicks
-    if (moreCmdsPanel) {
-      moreCmdsPanel.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent bubbling to slashCmdsEl
-        const btn = e.target.closest('.slash-cmd-btn');
-        if (!btn) return;
-
-        const cmd = btn.dataset.cmd;
-        if (cmd) {
-          this.executeSlashCommand(cmd);
-          moreCmdsPanel.classList.remove('show');
-        }
-      });
-
-      // BUG-F3 FIX: Close panel when clicking outside
-      // Clean up previous handler before adding new one
-      if (this._documentClickHandler) {
-        document.removeEventListener('click', this._documentClickHandler);
-      }
-      this._documentClickHandler = (e) => {
-        if (!moreCmdsPanel.contains(e.target) && !moreCmdsBtn?.contains(e.target)) {
-          moreCmdsPanel.classList.remove('show');
-        }
-      };
-      document.addEventListener('click', this._documentClickHandler);
-    }
-  },
-
-  /**
-   * Execute a slash command
-   */
-  executeSlashCommand(cmd) {
-    if (!this.isConnected) {
-      this.log(`Cannot execute ${cmd}: not connected`);
-      return;
-    }
-
-    this.log(`Executing slash command: ${cmd}`);
-
-    // Send command via MuxWebSocket
-    if (window.muxWs) {
-      window.muxWs.chatMessage(this.sessionId, cmd);
-    }
   },
 
   /**
@@ -379,11 +295,5 @@ Object.assign(ChatMode, {
     }
     this.isConnected = false;
     this.isStreaming = false;
-
-    // BUG-F3 FIX: Clean up document click handler
-    if (this._documentClickHandler) {
-      document.removeEventListener('click', this._documentClickHandler);
-      this._documentClickHandler = null;
-    }
   }
 });
