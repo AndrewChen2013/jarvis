@@ -43,7 +43,7 @@ Object.assign(ChatMode, {
         <div class="chat-header">
           <div class="chat-header-left">
             <button class="chat-back-btn" id="chatBackBtn" title="${t('common.close', 'Close')}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                 <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
             </button>
@@ -51,8 +51,8 @@ Object.assign(ChatMode, {
           </div>
           <div class="chat-header-right">
             <button class="chat-minimize-btn" id="chatMinimizeBtn" title="${t('terminal.minimize', 'Minimize')}">
-              <svg width="28" height="4" viewBox="0 0 28 4" fill="none">
-                <rect x="0" y="0" width="28" height="4" rx="2" fill="currentColor"/>
+              <svg width="36" height="5" viewBox="0 0 36 5" fill="none">
+                <rect x="0" y="0" width="36" height="5" rx="2.5" fill="currentColor"/>
               </svg>
             </button>
           </div>

@@ -50,40 +50,44 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: none;
-  background: transparent;
-  color: var(--color-primary);
+  background: rgba(120, 120, 128, 0.16);
+  color: var(--text-secondary);
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
+  transition: background 0.15s ease;
+}
+
+.chat-back-btn:hover {
+  background: rgba(120, 120, 128, 0.24);
 }
 
 .chat-back-btn:active {
-  background: var(--bg-hover);
+  background: rgba(120, 120, 128, 0.32);
 }
 
 .chat-minimize-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
+  width: 44px;
   height: 32px;
   border: none;
   background: transparent;
-  color: var(--text-tertiary);
+  color: rgba(120, 120, 128, 0.4);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .chat-minimize-btn:hover {
-  opacity: 1;
+  color: rgba(120, 120, 128, 0.6);
 }
 
 .chat-minimize-btn:active {
-  background: var(--bg-hover);
+  color: rgba(120, 120, 128, 0.8);
 }
 
 .chat-title {
