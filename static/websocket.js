@@ -64,11 +64,12 @@ const AppWebSocket = {
     // 当从 session 列表打开时，传入的 sessionId 是 Claude CLI session ID，
     // 但 sessionManager.sessions 的 key 是 terminal session ID，所以直接 get 找不到
     // 需要遍历查找 chatClaudeSessionId 匹配的 session
+    // 注意：不检查 status，因为 closed 的 session 也应该被复用
     let existingSession = null;
     if (chatClaudeSessionId) {
       for (const [key, session] of this.sessionManager.sessions) {
-        if (session.chatClaudeSessionId === chatClaudeSessionId && session.status === 'connected') {
-          this.debugLog(`connectTerminal: found existing session by chatClaudeSessionId: ${key.substring(0, 8)}`);
+        if (session.chatClaudeSessionId === chatClaudeSessionId) {
+          this.debugLog(`connectTerminal: found existing session by chatClaudeSessionId: ${key.substring(0, 8)}, status=${session.status}`);
           existingSession = session;
           // 更新 currentSession 为找到的 session 的 key
           this.currentSession = key;
@@ -124,11 +125,23 @@ const AppWebSocket = {
       return;
     }
 
-    // 清除旧的全局 terminal 引用（每个 session 有自己的 terminal）
-    this.terminal = null;
+    // BUG-003 FIX: 如果找到了 closed 的 session，复用它而不是创建新的
+    // 只需要重新激活它，后面的代码会重新建立连接
+    let session;
+    if (existingSession && existingSession.status === 'closed') {
+      this.debugLog(`connectTerminal: reusing closed session ${this.currentSession.substring(0, 8)}`);
+      session = existingSession;
+      session.status = 'connecting';
+      session.name = this.currentSessionName;
+      // 切换到该 session
+      this.sessionManager.switchTo(this.currentSession);
+    } else {
+      // 清除旧的全局 terminal 引用（每个 session 有自己的 terminal）
+      this.terminal = null;
 
-    // 注册到 SessionManager（支持多 session 后台运行）
-    const session = this.sessionManager.openSession(this.currentSession, this.currentSessionName);
+      // 注册到 SessionManager（支持多 session 后台运行）
+      session = this.sessionManager.openSession(this.currentSession, this.currentSessionName);
+    }
 
     // 保存连接参数到 session（每个 session 独立）
     session.workDir = workDir;

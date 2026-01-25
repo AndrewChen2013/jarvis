@@ -455,10 +455,9 @@ class SessionManager {
       return;
     }
 
-    // 通过 MuxWebSocket 断开连接
-    // BUG-004 FIX: 只关闭实际存在的订阅，避免发送不必要的消息
+    // 通过 MuxWebSocket 关闭连接
     if (window.muxWs) {
-      this.log('closeSession: disconnect via MuxWebSocket');
+      this.log('closeSession: close via MuxWebSocket');
       if (window.muxWs.handlers.has(`terminal:${sessionId}`)) {
         window.muxWs.closeTerminal(sessionId);
       }
@@ -488,9 +487,9 @@ class SessionManager {
       session.chatContainer = null;
     }
 
-    // 从 Map 中移除
+    // 从 Map 中删除 session
     this.sessions.delete(sessionId);
-    this.log(`closeSession: sessions.size=${this.sessions.size}`);
+    this.log(`closeSession: deleted from map, sessions.size=${this.sessions.size}`);
 
     // 如果关闭的是当前活跃的
     if (this.activeId === sessionId) {
