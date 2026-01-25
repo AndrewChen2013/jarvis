@@ -42,6 +42,7 @@ Object.assign(ChatMode, {
    * Append text to streaming message
    */
   appendToStreaming(text) {
+    this.log(`[DIAG] appendToStreaming: isStreaming=${this.isStreaming}, streamingMessageId=${this.streamingMessageId}, sessionId=${this.sessionId?.substring(0, 8)}, text.length=${text?.length || 0}`);
     this.hideTypingIndicator();
 
     if (!this.isStreaming) {
@@ -57,8 +58,12 @@ Object.assign(ChatMode, {
       bubble.setAttribute('data-raw', '');
       msgEl.appendChild(bubble);
 
-      this.messagesEl.appendChild(msgEl);
-      this.log(`[DIAG] appendToStreaming: created streaming message ${this.streamingMessageId}`);
+      if (this.messagesEl) {
+        this.messagesEl.appendChild(msgEl);
+        this.log(`[DIAG] appendToStreaming: created streaming message ${this.streamingMessageId}`);
+      } else {
+        this.log(`[DIAG] appendToStreaming: ERROR - messagesEl is null/undefined!`);
+      }
     }
 
     // BUG-016 FIX: Search within current container
