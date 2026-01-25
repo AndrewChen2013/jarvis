@@ -60,8 +60,27 @@ const AppWebSocket = {
       this.debugLog(`connectTerminal: SESSION SWITCH detected! ${prevSession?.substring(0, 8)} -> ${this.currentSession?.substring(0, 8)}`);
     }
 
-    // 检查 session 是否已在 SessionManager 中且已连接
-    const existingSession = this.sessionManager.sessions.get(this.currentSession);
+    // BUG-003 FIX: 先通过 chatClaudeSessionId 查找已存在的 session
+    // 当从 session 列表打开时，传入的 sessionId 是 Claude CLI session ID，
+    // 但 sessionManager.sessions 的 key 是 terminal session ID，所以直接 get 找不到
+    // 需要遍历查找 chatClaudeSessionId 匹配的 session
+    let existingSession = null;
+    if (chatClaudeSessionId) {
+      for (const [key, session] of this.sessionManager.sessions) {
+        if (session.chatClaudeSessionId === chatClaudeSessionId && session.status === 'connected') {
+          this.debugLog(`connectTerminal: found existing session by chatClaudeSessionId: ${key.substring(0, 8)}`);
+          existingSession = session;
+          // 更新 currentSession 为找到的 session 的 key
+          this.currentSession = key;
+          break;
+        }
+      }
+    }
+
+    // 如果没找到，再尝试直接用 sessionId 查找
+    if (!existingSession) {
+      existingSession = this.sessionManager.sessions.get(this.currentSession);
+    }
     if (existingSession && existingSession.status === 'connected') {
       this.debugLog(`connectTerminal: session already connected, reuse it`);
 

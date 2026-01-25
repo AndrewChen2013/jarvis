@@ -134,13 +134,10 @@ Object.assign(ChatMode, {
     const backBtn = this.container.querySelector('#chatBackBtn');
     if (backBtn) {
       backBtn.addEventListener('click', () => {
-        this.disconnect();
-        // Use closeCurrentSession to completely exit session (cleanup SessionManager, floating button, etc.)
-        if (window.app && window.app.closeCurrentSession) {
-          window.app.closeCurrentSession();
-        } else if (window.app && window.app.showView) {
-          window.app.showView('sessions');
-        }
+        // BUG-003 FIX: Use minimize instead of close to preserve session for reuse
+        // When user clicks back, they expect to be able to return to the same session
+        // closeCurrentSession() deletes the session, causing a new one to be created on next open
+        this.minimize();
       });
     }
 
