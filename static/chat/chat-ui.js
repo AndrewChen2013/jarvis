@@ -55,12 +55,7 @@ Object.assign(ChatMode, {
             <span class="chat-title" id="chatTitle" style="cursor: pointer;" title="${t('debug.title', 'Debug Log')}">${t('chat.title', 'Chat')}</span>
           </div>
           <div class="chat-header-right">
-            <button class="chat-terminal-btn" id="chatTerminalBtn" title="${t('chat.mode.terminal', 'Terminal')}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="4 17 10 11 4 5"></polyline>
-                <line x1="12" y1="19" x2="20" y2="19"></line>
-              </svg>
-            </button>
+            <!-- Terminal button removed -->
           </div>
         </div>
 
@@ -152,13 +147,7 @@ Object.assign(ChatMode, {
       });
     }
 
-    // Terminal mode button
-    const terminalBtn = this.container.querySelector('#chatTerminalBtn');
-    if (terminalBtn) {
-      terminalBtn.addEventListener('click', () => {
-        this.switchToTerminal();
-      });
-    }
+    // Terminal mode button - removed
 
     // Chat title - click to open debug panel
     const chatTitle = this.container.querySelector('#chatTitle');
@@ -333,15 +322,7 @@ Object.assign(ChatMode, {
     }
   },
 
-  /**
-   * Switch to terminal mode
-   */
-  switchToTerminal() {
-    // Emit event for app to switch view
-    if (window.app && window.app.switchToTerminalMode) {
-      window.app.switchToTerminalMode(this.sessionId, this.workingDir);
-    }
-  },
+  // switchToTerminal() - removed
 
   /**
    * Disconnect (unsubscribe but keep MuxWebSocket connection)
