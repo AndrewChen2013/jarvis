@@ -142,7 +142,7 @@ class SocketIOConnectionManager:
                 if session_id in client.chat_callbacks:
                     session = chat_manager.get_session(session_id)
                     if session:
-                        session.remove_callback(client.chat_callbacks[session_id])
+                        session.clear_callback(sid)
 
                 # 清理 chat 消费者任务
                 if session_id in client.chat_consumer_tasks:
@@ -227,7 +227,7 @@ class SocketIOConnectionManager:
             if session_id in client.chat_callbacks:
                 session = chat_manager.get_session(session_id)
                 if session:
-                    session.remove_callback(client.chat_callbacks[session_id])
+                    session.clear_callback(sid)
                 del client.chat_callbacks[session_id]
 
             if session_id in client.chat_consumer_tasks:
@@ -319,96 +319,56 @@ class SocketIOConnectionManager:
                      except Exception as e:
                          logger.error(f"[SocketIO] Failed to save session mapping: {e}")
 
-            # BUG FIX: Clean up callbacks from ALL other clients for this session
-            # Each session should only have ONE active callback to prevent duplicate messages
-            # When a new client connects to a session, remove all other clients' callbacks for that session
-            for other_sid, other_client in list(self.clients.items()):
-                if other_sid != sid and session_id in other_client.chat_callbacks:
-                    logger.info(f"[SocketIO] Removing callback from other client {other_sid[:8]} for session {session_id[:8]} (new client {sid[:8]} taking over)")
-                    if session:
-                        session.remove_callback(other_client.chat_callbacks[session_id])
-                    del other_client.chat_callbacks[session_id]
-                    # Also cancel their consumer task
-                    if session_id in other_client.chat_consumer_tasks:
-                        other_client.chat_consumer_tasks[session_id].cancel()
-                        del other_client.chat_consumer_tasks[session_id]
-                    if session_id in other_client.chat_message_queues:
-                        del other_client.chat_message_queues[session_id]
+            # 清理当前客户端的其他 session（用户切换 session 时）
+            for old_session_id in list(client.chat_callbacks.keys()):
+                if old_session_id != session_id:
+                    old_session = chat_manager.get_session(old_session_id)
+                    if old_session:
+                        old_session.clear_callback(sid)
+                    del client.chat_callbacks[old_session_id]
+                    if old_session_id in client.chat_consumer_tasks:
+                        client.chat_consumer_tasks[old_session_id].cancel()
+                        del client.chat_consumer_tasks[old_session_id]
+                    if old_session_id in client.chat_message_queues:
+                        del client.chat_message_queues[old_session_id]
+                    logger.info(f"[SocketIO] Switched session: sid={sid[:8]}, {old_session_id[:8]} -> {session_id[:8]}")
 
             # 设置消息队列和消费者
-            # Use unbounded queue to prevent message loss; consumer processes quickly
             message_queue: asyncio.Queue = asyncio.Queue()
             client.chat_message_queues[session_id] = message_queue
 
             async def chat_message_consumer():
                 """消费消息队列，确保有序发送。"""
-                logger.info(f"[SocketIO] Chat consumer started: sid={sid[:8]}, session={session_id[:8]}, queue_id={id(message_queue)}")
-                should_cleanup_callback = False
+                logger.info(f"[SocketIO] Consumer started: sid={sid[:8]}, session={session_id[:8]}")
                 try:
                     while True:
                         msg = await message_queue.get()
-                        logger.info(f"[SocketIO] Chat consumer processing: sid={sid[:8]}, msg_type={msg.type}")
                         c = self.clients.get(sid)
                         if not c or c.is_closed:
-                            logger.warning(f"[SocketIO] Chat consumer stopping: client gone or closed")
-                            # Only cleanup callback if client is actually gone/closed
-                            should_cleanup_callback = True
+                            logger.warning(f"[SocketIO] Consumer stopping: client gone")
                             break
                         await self._send_chat_message(sid, session_id, msg)
                         message_queue.task_done()
                 except asyncio.CancelledError:
-                    # Consumer cancelled (e.g., user switched to another session) - don't cleanup callback
-                    # The callback should remain so the session can still receive messages
-                    logger.info(f"[SocketIO] Chat consumer cancelled: sid={sid[:8]}, session={session_id[:8]}")
+                    logger.info(f"[SocketIO] Consumer cancelled: sid={sid[:8]}, session={session_id[:8]}")
                 except Exception as e:
-                    logger.error(f"[SocketIO] Chat consumer error: sid={sid[:8]}, session={session_id[:8]}, error={e}")
-                    should_cleanup_callback = True
-                finally:
-                    # Only clean up callback if client is disconnected or error occurred
-                    if should_cleanup_callback:
-                        c = self.clients.get(sid)
-                        if c and session_id in c.chat_callbacks:
-                            if session:
-                                session.remove_callback(c.chat_callbacks[session_id])
-                            del c.chat_callbacks[session_id]
-                            logger.info(f"[SocketIO] Chat consumer cleanup: removed callback for sid={sid[:8]}, session={session_id[:8]}")
+                    logger.error(f"[SocketIO] Consumer error: sid={sid[:8]}, session={session_id[:8]}, error={e}")
 
             consumer_task = asyncio.create_task(chat_message_consumer())
             client.chat_consumer_tasks[session_id] = consumer_task
 
-            # 清理该客户端的所有其他 session 的回调
-            # 当用户切换到新 session 时，需要取消订阅旧 session
-            for old_session_id in list(client.chat_callbacks.keys()):
-                if old_session_id != session_id:
-                    old_session = chat_manager.get_session(old_session_id)
-                    if old_session:
-                        old_session.remove_callback(client.chat_callbacks[old_session_id])
-                    del client.chat_callbacks[old_session_id]
-                    logger.info(f"[SocketIO] Cleaned up old session callback: sid={sid[:8]}, old_session={old_session_id[:8]}")
-                    # 取消旧 session 的消费者任务
-                    if old_session_id in client.chat_consumer_tasks:
-                        client.chat_consumer_tasks[old_session_id].cancel()
-                        del client.chat_consumer_tasks[old_session_id]
-                    # 清理旧 session 的消息队列
-                    if old_session_id in client.chat_message_queues:
-                        del client.chat_message_queues[old_session_id]
-
-            # 清理当前 session 的旧回调（如果有重复连接）
-            if session and session_id in client.chat_callbacks:
-                session.remove_callback(client.chat_callbacks[session_id])
-
-            # 注册回调
+            # 创建 callback 并注册到 session
+            # set_callback 会自动处理旧 callback（覆盖）
             def chat_callback(msg: ChatMessage, q=message_queue, sid_for_log=sid, sess_id_for_log=session_id):
                 try:
-                    # Only log non-stream events to reduce noise
                     if msg.type not in ('stream_event', 'stream'):
-                        logger.info(f"[SocketIO] Chat callback: sid={sid_for_log[:8]}, session={sess_id_for_log[:8]}, msg_type={msg.type}, queue_id={id(q)}")
+                        logger.info(f"[SocketIO] Callback: sid={sid_for_log[:8]}, session={sess_id_for_log[:8]}, type={msg.type}")
                     q.put_nowait(msg)
                 except Exception as e:
-                    logger.warning(f"[SocketIO] Chat callback error for {session_id[:8]}: {e}")
+                    logger.warning(f"[SocketIO] Callback error: {e}")
 
             if session:
-                session.add_callback(chat_callback)
+                session.set_callback(chat_callback, owner=sid)
             client.chat_callbacks[session_id] = chat_callback
 
             await self.subscribe(sid, session_id)

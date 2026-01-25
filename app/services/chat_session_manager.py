@@ -87,9 +87,9 @@ class ChatSession:
         # Normalize working_dir: remove trailing slash to ensure consistent path encoding
         self.working_dir = working_dir.rstrip('/') if working_dir else working_dir
         self.claude_path = claude_path or self._find_claude()
-        self._callbacks: List[Callable[[ChatMessage], None]] = []
-        if on_message:
-            self._callbacks.append(on_message)
+        # 单一 callback 模式：每个 session 只有一个消息接收者
+        self._callback: Optional[Callable[[ChatMessage], None]] = on_message
+        self._callback_owner: Optional[str] = None  # Socket.IO sid
         self.resume_session_id = resume_session_id  # If set, will --resume this session
 
         self._process: Optional[asyncio.subprocess.Process] = None
@@ -239,14 +239,12 @@ class ChatSession:
                     # Save to database for persistent history
                     self._save_message_to_db(msg)
 
-                    # BUG FIX: Copy callbacks list before iteration to avoid skipping
-                    # callbacks if one removes itself or if list is modified during iteration
-                    logger.debug(f"[ChatSession:{self.session_id[:8]}] Invoking {len(self._callbacks)} callbacks for msg type={data.get('type')}")
-                    for callback in list(self._callbacks):
+                    # 单一 callback 模式
+                    if self._callback:
                         try:
-                            callback(msg)
+                            self._callback(msg)
                         except Exception as e:
-                            logger.error(f"Error in chat callback: {e}")
+                            logger.error(f"[Session:{self.session_id[:8]}] Callback error: {e}")
 
                     # Queue for consumers
                     # BUG-014 FIX: Use put_nowait to avoid blocking, log warning if full
@@ -296,7 +294,7 @@ class ChatSession:
         Yields:
             ChatMessage objects as they arrive
         """
-        logger.info(f"[ChatSession:{self.session_id[:8]}] send_message called: _is_running={self._is_running}, callbacks={len(self._callbacks)}, queue_size={self._message_queue.qsize()}")
+        logger.info(f"[ChatSession:{self.session_id[:8]}] send_message: running={self._is_running}, owner={self._callback_owner[:8] if self._callback_owner else 'None'}")
 
         if not self._is_running or not self._process or not self._process.stdin:
             logger.error(f"[ChatSession:{self.session_id[:8]}] Session not running! _is_running={self._is_running}, process={self._process is not None}")
@@ -351,15 +349,46 @@ class ChatSession:
                 logger.error("Timeout waiting for response")
                 break
 
+    def set_callback(self, callback: Callable[[ChatMessage], None], owner: str):
+        """
+        设置消息回调。新的覆盖旧的。
+
+        Args:
+            callback: 消息回调函数
+            owner: 回调所有者 (Socket.IO sid)
+        """
+        if self._callback_owner and self._callback_owner != owner:
+            logger.info(f"[Session:{self.session_id[:8]}] Callback owner: {self._callback_owner[:8]} -> {owner[:8]}")
+        self._callback = callback
+        self._callback_owner = owner
+
+    def clear_callback(self, owner: str):
+        """
+        清理回调。只有 owner 能清理自己的回调。
+
+        Args:
+            owner: 请求清理的 sid，必须与当前 owner 匹配
+        """
+        if self._callback_owner == owner:
+            logger.info(f"[Session:{self.session_id[:8]}] Callback cleared by {owner[:8]}")
+            self._callback = None
+            self._callback_owner = None
+
+    def get_callback_owner(self) -> Optional[str]:
+        """获取当前 callback 的 owner"""
+        return self._callback_owner
+
+    # 保留旧接口用于兼容，但标记为废弃
     def add_callback(self, callback: Callable[[ChatMessage], None]):
-        """Add a message callback."""
-        if callback not in self._callbacks:
-            self._callbacks.append(callback)
+        """Deprecated: Use set_callback instead"""
+        logger.warning("[Session] add_callback is deprecated, use set_callback")
+        self._callback = callback
 
     def remove_callback(self, callback: Callable[[ChatMessage], None]):
-        """Remove a message callback."""
-        if callback in self._callbacks:
-            self._callbacks.remove(callback)
+        """Deprecated: Use clear_callback instead"""
+        if self._callback == callback:
+            self._callback = None
+            self._callback_owner = None
 
     async def close(self):
         """Close the session and cleanup."""
@@ -372,9 +401,9 @@ class ChatSession:
             except asyncio.CancelledError:
                 pass
 
-        # BUG FIX: Clear callbacks AFTER reader task is cancelled
-        # to avoid clearing while iteration is in progress
-        self._callbacks.clear()
+        # Clear callback after reader task is cancelled
+        self._callback = None
+        self._callback_owner = None
 
         if self._process:
             try:
