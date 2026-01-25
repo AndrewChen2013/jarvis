@@ -255,9 +255,7 @@ class ChatSession:
                     except asyncio.QueueFull:
                         logger.warning(f"Message queue full, dropping message: {msg.type}")
 
-                    # Mark not busy when result received
-                    if data.get("type") == "result":
-                        self._is_busy = False
+                    # Note: _is_busy tracking removed - Claude CLI handles queuing
 
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse JSON: {line}, error: {e}")
@@ -298,17 +296,14 @@ class ChatSession:
         Yields:
             ChatMessage objects as they arrive
         """
-        logger.info(f"[ChatSession:{self.session_id[:8]}] send_message called: _is_running={self._is_running}, _is_busy={self._is_busy}, callbacks={len(self._callbacks)}, queue_size={self._message_queue.qsize()}")
+        logger.info(f"[ChatSession:{self.session_id[:8]}] send_message called: _is_running={self._is_running}, callbacks={len(self._callbacks)}, queue_size={self._message_queue.qsize()}")
 
         if not self._is_running or not self._process or not self._process.stdin:
             logger.error(f"[ChatSession:{self.session_id[:8]}] Session not running! _is_running={self._is_running}, process={self._process is not None}")
             raise RuntimeError("Session not running")
 
-        if self._is_busy:
-            logger.warning(f"[ChatSession:{self.session_id[:8]}] Session is busy!")
-            raise RuntimeError("Session is busy processing another message")
-
-        self._is_busy = True
+        # NOTE: Removed _is_busy check - Claude CLI handles message queuing internally
+        # Users should be able to send messages at any time, just like in CLI
 
         # Construct input message
         input_msg = {
@@ -320,7 +315,6 @@ class ChatSession:
         }
 
         # Send to Claude
-        # BUG-013 FIX: Use try/except to ensure _is_busy is reset on error
         try:
             line = json.dumps(input_msg) + "\n"
             self._process.stdin.write(line.encode('utf-8'))
@@ -337,7 +331,6 @@ class ChatSession:
                 source="realtime"
             )
         except Exception as e:
-            self._is_busy = False
             logger.error(f"Failed to send message: {e}")
             raise RuntimeError(f"Failed to send message: {e}")
 
@@ -356,7 +349,6 @@ class ChatSession:
 
             except asyncio.TimeoutError:
                 logger.error("Timeout waiting for response")
-                self._is_busy = False
                 break
 
     def add_callback(self, callback: Callable[[ChatMessage], None]):
@@ -401,7 +393,8 @@ class ChatSession:
 
     @property
     def is_busy(self) -> bool:
-        return self._is_busy
+        # Always return False - we no longer block concurrent messages
+        return False
 
     @property
     def claude_session_id(self) -> Optional[str]:

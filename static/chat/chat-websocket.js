@@ -447,6 +447,12 @@ Object.assign(ChatMode, {
       case 'error':
         this.hideTypingIndicator();
         this.hideProgressMessage();
+        // BUG FIX: Reset streaming state on error to allow new messages
+        this.isStreaming = false;
+        this.streamingMessageId = null;
+        this.messagesEl?.querySelectorAll('.chat-message.streaming').forEach(el => {
+          el.classList.remove('streaming');
+        });
         this.addMessage('system', `Error: ${data.message}`);
         // If permanent error, unsubscribe to prevent retry on reconnect
         if (data.permanent && this.sessionId) {
@@ -624,7 +630,17 @@ Object.assign(ChatMode, {
       case 'error':
         this.hideTypingIndicator();
         this.hideProgressMessage();
+        // BUG FIX: Reset streaming state on error to allow new messages
+        this.isStreaming = false;
+        this.streamingMessageId = null;
+        this.messagesEl?.querySelectorAll('.chat-message.streaming').forEach(el => {
+          el.classList.remove('streaming');
+        });
         this.addMessage('system', `Error: ${data.message}`);
+        // Update send button state to allow retrying
+        if (this.sendBtn && this.inputEl) {
+          this.sendBtn.disabled = !this.inputEl.value.trim() || !this.isConnected;
+        }
         // If permanent error, unsubscribe to prevent retry on reconnect
         if (data.permanent && this.sessionId) {
           this.log('Permanent error, unsubscribing from session');

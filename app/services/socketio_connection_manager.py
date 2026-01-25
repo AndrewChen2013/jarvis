@@ -319,6 +319,24 @@ class SocketIOConnectionManager:
                      except Exception as e:
                          logger.error(f"[SocketIO] Failed to save session mapping: {e}")
 
+            # BUG FIX: Clean up ALL callbacks from other clients for this session
+            # When Socket.IO reconnects, it gets a new sid, but old callbacks are still registered
+            # This causes messages to be sent to multiple consumers (some dead)
+            # Solution: Only ONE client should have callback for a given session at a time
+            for other_sid, other_client in list(self.clients.items()):
+                if other_sid != sid and session_id in other_client.chat_callbacks:
+                    # Always clean up - new client takes over this session
+                    logger.info(f"[SocketIO] Cleaning up callback from {other_sid[:8]} for session {session_id[:8]} (new client {sid[:8]} taking over)")
+                    if session:
+                        session.remove_callback(other_client.chat_callbacks[session_id])
+                    del other_client.chat_callbacks[session_id]
+                    # Also cancel their consumer task
+                    if session_id in other_client.chat_consumer_tasks:
+                        other_client.chat_consumer_tasks[session_id].cancel()
+                        del other_client.chat_consumer_tasks[session_id]
+                    if session_id in other_client.chat_message_queues:
+                        del other_client.chat_message_queues[session_id]
+
             # 设置消息队列和消费者
             # Use unbounded queue to prevent message loss; consumer processes quickly
             message_queue: asyncio.Queue = asyncio.Queue()
@@ -345,7 +363,7 @@ class SocketIOConnectionManager:
             client.chat_consumer_tasks[session_id] = consumer_task
 
             # 清理旧回调
-            if session_id in client.chat_callbacks:
+            if session and session_id in client.chat_callbacks:
                 session.remove_callback(client.chat_callbacks[session_id])
 
             # 注册回调
@@ -358,7 +376,8 @@ class SocketIOConnectionManager:
                 except Exception as e:
                     logger.warning(f"[SocketIO] Chat callback error for {session_id[:8]}: {e}")
 
-            session.add_callback(chat_callback)
+            if session:
+                session.add_callback(chat_callback)
             client.chat_callbacks[session_id] = chat_callback
 
             await self.subscribe(sid, session_id)
@@ -435,6 +454,12 @@ class SocketIOConnectionManager:
 
                     # 异步处理消息（使用 real_session_id）
                     asyncio.create_task(self._process_chat_message(sid, real_session_id, content))
+                else:
+                    # BUG FIX: 如果 session 不存在，发送错误消息
+                    logger.warning(f"[SocketIO] Session not found for message: {session_id[:8]}")
+                    await self.send_to_client(sid, "chat", "error", {
+                        "message": f"Session not found: {session_id[:8]}"
+                    }, session_id)
 
         elif msg_type == "load_more_history":
             # Frontend sends before_index (the oldest message index it has)
@@ -502,9 +527,12 @@ class SocketIOConnectionManager:
                     "message": "Session not found"
                 }, session_id)
         except Exception as e:
-            logger.error(f"[SocketIO] Chat message error: {e}", exc_info=True)
+            error_msg = str(e)
+            logger.error(f"[SocketIO] Chat message error: {error_msg}", exc_info=True)
+            # BUG FIX: 确保错误消息被发送到前端
+            logger.info(f"[SocketIO] Sending error to client {sid[:8]}: {error_msg[:50]}")
             await self.send_to_client(sid, "chat", "error", {
-                "message": str(e)
+                "message": error_msg
             }, session_id)
 
     async def _send_chat_message(self, sid: str, session_id: str, msg: ChatMessage):
@@ -655,6 +683,16 @@ class SocketIOConnectionManager:
                 await self.send_to_client(sid, "chat", "user", {
                     "content": text_content
                 }, session_id)
+
+    async def _is_client_connected(self, sid: str) -> bool:
+        """Check if a Socket.IO client is still connected."""
+        try:
+            # Check if sid is in the connected clients of the sio server
+            # Note: sio.manager.rooms maps room names to sets of sids
+            # Each sid is automatically joined to a room with its own name
+            return sid in sio.manager.rooms.get(sid, set()) or sid in self.clients
+        except Exception:
+            return False
 
     def _is_valid_uuid(self, value: str) -> bool:
         """检查字符串是否是有效的 UUID。"""
