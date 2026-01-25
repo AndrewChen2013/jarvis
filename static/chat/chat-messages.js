@@ -39,6 +39,28 @@ Object.assign(ChatMode, {
       this.emptyEl.style.display = 'none';
     }
 
+    // If message has tool_calls (from history), render them first
+    if (extra.tool_calls && Array.isArray(extra.tool_calls)) {
+      for (const toolCall of extra.tool_calls) {
+        const toolEl = this.createHistoryToolElement(toolCall, extra.timestamp);
+        if (extra.prepend) {
+          const insertBefore = this.messagesEl.firstChild;
+          if (insertBefore) {
+            this.messagesEl.insertBefore(toolEl, insertBefore);
+          } else {
+            this.messagesEl.appendChild(toolEl);
+          }
+        } else {
+          this.messagesEl.appendChild(toolEl);
+        }
+      }
+    }
+
+    // Skip empty content messages (tool-only messages)
+    if (!content || !content.trim()) {
+      return null;
+    }
+
     const msgId = this._generateMessageId();  // BUG-F4 FIX: Use counter-based unique ID
     const msgEl = document.createElement('div');
     msgEl.className = `chat-message ${type}`;
