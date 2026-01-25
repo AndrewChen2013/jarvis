@@ -51,8 +51,8 @@ Object.assign(ChatMode, {
           </div>
           <div class="chat-header-right">
             <button class="chat-minimize-btn" id="chatMinimizeBtn" title="${t('terminal.minimize', 'Minimize')}">
-              <svg width="36" height="5" viewBox="0 0 36 5" fill="none">
-                <rect x="0" y="0" width="36" height="5" rx="2.5" fill="currentColor"/>
+              <svg width="12" height="2" viewBox="0 0 12 2" fill="none">
+                <rect x="0" y="0" width="12" height="2" rx="1" fill="currentColor"/>
               </svg>
             </button>
           </div>

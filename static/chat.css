@@ -72,22 +72,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: none;
-  background: transparent;
-  color: rgba(120, 120, 128, 0.4);
+  background: rgba(120, 120, 128, 0.16);
+  color: var(--text-secondary);
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s ease;
+  border-radius: 50%;
+  transition: background 0.15s ease;
 }
 
 .chat-minimize-btn:hover {
-  color: rgba(120, 120, 128, 0.6);
+  background: rgba(120, 120, 128, 0.24);
 }
 
 .chat-minimize-btn:active {
-  color: rgba(120, 120, 128, 0.8);
+  background: rgba(120, 120, 128, 0.32);
 }
 
 .chat-title {
