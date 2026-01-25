@@ -248,7 +248,8 @@ class FloatingButton {
         const session = this.selectedItem.session;
         this.log(`selected session: ${session.name}`);
         this.vibrate();
-        this.app.connectSession(session.id, session.name);
+        // connectSession(workDir, sessionId, sessionName, chatClaudeSessionId)
+        this.app.connectSession(session.workDir, session.claudeSessionId, session.name, session.chatClaudeSessionId);
       }
       // 无论是否选中，都关闭菜单
       this.hideRadialMenu();
@@ -332,7 +333,8 @@ class FloatingButton {
       if (this.selectedItem) {
         const session = this.selectedItem.session;
         this.log(`mouse selected session: ${session.name}`);
-        this.app.connectSession(session.id, session.name);
+        // connectSession(workDir, sessionId, sessionName, chatClaudeSessionId)
+        this.app.connectSession(session.workDir, session.claudeSessionId, session.name, session.chatClaudeSessionId);
       }
       this.hideRadialMenu();
       this.clearMenuSelection();
@@ -391,8 +393,8 @@ class FloatingButton {
     if (targetSession) {
       this.log(`onSingleClick: switch to ${targetSession.id}`);
       this.vibrate();
-      // 使用 connectSession 确保 app 状态正确更新
-      this.app.connectSession(targetSession.id, targetSession.name);
+      // connectSession(workDir, sessionId, sessionName, chatClaudeSessionId)
+      this.app.connectSession(targetSession.workDir, targetSession.claudeSessionId, targetSession.name, targetSession.chatClaudeSessionId);
     } else {
       this.log('onSingleClick: no target, sessions.size=' + sessionsSize);
       // 没有可切换的 session

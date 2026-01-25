@@ -185,6 +185,10 @@ Object.assign(ChatMode, {
    * Render diff lines with proper styling
    */
   renderDiffLines(content, type) {
+    // Ensure content is a string before splitting
+    if (content == null || typeof content !== 'string') {
+      content = String(content || '');
+    }
     const lines = content.split('\n');
     const prefix = type === 'add' ? '+' : '-';
     const className = type === 'add' ? 'diff-add' : 'diff-remove';
@@ -298,6 +302,10 @@ Object.assign(ChatMode, {
    * Render code with line numbers
    */
   renderCodeWithLineNumbers(content, fileName) {
+    // Ensure content is a string before splitting
+    if (content == null || typeof content !== 'string') {
+      return `<div class="code-with-lines"><div class="code-line"><span class="line-content">${this.escapeHtml(String(content || '(empty)'))}</span></div></div>`;
+    }
     const lines = content.split('\n');
     const maxLineNum = lines.length;
     const padWidth = String(maxLineNum).length;
@@ -498,6 +506,10 @@ Object.assign(ChatMode, {
     }
 
     const pattern = resultsEl.getAttribute('data-pattern') || '';
+    // Ensure content is a string before splitting
+    if (content == null || typeof content !== 'string') {
+      content = String(content || '');
+    }
     const lines = content.split('\n').filter(line => line.trim());
 
     if (lines.length === 0) {
