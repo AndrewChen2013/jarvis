@@ -46,12 +46,19 @@ Object.assign(ChatMode, {
 
     if (!this.isStreaming) {
       this.isStreaming = true;
-      this.streamingMessageId = this.addMessage('assistant', '');
-      // BUG-016 FIX: Search within current container
-      const msgEl = this.messagesEl?.querySelector(`#${this.streamingMessageId}`);
-      if (msgEl) {
-        msgEl.classList.add('streaming');
-      }
+      // Create streaming message element directly (don't use addMessage which rejects empty content)
+      this.streamingMessageId = this._generateMessageId();
+      const msgEl = document.createElement('div');
+      msgEl.className = 'chat-message assistant streaming';
+      msgEl.id = this.streamingMessageId;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble';
+      bubble.setAttribute('data-raw', '');
+      msgEl.appendChild(bubble);
+
+      this.messagesEl.appendChild(msgEl);
+      this.log(`[DIAG] appendToStreaming: created streaming message ${this.streamingMessageId}`);
     }
 
     // BUG-016 FIX: Search within current container
@@ -74,6 +81,15 @@ Object.assign(ChatMode, {
    */
   finalizeStreaming(finalContent) {
     this.log(`[DIAG] finalizeStreaming: streamingMessageId=${this.streamingMessageId}, isStreaming was ${this.isStreaming}`);
+
+    // BUG-017 FIX: If streamingMessageId is null but we have content, create a new message
+    if (!this.streamingMessageId && finalContent && finalContent.trim()) {
+      this.log(`[DIAG] finalizeStreaming: no streamingMessageId, creating new message for content`);
+      this.addMessage('assistant', finalContent, { timestamp: new Date().toISOString() });
+      this.isStreaming = false;
+      return;
+    }
+
     // BUG-016 FIX: Search within current container
     const msgEl = this.messagesEl?.querySelector(`#${this.streamingMessageId}`);
     if (msgEl) {
@@ -83,8 +99,17 @@ Object.assign(ChatMode, {
       if (bubble) {
         bubble.innerHTML = this.formatContent(finalContent);
       }
+      // Save the finalized message to session
+      if (finalContent && finalContent.trim()) {
+        const msg = { id: this.streamingMessageId, type: 'assistant', content: finalContent };
+        this.saveMessageToSession(msg);
+      }
     } else {
       this.log(`[DIAG] finalizeStreaming: WARNING - msgEl not found for ${this.streamingMessageId}`);
+      // Fallback: create a new message if we have content
+      if (finalContent && finalContent.trim()) {
+        this.addMessage('assistant', finalContent, { timestamp: new Date().toISOString() });
+      }
     }
 
     // BUG FIX: Also clean up any other stale streaming classes in the container
