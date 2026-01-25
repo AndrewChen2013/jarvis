@@ -168,6 +168,11 @@ class SocketIOManager {
     const sessionId = data.session_id;
     const handlerKey = `${channel}:${sessionId}`;
 
+    // Debug logging for stream events
+    if (type === 'stream' || type === 'assistant' || type === 'result') {
+      this.log(`[DIAG] _handleMessage: ${channel}:${type}, sessionId=${sessionId?.substring(0, 8)}, handlerKey=${handlerKey.substring(0, 15)}`);
+    }
+
     // Handle session ID remapping (same logic as MuxWebSocket)
     let handler = this.handlers.get(handlerKey);
 
