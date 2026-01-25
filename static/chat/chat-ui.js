@@ -224,8 +224,29 @@ Object.assign(ChatMode, {
       const content = bubble.innerText || bubble.textContent;
       if (!content) return;
 
-      // Copy to clipboard
-      navigator.clipboard.writeText(content).then(() => {
+      // Copy to clipboard with fallback for iOS
+      const copyText = (text) => {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text);
+        }
+        // Fallback for iOS Safari
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          return Promise.resolve();
+        } catch (err) {
+          return Promise.reject(err);
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      };
+
+      copyText(content).then(() => {
         // Show visual feedback
         bubble.classList.add('copied');
         setTimeout(() => bubble.classList.remove('copied'), 500);

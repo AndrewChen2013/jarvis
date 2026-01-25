@@ -542,6 +542,16 @@ Object.assign(ChatMode, {
     msgEl.className = 'chat-message tool';
     msgEl.id = msgId;
 
+    // Ensure data is an object (handle string input from history)
+    let toolData = data;
+    if (typeof data === 'string') {
+      try {
+        toolData = JSON.parse(data);
+      } catch (e) {
+        toolData = { raw: data };
+      }
+    }
+
     // Tools that should be expanded by default
     const expandedByDefault = ['Grep', 'Edit', 'Read', 'Write', 'Glob', 'Bash', 'LSP'];
     const shouldExpand = expandedByDefault.includes(toolName);
@@ -552,22 +562,22 @@ Object.assign(ChatMode, {
     let toolContent = '';
     switch (toolName) {
       case 'Edit':
-        toolContent = this.renderEditTool(data);
+        toolContent = this.renderEditTool(toolData);
         break;
       case 'Write':
-        toolContent = this.renderWriteTool(data);
+        toolContent = this.renderWriteTool(toolData);
         break;
       case 'Read':
-        toolContent = this.renderReadTool(data);
+        toolContent = this.renderReadTool(toolData);
         break;
       case 'Bash':
-        toolContent = this.renderBashTool(data);
+        toolContent = this.renderBashTool(toolData);
         break;
       case 'Grep':
-        toolContent = this.renderGrepTool(data);
+        toolContent = this.renderGrepTool(toolData);
         break;
       default:
-        toolContent = `<pre>${this.escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+        toolContent = `<pre>${this.escapeHtml(JSON.stringify(toolData, null, 2))}</pre>`;
     }
 
     // Get tool icon
