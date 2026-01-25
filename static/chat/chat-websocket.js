@@ -473,6 +473,13 @@ Object.assign(ChatMode, {
         this.isConnected = true;
         this.updateStatus('connected');
         this.sendBtn.disabled = !this.inputEl.value.trim();
+        // Mark initial history loading phase
+        // Backend will push history messages after ready, before history_end
+        if (data.history_count > 0) {
+          this.isLoadingHistory = true;
+          this.pendingHistoryMessages = [];
+          this.log(`Initial history loading started, expecting ${data.history_count} messages`);
+        }
         break;
 
       case 'system':
@@ -631,7 +638,33 @@ Object.assign(ChatMode, {
         // Initial history load complete
         this.historyOldestIndex = data.total - data.count;
         this.hasMoreHistory = this.historyOldestIndex > 0;
-        this.log(`History loaded: ${data.count}/${data.total} messages, oldest_index=${this.historyOldestIndex}, hasMore=${this.hasMoreHistory}`);
+        this.log(`History loaded: ${data.count}/${data.total} messages, oldest_index=${this.historyOldestIndex}, hasMore=${this.hasMoreHistory}, pendingMessages=${this.pendingHistoryMessages?.length || 0}`);
+
+        // Render collected initial history messages
+        if (this.pendingHistoryMessages && this.pendingHistoryMessages.length > 0) {
+          // Hide empty state
+          if (this.emptyEl) {
+            this.emptyEl.style.display = 'none';
+          }
+
+          for (const msg of this.pendingHistoryMessages) {
+            // If message has tool_calls, render them first
+            if (msg.extra && msg.extra.tool_calls && Array.isArray(msg.extra.tool_calls)) {
+              for (const toolCall of msg.extra.tool_calls) {
+                const toolEl = this.createToolMessageElement(toolCall.name, toolCall.input, msg.extra.timestamp);
+                this.messagesEl.appendChild(toolEl);
+              }
+            }
+            // Render the text content (if any)
+            if (msg.content && msg.content.trim()) {
+              const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra);
+              this.messagesEl.appendChild(msgEl);
+            }
+          }
+          this.pendingHistoryMessages = [];
+        }
+
+        this.isLoadingHistory = false;
         // Scroll to bottom after initial history
         this.scrollToBottom();
         break;
