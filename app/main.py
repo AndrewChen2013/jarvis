@@ -20,7 +20,7 @@ Jarvis - 主应用入口
 - 只提供附加命名能力
 - Chat 会话管理
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -38,7 +38,6 @@ from app.services.scheduler import scheduler
 from app.api import auth, projects, system, upload, download, pinned, remote_machines, monitor, scheduled_tasks, debug, chat
 from app.api.ssh_terminal import handle_ssh_websocket
 from app.api.debug import handle_debug_websocket
-from app.services.mux_connection_manager import mux_manager
 from app.services.socketio_manager import sio_app
 # 导入以注册事件处理器
 from app.services.socketio_connection_manager import socketio_manager
@@ -225,79 +224,7 @@ async def websocket_debug(
     )
 
 
-@app.websocket("/ws/mux")
-async def websocket_mux(websocket: WebSocket):
-    """多路复用 WebSocket 端点
-
-    单一 WebSocket 连接支持多个 Chat 会话。
-    通过 channel 和 session_id 路由消息。
-
-    Message Format:
-        {
-            "channel": "chat" | "system",
-            "session_id": "uuid" (optional for system),
-            "type": "message type",
-            "data": {...}
-        }
-
-    认证通过发送:
-        {"channel": "system", "type": "auth", "data": {"token": "xxx"}}
-    """
-    import uuid
-    import msgpack
-
-    await websocket.accept()
-
-    client_id = str(uuid.uuid4())
-    client = await mux_manager.connect(client_id, websocket)
-
-    try:
-        while True:
-            message = await websocket.receive()
-
-            if message.get("type") == "websocket.disconnect":
-                break
-
-            # Parse message (supports both MessagePack and JSON)
-            data = None
-            if "bytes" in message:
-                try:
-                    data = msgpack.unpackb(message["bytes"], raw=False)
-                except Exception as e:
-                    logger.error(f"[Mux] Failed to unpack message: {e}")
-                    continue
-            elif "text" in message:
-                try:
-                    import json
-                    data = json.loads(message["text"])
-                except Exception as e:
-                    logger.error(f"[Mux] Failed to parse JSON: {e}")
-                    continue
-            else:
-                continue
-
-            # Route message
-            await mux_manager.route_message(client_id, data)
-
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        logger.error(f"[Mux] WebSocket error: {e}", exc_info=True)
-    finally:
-        await mux_manager.disconnect(client_id)
-
-
-# 兼容旧的 WebSocket 端点（逐步废弃）
-@app.websocket("/ws/{session_id}")
-async def websocket_legacy(
-    websocket: WebSocket,
-    session_id: str,
-    token: str = Query(...)
-):
-    """旧版 WebSocket 端点（兼容）"""
-    # 这个端点需要前端配合更新后移除
-    logger.warning(f"Legacy WebSocket endpoint used: {session_id}")
-    await websocket.close(code=1008, reason="Please use /ws/terminal endpoint")
+# /ws/mux and /ws/{session_id} endpoints removed - now using Socket.IO only
 
 
 if __name__ == "__main__":
