@@ -51,6 +51,14 @@ class SocketIOManager {
       return;
     }
 
+    // Clean up existing socket before creating new one to prevent duplicate event listeners
+    if (this.socket) {
+      this.log('Cleaning up existing socket before reconnect');
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
     this._setState('connecting');
     this.log('Connecting...');
 

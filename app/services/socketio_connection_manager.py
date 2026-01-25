@@ -319,25 +319,21 @@ class SocketIOConnectionManager:
                      except Exception as e:
                          logger.error(f"[SocketIO] Failed to save session mapping: {e}")
 
-            # BUG FIX: Clean up callbacks from DISCONNECTED clients only
-            # When Socket.IO reconnects, it gets a new sid, but old callbacks are still registered
-            # This causes messages to be sent to multiple consumers (some dead)
-            # Solution: Only remove callbacks from clients that are no longer connected
-            # (Allow multiple active clients to receive messages from the same session)
+            # BUG FIX: Clean up callbacks from ALL other clients for this session
+            # Each session should only have ONE active callback to prevent duplicate messages
+            # When a new client connects to a session, remove all other clients' callbacks for that session
             for other_sid, other_client in list(self.clients.items()):
                 if other_sid != sid and session_id in other_client.chat_callbacks:
-                    # Check if this client is actually disconnected (is_closed flag)
-                    if other_client.is_closed:
-                        logger.info(f"[SocketIO] Cleaning up callback from disconnected client {other_sid[:8]} for session {session_id[:8]}")
-                        if session:
-                            session.remove_callback(other_client.chat_callbacks[session_id])
-                        del other_client.chat_callbacks[session_id]
-                        # Also cancel their consumer task
-                        if session_id in other_client.chat_consumer_tasks:
-                            other_client.chat_consumer_tasks[session_id].cancel()
-                            del other_client.chat_consumer_tasks[session_id]
-                        if session_id in other_client.chat_message_queues:
-                            del other_client.chat_message_queues[session_id]
+                    logger.info(f"[SocketIO] Removing callback from other client {other_sid[:8]} for session {session_id[:8]} (new client {sid[:8]} taking over)")
+                    if session:
+                        session.remove_callback(other_client.chat_callbacks[session_id])
+                    del other_client.chat_callbacks[session_id]
+                    # Also cancel their consumer task
+                    if session_id in other_client.chat_consumer_tasks:
+                        other_client.chat_consumer_tasks[session_id].cancel()
+                        del other_client.chat_consumer_tasks[session_id]
+                    if session_id in other_client.chat_message_queues:
+                        del other_client.chat_message_queues[session_id]
 
             # 设置消息队列和消费者
             # Use unbounded queue to prevent message loss; consumer processes quickly
@@ -347,6 +343,7 @@ class SocketIOConnectionManager:
             async def chat_message_consumer():
                 """消费消息队列，确保有序发送。"""
                 logger.info(f"[SocketIO] Chat consumer started: sid={sid[:8]}, session={session_id[:8]}, queue_id={id(message_queue)}")
+                should_cleanup_callback = False
                 try:
                     while True:
                         msg = await message_queue.get()
@@ -354,17 +351,49 @@ class SocketIOConnectionManager:
                         c = self.clients.get(sid)
                         if not c or c.is_closed:
                             logger.warning(f"[SocketIO] Chat consumer stopping: client gone or closed")
+                            # Only cleanup callback if client is actually gone/closed
+                            should_cleanup_callback = True
                             break
                         await self._send_chat_message(sid, session_id, msg)
                         message_queue.task_done()
                 except asyncio.CancelledError:
+                    # Consumer cancelled (e.g., user switched to another session) - don't cleanup callback
+                    # The callback should remain so the session can still receive messages
                     logger.info(f"[SocketIO] Chat consumer cancelled: sid={sid[:8]}, session={session_id[:8]}")
-                    pass
+                except Exception as e:
+                    logger.error(f"[SocketIO] Chat consumer error: sid={sid[:8]}, session={session_id[:8]}, error={e}")
+                    should_cleanup_callback = True
+                finally:
+                    # Only clean up callback if client is disconnected or error occurred
+                    if should_cleanup_callback:
+                        c = self.clients.get(sid)
+                        if c and session_id in c.chat_callbacks:
+                            if session:
+                                session.remove_callback(c.chat_callbacks[session_id])
+                            del c.chat_callbacks[session_id]
+                            logger.info(f"[SocketIO] Chat consumer cleanup: removed callback for sid={sid[:8]}, session={session_id[:8]}")
 
             consumer_task = asyncio.create_task(chat_message_consumer())
             client.chat_consumer_tasks[session_id] = consumer_task
 
-            # 清理旧回调
+            # 清理该客户端的所有其他 session 的回调
+            # 当用户切换到新 session 时，需要取消订阅旧 session
+            for old_session_id in list(client.chat_callbacks.keys()):
+                if old_session_id != session_id:
+                    old_session = chat_manager.get_session(old_session_id)
+                    if old_session:
+                        old_session.remove_callback(client.chat_callbacks[old_session_id])
+                    del client.chat_callbacks[old_session_id]
+                    logger.info(f"[SocketIO] Cleaned up old session callback: sid={sid[:8]}, old_session={old_session_id[:8]}")
+                    # 取消旧 session 的消费者任务
+                    if old_session_id in client.chat_consumer_tasks:
+                        client.chat_consumer_tasks[old_session_id].cancel()
+                        del client.chat_consumer_tasks[old_session_id]
+                    # 清理旧 session 的消息队列
+                    if old_session_id in client.chat_message_queues:
+                        del client.chat_message_queues[old_session_id]
+
+            # 清理当前 session 的旧回调（如果有重复连接）
             if session and session_id in client.chat_callbacks:
                 session.remove_callback(client.chat_callbacks[session_id])
 
@@ -449,6 +478,15 @@ class SocketIOConnectionManager:
 
                 logger.info(f"[SocketIO] Session found: {session is not None}, active sessions: {list(chat_manager._sessions.keys())[:5]}")
                 if session:
+                    # 检查当前客户端是否已注册 callback，如果没有则需要先 connect
+                    if real_session_id not in client.chat_callbacks:
+                        logger.warning(f"[SocketIO] Client {sid[:8]} has no callback for session {real_session_id[:8]}, auto-connecting...")
+                        # 自动触发 connect 流程
+                        await self._handle_chat_message(sid, session_id, 'connect', {
+                            'session_id': session_id,
+                            'working_dir': getattr(session, 'working_dir', '/'),
+                        })
+
                     # 发送用户确认
                     await self.send_to_client(sid, "chat", "user_ack", {
                         "content": content
@@ -541,9 +579,11 @@ class SocketIOConnectionManager:
         """发送 Chat 消息到客户端，解析 Claude 的原始 JSON 响应。"""
         content = msg.content
         if not isinstance(content, dict):
+            logger.warning(f"[SocketIO] _send_chat_message: content is not dict, type={type(content).__name__}, value={str(content)[:100]}")
             return
 
         msg_type = content.get("type")
+        logger.debug(f"[SocketIO] _send_chat_message: msg_type={msg_type}, content_keys={list(content.keys())}")
 
         if msg_type == "system":
             await self.send_to_client(sid, "chat", "system", {
@@ -620,24 +660,32 @@ class SocketIOConnectionManager:
         elif msg_type == "assistant":
             message = content.get("message", {})
             text_content = ""
-            for block in message.get("content", []):
-                block_type = block.get("type")
-                if block_type == "text":
-                    text_content += block.get("text", "")
-                elif block_type == "tool_use":
-                    # Send tool_call for non-streaming mode
-                    await self.send_to_client(sid, "chat", "tool_call", {
-                        "tool_name": block.get("name"),
-                        "tool_id": block.get("id"),
-                        "input": block.get("input", {})
-                    }, session_id)
-                elif block_type == "tool_result":
-                    # Send tool_result
-                    await self.send_to_client(sid, "chat", "tool_result", {
-                        "tool_id": block.get("tool_use_id"),
-                        "content": block.get("content", ""),
-                        "is_error": block.get("is_error", False)
-                    }, session_id)
+            content_blocks = message.get("content", [])
+            # Handle string content
+            if isinstance(content_blocks, str):
+                text_content = content_blocks
+            else:
+                for block in content_blocks:
+                    if isinstance(block, str):
+                        text_content += block
+                    elif isinstance(block, dict):
+                        block_type = block.get("type")
+                        if block_type == "text":
+                            text_content += block.get("text", "")
+                        elif block_type == "tool_use":
+                            # Send tool_call for non-streaming mode
+                            await self.send_to_client(sid, "chat", "tool_call", {
+                                "tool_name": block.get("name"),
+                                "tool_id": block.get("id"),
+                                "input": block.get("input", {})
+                            }, session_id)
+                        elif block_type == "tool_result":
+                            # Send tool_result
+                            await self.send_to_client(sid, "chat", "tool_result", {
+                                "tool_id": block.get("tool_use_id"),
+                                "content": block.get("content", ""),
+                                "is_error": block.get("is_error", False)
+                            }, session_id)
             if text_content:
                 await self.send_to_client(sid, "chat", "assistant", {
                     "content": text_content
@@ -645,6 +693,10 @@ class SocketIOConnectionManager:
 
         elif msg_type == "result":
             result = content.get("result", {})
+            logger.debug(f"[SocketIO] result type: {type(result).__name__}, value={str(result)[:200]}")
+            if not isinstance(result, dict):
+                logger.warning(f"[SocketIO] result is not dict, skipping")
+                return
             await self.send_to_client(sid, "chat", "result", {
                 "cost": result.get("cost"),
                 "duration_ms": result.get("duration_ms"),
