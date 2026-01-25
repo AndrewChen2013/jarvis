@@ -320,7 +320,8 @@ class SocketIOConnectionManager:
                          logger.error(f"[SocketIO] Failed to save session mapping: {e}")
 
             # 设置消息队列和消费者
-            message_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+            # Use unbounded queue to prevent message loss; consumer processes quickly
+            message_queue: asyncio.Queue = asyncio.Queue()
             client.chat_message_queues[session_id] = message_queue
 
             async def chat_message_consumer():
@@ -350,10 +351,12 @@ class SocketIOConnectionManager:
             # 注册回调
             def chat_callback(msg: ChatMessage, q=message_queue, sid_for_log=sid, sess_id_for_log=session_id):
                 try:
-                    logger.info(f"[SocketIO] Chat callback invoked: sid={sid_for_log[:8]}, session={sess_id_for_log[:8]}, msg_type={msg.type}, queue_size={q.qsize()}")
+                    # Only log non-stream events to reduce noise
+                    if msg.type not in ('stream_event', 'stream'):
+                        logger.info(f"[SocketIO] Chat callback: sid={sid_for_log[:8]}, session={sess_id_for_log[:8]}, msg_type={msg.type}")
                     q.put_nowait(msg)
-                except asyncio.QueueFull:
-                    logger.warning(f"[SocketIO] Chat message queue full for {session_id[:8]}")
+                except Exception as e:
+                    logger.warning(f"[SocketIO] Chat callback error for {session_id[:8]}: {e}")
 
             session.add_callback(chat_callback)
             client.chat_callbacks[session_id] = chat_callback
