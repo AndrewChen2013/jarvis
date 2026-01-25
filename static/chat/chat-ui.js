@@ -199,50 +199,79 @@ Object.assign(ChatMode, {
       }
     });
 
-    // Double-click on chat bubble to copy content
-    this.messagesEl.addEventListener('dblclick', (e) => {
+    // Double-tap/click on chat bubble to copy content
+    // Use manual double-tap detection for iOS compatibility
+    let lastTapTime = 0;
+    let lastTapTarget = null;
+
+    const handleBubbleTap = (e) => {
       const bubble = e.target.closest('.chat-bubble');
       if (!bubble) return;
 
-      // Get text content (strip HTML)
-      const content = bubble.innerText || bubble.textContent;
-      if (!content) return;
+      const now = Date.now();
+      const doubleTapDelay = 300;
 
-      // Copy to clipboard with fallback for iOS
-      const copyText = (text) => {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          return navigator.clipboard.writeText(text);
-        }
-        // Fallback for iOS Safari
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-          document.execCommand('copy');
-          return Promise.resolve();
-        } catch (err) {
-          return Promise.reject(err);
-        } finally {
-          document.body.removeChild(textarea);
-        }
-      };
+      if (lastTapTarget === bubble && (now - lastTapTime) < doubleTapDelay) {
+        // Double tap detected
+        e.preventDefault();
 
-      copyText(content).then(() => {
-        // Show visual feedback
-        bubble.classList.add('copied');
-        setTimeout(() => bubble.classList.remove('copied'), 500);
+        // Get text content (strip HTML)
+        const content = bubble.innerText || bubble.textContent;
+        if (!content) return;
 
-        // Show toast if available
-        const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
-        if (window.app?.showToast) {
-          window.app.showToast(t('chat.copied', 'Copied to clipboard'));
-        }
-      }).catch(err => {
-        this.log(`Copy failed: ${err}`);
-      });
+        // Copy to clipboard with fallback for iOS
+        const copyText = (text) => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text);
+          }
+          // Fallback for iOS Safari
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-9999px';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          try {
+            document.execCommand('copy');
+            return Promise.resolve();
+          } catch (err) {
+            return Promise.reject(err);
+          } finally {
+            document.body.removeChild(textarea);
+          }
+        };
+
+        copyText(content).then(() => {
+          // Show visual feedback
+          bubble.classList.add('copied');
+          setTimeout(() => bubble.classList.remove('copied'), 500);
+
+          // Show toast if available
+          const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
+          if (window.app?.showToast) {
+            window.app.showToast(t('chat.copied', 'Copied to clipboard'));
+          }
+        }).catch(err => {
+          this.log(`Copy failed: ${err}`);
+        });
+
+        lastTapTime = 0;
+        lastTapTarget = null;
+      } else {
+        lastTapTime = now;
+        lastTapTarget = bubble;
+      }
+    };
+
+    // Listen for both click and touchend for best compatibility
+    this.messagesEl.addEventListener('click', handleBubbleTap);
+    this.messagesEl.addEventListener('touchend', (e) => {
+      // Only handle single touch
+      if (e.changedTouches && e.changedTouches.length === 1) {
+        handleBubbleTap(e);
+      }
     });
 
   },
