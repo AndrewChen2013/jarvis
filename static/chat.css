@@ -154,6 +154,14 @@
   font-size: var(--font-base);
   line-height: 1.5;
   word-wrap: break-word;
+  cursor: pointer;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+/* Double-click copy feedback */
+.chat-bubble.copied {
+  transform: scale(0.98);
+  opacity: 0.7;
 }
 
 /* User bubble - soft muted indigo */

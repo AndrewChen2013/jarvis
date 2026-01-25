@@ -215,6 +215,31 @@ Object.assign(ChatMode, {
       }
     });
 
+    // Double-click on chat bubble to copy content
+    this.messagesEl.addEventListener('dblclick', (e) => {
+      const bubble = e.target.closest('.chat-bubble');
+      if (!bubble) return;
+
+      // Get text content (strip HTML)
+      const content = bubble.innerText || bubble.textContent;
+      if (!content) return;
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(content).then(() => {
+        // Show visual feedback
+        bubble.classList.add('copied');
+        setTimeout(() => bubble.classList.remove('copied'), 500);
+
+        // Show toast if available
+        const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
+        if (window.app?.showToast) {
+          window.app.showToast(t('chat.copied', 'Copied to clipboard'));
+        }
+      }).catch(err => {
+        this.log(`Copy failed: ${err}`);
+      });
+    });
+
     // Slash command buttons
     const slashCmdsEl = this.container.querySelector('#chatSlashCommands');
     const moreCmdsPanel = this.container.querySelector('#chatMoreCmdsPanel');
