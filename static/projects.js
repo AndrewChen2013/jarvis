@@ -198,8 +198,8 @@ const AppProjects = {
           </div>
         `;
         item.addEventListener('click', () => {
-          // 直接连接终端，使用 session 的真实 working_dir（而非项目目录）
-          this.connectTerminal(session.working_dir, session.session_id, session.display_name, session.chat_session_id);
+          // 直接连接Chat，使用 session 的真实 working_dir（而非项目目录）
+          this.connectChat(session.working_dir, session.session_id, session.display_name, session.chat_session_id);
         });
         container.appendChild(item);
       });
@@ -507,13 +507,13 @@ const AppProjects = {
         </div>
       `;
 
-      // 点击会话信息区域进入终端
+      // 点击会话信息区域进入Chat
       item.querySelector('.claude-session-info').addEventListener('click', () => {
         document.body.removeChild(modal);
         // 用自定义名称或摘要作为显示名
         const displayName = customName || claudeSummary || session.session_id.substring(0, 8);
         // 使用 session 的真实 working_dir（而非项目目录 workDir）
-        this.connectTerminal(session.working_dir, session.session_id, displayName, session.chat_session_id);
+        this.connectChat(session.working_dir, session.session_id, displayName, session.chat_session_id);
       });
 
       // 点击置顶按钮
@@ -575,7 +575,7 @@ const AppProjects = {
     // 新建按钮
     modal.querySelector('.btn-new-in-modal').addEventListener('click', () => {
       document.body.removeChild(modal);
-      this.connectTerminal(workDir, null, this.t('create.newSession', 'New Session'));
+      this.connectChat(workDir, null, this.t('create.newSession', 'New Session'));
     });
 
     // 关闭按钮
@@ -745,17 +745,36 @@ const AppProjects = {
    */
   createNewSession(workDir) {
     // 新建会话：sessionId 为 null
-    this.connectTerminal(workDir, null, this.t('create.newSession', 'New Session'));
+    this.connectChat(workDir, null, this.t('create.newSession', 'New Session'));
+  },
+
+  /**
+   * 连接 Chat Session
+   * 替代已删除的 connectTerminal 方法
+   */
+  connectChat(workDir, claudeSessionId, sessionName, chatClaudeSessionId) {
+    this.debugLog(`connectChat: workDir=${workDir}, claudeSessionId=${claudeSessionId}, name=${sessionName}`);
+
+    // 生成临时 session ID（如果没有提供）
+    const sessionId = claudeSessionId || `new-${Date.now()}`;
+
+    // 调用 websocket.js 的连接逻辑
+    if (window.app && window.app.connectSession) {
+      this.debugLog('connectChat: calling app.connectSession');
+      window.app.connectSession(workDir, sessionId, sessionName, chatClaudeSessionId);
+    } else {
+      console.error('connectChat: app.connectSession not available');
+    }
   },
 
   /**
    * 旧版创建会话（兼容）
-   * @deprecated 使用 connectTerminal 代替
+   * @deprecated 使用 connectChat 代替
    */
   async createSession(workDir, claudeSessionId) {
     // 转发到新方法
     const sessionName = claudeSessionId ? null : this.t('create.newSession', 'New Session');
-    this.connectTerminal(workDir, claudeSessionId, sessionName);
+    this.connectChat(workDir, claudeSessionId, sessionName);
   },
 
   /**

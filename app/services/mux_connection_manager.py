@@ -15,12 +15,12 @@
 """
 WebSocket Multiplexing Connection Manager
 
-Provides a single WebSocket connection that can handle multiple Terminal and Chat
+Provides a single WebSocket connection that can handle multiple Chat
 sessions, reducing connection overhead and improving mobile compatibility.
 
 Optimized Message Format (v2):
     {
-        "c": 0|1|2,      # channel: 0=terminal, 1=chat, 2=system
+        "c": 1|2,        # channel: 1=chat, 2=system
         "s": "uuid",     # session_id (omitted for system channel)
         "t": 0-15,       # type code (see MSG_TYPES below)
         "d": {...}       # data payload
@@ -28,7 +28,7 @@ Optimized Message Format (v2):
 
 Legacy Format (v1, still supported for parsing):
     {
-        "channel": "terminal" | "chat",
+        "channel": "chat",
         "session_id": "uuid",
         "type": "...",
         "data": {...}
@@ -47,7 +47,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from app.core.logging import logger
 from app.core.config import settings
-from app.services.terminal_manager import terminal_manager, Terminal
 from app.services.chat_session_manager import chat_manager, ChatMessage
 from app.services.database import db
 
@@ -57,23 +56,14 @@ from app.services.database import db
 # ============================================================================
 
 # Channel codes (c field)
-CH_TERMINAL = 0
 CH_CHAT = 1
 CH_SYSTEM = 2
 
 # Channel name to code mapping
 CHANNEL_CODES = {
-    "terminal": CH_TERMINAL,
     "chat": CH_CHAT,
     "system": CH_SYSTEM,
 }
-
-# Message type codes (t field) - grouped by channel
-# Terminal types (0-9)
-MT_TERM_CONNECTED = 0
-MT_TERM_OUTPUT = 1
-MT_TERM_ERROR = 2
-MT_TERM_CLOSED = 3
 
 # Chat types (0-19)
 MT_CHAT_READY = 0
@@ -99,12 +89,6 @@ MT_SYS_PONG = 2
 
 # Message type name to code mapping (per channel)
 MSG_TYPE_CODES = {
-    "terminal": {
-        "connected": MT_TERM_CONNECTED,
-        "output": MT_TERM_OUTPUT,
-        "error": MT_TERM_ERROR,
-        "closed": MT_TERM_CLOSED,
-    },
     "chat": {
         "ready": MT_CHAT_READY,
         "stream": MT_CHAT_STREAM,
@@ -135,7 +119,6 @@ CODE_TO_CHANNEL = {v: k for k, v in CHANNEL_CODES.items()}
 
 # Reverse type mappings (code to name) for parsing
 CODE_TO_MSG_TYPE = {
-    "terminal": {v: k for k, v in MSG_TYPE_CODES["terminal"].items()},
     "chat": {v: k for k, v in MSG_TYPE_CODES["chat"].items()},
     "system": {v: k for k, v in MSG_TYPE_CODES["system"].items()},
 }
@@ -204,8 +187,6 @@ class MuxClient:
     subscriptions: Set[str] = field(default_factory=set)  # session_ids
     authenticated: bool = False
     is_closed: bool = False  # Track if connection is closing/closed to avoid sending to dead connections
-    # Track terminal output callbacks for cleanup
-    terminal_callbacks: Dict[str, Callable] = field(default_factory=dict)
     # Track chat output callbacks for cleanup
     chat_callbacks: Dict[str, Callable] = field(default_factory=dict)
     # BUG-015 FIX: Message queues to ensure ordered delivery per session
@@ -218,7 +199,7 @@ class MuxConnectionManager:
     """
     Manages multiplexed WebSocket connections.
 
-    A single client connection can subscribe to multiple Terminal/Chat sessions.
+    A single client connection can subscribe to multiple Chat sessions.
     Messages are routed based on channel and session_id.
     """
 
@@ -266,13 +247,6 @@ class MuxConnectionManager:
                     self.session_subscribers[session_id].discard(client_id)
                     if not self.session_subscribers[session_id]:
                         del self.session_subscribers[session_id]
-
-                # Cleanup terminal callbacks
-                if session_id in client.terminal_callbacks:
-                    terminal = await terminal_manager.get_terminal(session_id)
-                    if terminal:
-                        terminal.remove_output_callback(client.terminal_callbacks[session_id])
-                        terminal_manager.decrement_websocket_count(session_id)
 
                 # Cleanup chat callbacks
                 if session_id in client.chat_callbacks:
@@ -324,14 +298,6 @@ class MuxConnectionManager:
                 self.session_subscribers[session_id].discard(client_id)
                 if not self.session_subscribers[session_id]:
                     del self.session_subscribers[session_id]
-
-            # Cleanup terminal callback if exists
-            if session_id in client.terminal_callbacks:
-                terminal = await terminal_manager.get_terminal(session_id)
-                if terminal:
-                    terminal.remove_output_callback(client.terminal_callbacks[session_id])
-                    terminal_manager.decrement_websocket_count(session_id)
-                del client.terminal_callbacks[session_id]
 
             # Cleanup chat callback if exists
             if session_id in client.chat_callbacks:
@@ -410,9 +376,7 @@ class MuxConnectionManager:
             logger.warning(f"[Mux] Invalid message from {client_id[:8]}: missing channel or type")
             return
 
-        if channel == "terminal":
-            await self._handle_terminal_message(client_id, session_id, msg_type, data)
-        elif channel == "chat":
+        if channel == "chat":
             await self._handle_chat_message(client_id, session_id, msg_type, data)
         elif channel == "system":
             await self._handle_system_message(client_id, msg_type, data)
@@ -449,151 +413,6 @@ class MuxConnectionManager:
                 "type": "pong",
                 "data": {}
             })
-
-    async def _handle_terminal_message(self, client_id: str, session_id: str, msg_type: str, data: dict):
-        """Handle terminal channel messages."""
-        client = self.clients.get(client_id)
-        if not client or not client.authenticated:
-            return
-
-        if msg_type == "connect":
-            # Connect to or create a terminal session
-            working_dir = data.get("working_dir", "")
-            rows = data.get("rows", 40)
-            cols = data.get("cols", 120)
-
-            if not working_dir:
-                await self.send_to_client(client_id, {
-                    "channel": "terminal",
-                    "session_id": session_id,
-                    "type": "error",
-                    "data": {"message": "working_dir required"}
-                })
-                return
-
-            # Keep original session_id for the connected message
-            original_session_id = session_id
-
-            # Check if session_id is a valid UUID
-            # Frontend sends temporary IDs like "new-1234", we need to generate real UUIDs
-            actual_session_id = None
-            if session_id:
-                try:
-                    uuid.UUID(session_id)
-                    actual_session_id = session_id
-                except (ValueError, TypeError):
-                    # Not a valid UUID - check if we already have a mapping (from Chat)
-                    # BUG-012 FIX: Share UUID between Chat and Terminal
-                    mapping_key = (client_id, session_id)
-                    if mapping_key in self._session_id_mapping:
-                        actual_session_id = self._session_id_mapping[mapping_key]
-                        logger.debug(f"[Mux] Using existing UUID mapping for '{session_id}': {actual_session_id[:8]}")
-                    else:
-                        # Will generate new UUID below
-                        logger.debug(f"[Mux] Non-UUID session_id '{session_id}', will generate new UUID")
-                        actual_session_id = None
-
-            # Check if terminal exists (only for valid UUIDs)
-            terminal = None
-            if actual_session_id:
-                terminal = await terminal_manager.get_terminal(actual_session_id)
-
-            if not terminal:
-                # Create new terminal (pass None to let terminal_manager generate UUID)
-                terminal = await terminal_manager.create_terminal(
-                    working_dir=working_dir,
-                    session_id=actual_session_id,
-                    rows=rows,
-                    cols=cols
-                )
-            # Update session_id to the actual terminal ID (may be newly generated)
-            session_id = terminal.terminal_id
-
-            # BUG-012 FIX: Store the mapping so Chat can use the same UUID
-            if original_session_id and original_session_id != session_id:
-                mapping_key = (client_id, original_session_id)
-                if mapping_key not in self._session_id_mapping:
-                    self._session_id_mapping[mapping_key] = session_id
-                    logger.debug(f"[Mux] Stored UUID mapping: '{original_session_id}' -> {session_id[:8]}")
-
-            # Subscribe to this terminal
-            await self.subscribe(client_id, session_id, "terminal")
-
-            # BUG FIX: Clean up old callback before registering new one
-            # This prevents duplicate output when client reconnects
-            if session_id in client.terminal_callbacks:
-                old_callback = client.terminal_callbacks[session_id]
-                terminal.remove_output_callback(old_callback)
-                terminal_manager.decrement_websocket_count(session_id)
-                logger.debug(f"[Mux] Removed old terminal callback for client {client_id[:8]} session {session_id[:8]}")
-
-            # Setup output callback for this client
-            # Use default parameter binding to capture current values
-            async def output_callback(output_data: bytes, cid=client_id, sid=session_id):
-                text = output_data.decode('utf-8', errors='replace')
-                await self.send_to_client(cid, {
-                    "channel": "terminal",
-                    "session_id": sid,
-                    "type": "output",
-                    "data": {"text": text}
-                })
-
-            terminal.add_output_callback(output_callback)
-            client.terminal_callbacks[session_id] = output_callback
-            # BUG FIX: Move increment AFTER callback registration succeeds
-            # to prevent count mismatch if registration fails
-            terminal_manager.increment_websocket_count(session_id)
-
-            # Send connected message with original_session_id so frontend can update its handler
-            await self.send_to_client(client_id, {
-                "channel": "terminal",
-                "session_id": session_id,
-                "type": "connected",
-                "data": {
-                    "terminal_id": session_id,
-                    "original_session_id": original_session_id,
-                    "pid": terminal.pid
-                }
-            })
-
-            # Send history
-            history = terminal.get_output_history()
-            if history:
-                text = history.decode('utf-8', errors='replace')
-                await self.send_to_client(client_id, {
-                    "channel": "terminal",
-                    "session_id": session_id,
-                    "type": "output",
-                    "data": {"text": text}
-                })
-
-            logger.info(f"[Mux] Client {client_id[:8]} connected to terminal {session_id[:8]}")
-
-        elif msg_type == "disconnect":
-            # Disconnect from terminal (but don't close it)
-            await self.unsubscribe(client_id, session_id)
-            logger.info(f"[Mux] Client {client_id[:8]} disconnected from terminal {session_id[:8]}")
-
-        elif msg_type == "input":
-            # Write to terminal
-            terminal = await terminal_manager.get_terminal(session_id)
-            if terminal:
-                input_data = data.get("text", "")
-                await terminal_manager.write(session_id, input_data)
-
-        elif msg_type == "resize":
-            # Resize terminal
-            terminal = await terminal_manager.get_terminal(session_id)
-            if terminal:
-                rows = data.get("rows", 40)
-                cols = data.get("cols", 120)
-                await terminal_manager.resize(session_id, rows, cols)
-
-        elif msg_type == "close":
-            # Close terminal
-            await self.unsubscribe(client_id, session_id)
-            await terminal_manager.close_terminal(session_id)
-            logger.info(f"[Mux] Terminal {session_id[:8]} closed by client {client_id[:8]}")
 
     async def _handle_chat_message(self, client_id: str, session_id: str, msg_type: str, data: dict):
         """Handle chat channel messages."""

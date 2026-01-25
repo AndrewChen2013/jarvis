@@ -27,13 +27,10 @@ import hmac
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, Set, Callable, Any
-
-import socketio
+from typing import Dict, Set, Callable
 
 from app.core.logging import logger
 from app.core.config import settings
-from app.services.terminal_manager import terminal_manager
 from app.services.chat_session_manager import chat_manager, ChatMessage
 from app.services.database import db
 from app.services.socketio_manager import sio
@@ -52,8 +49,6 @@ class SocketIOClient:
     subscriptions: Set[str] = field(default_factory=set)  # session_ids
     authenticated: bool = False
     is_closed: bool = False
-    # Track terminal output callbacks for cleanup
-    terminal_callbacks: Dict[str, Callable] = field(default_factory=dict)
     # Track chat output callbacks for cleanup
     chat_callbacks: Dict[str, Callable] = field(default_factory=dict)
     # Message queues for ordered delivery per session
@@ -66,7 +61,7 @@ class SocketIOConnectionManager:
     """
     Socket.IO 连接管理器。
 
-    通过事件驱动模式管理多个 Terminal 和 Chat 会话。
+    通过事件驱动模式管理 Chat 会话。
     """
 
     def __init__(self):
@@ -76,6 +71,8 @@ class SocketIOConnectionManager:
         self._current_block_type: Dict[tuple, str] = {}
         # Track pending tool_use info per (sid, session_id) for streaming mode
         self._pending_tool_use: Dict[tuple, dict] = {}
+        # BUG FIX: Use (sid, channel, session_id) as key to avoid conflicts
+        # between Terminal and Chat mappings for the same session
         self._session_id_mapping: Dict[tuple, str] = {}
         self._setup_handlers()
 
@@ -99,27 +96,6 @@ class SocketIOConnectionManager:
         async def handle_auth(sid, data):
             """处理认证。"""
             await self._handle_auth(sid, data)
-
-        # Terminal 事件
-        @sio.on('terminal:connect')
-        async def handle_terminal_connect(sid, data):
-            await self._handle_terminal_message(sid, data.get('session_id'), 'connect', data)
-
-        @sio.on('terminal:disconnect')
-        async def handle_terminal_disconnect(sid, data):
-            await self._handle_terminal_message(sid, data.get('session_id'), 'disconnect', data)
-
-        @sio.on('terminal:input')
-        async def handle_terminal_input(sid, data):
-            await self._handle_terminal_message(sid, data.get('session_id'), 'input', data)
-
-        @sio.on('terminal:resize')
-        async def handle_terminal_resize(sid, data):
-            await self._handle_terminal_message(sid, data.get('session_id'), 'resize', data)
-
-        @sio.on('terminal:close')
-        async def handle_terminal_close(sid, data):
-            await self._handle_terminal_message(sid, data.get('session_id'), 'close', data)
 
         # Chat 事件
         @sio.on('chat:connect')
@@ -161,13 +137,6 @@ class SocketIOConnectionManager:
                     self.session_subscribers[session_id].discard(sid)
                     if not self.session_subscribers[session_id]:
                         del self.session_subscribers[session_id]
-
-                # 清理 terminal 回调
-                if session_id in client.terminal_callbacks:
-                    terminal = await terminal_manager.get_terminal(session_id)
-                    if terminal:
-                        terminal.remove_output_callback(client.terminal_callbacks[session_id])
-                        terminal_manager.decrement_websocket_count(session_id)
 
                 # 清理 chat 回调
                 if session_id in client.chat_callbacks:
@@ -254,14 +223,6 @@ class SocketIOConnectionManager:
                 if not self.session_subscribers[session_id]:
                     del self.session_subscribers[session_id]
 
-            # 清理终端回调
-            if session_id in client.terminal_callbacks:
-                terminal = await terminal_manager.get_terminal(session_id)
-                if terminal:
-                    terminal.remove_output_callback(client.terminal_callbacks[session_id])
-                    terminal_manager.decrement_websocket_count(session_id)
-                del client.terminal_callbacks[session_id]
-
             # 清理 chat 回调和消费者
             if session_id in client.chat_callbacks:
                 session = chat_manager.get_session(session_id)
@@ -274,109 +235,6 @@ class SocketIOConnectionManager:
                 del client.chat_consumer_tasks[session_id]
             if session_id in client.chat_message_queues:
                 del client.chat_message_queues[session_id]
-
-    async def _handle_terminal_message(self, sid: str, session_id: str, msg_type: str, data: dict):
-        """处理终端消息。"""
-        client = self.clients.get(sid)
-        if not client or not client.authenticated:
-            return
-
-        if msg_type == "connect":
-            working_dir = data.get("working_dir", "")
-            rows = data.get("rows", 40)
-            cols = data.get("cols", 120)
-
-            if not working_dir:
-                await self.send_to_client(sid, "terminal", "error", {
-                    "message": "working_dir is required"
-                }, session_id)
-                return
-
-            original_session_id = session_id
-
-            # 检查是否有 session ID 映射
-            if session_id and not self._is_valid_uuid(session_id):
-                mapping_key = (sid, session_id)
-                mapped_id = self._session_id_mapping.get(mapping_key)
-                if mapped_id:
-                    session_id = mapped_id
-                    logger.debug(f"[SocketIO] Using mapped session ID: {original_session_id[:8]} -> {session_id[:8]}")
-
-            # 创建或获取终端
-            terminal = await terminal_manager.get_terminal(session_id) if self._is_valid_uuid(session_id) else None
-
-            if not terminal:
-                import uuid as uuid_module
-                session_id = str(uuid_module.uuid4())
-                terminal = await terminal_manager.create_terminal(
-                    session_id=session_id,
-                    working_dir=working_dir,
-                    rows=rows,
-                    cols=cols
-                )
-
-                if original_session_id and original_session_id != session_id:
-                    mapping_key = (sid, original_session_id)
-                    self._session_id_mapping[mapping_key] = session_id
-                    logger.debug(f"[SocketIO] Stored UUID mapping: '{original_session_id[:8]}' -> {session_id[:8]}")
-
-            # 清理旧回调
-            if session_id in client.terminal_callbacks:
-                terminal.remove_output_callback(client.terminal_callbacks[session_id])
-            else:
-                terminal_manager.increment_websocket_count(session_id)
-
-            # 注册输出回调
-            async def output_callback(output_data: bytes, sid=sid, sess_id=session_id):
-                c = self.clients.get(sid)
-                if c and not c.is_closed:
-                    await self.send_to_client(sid, "terminal", "output", {
-                        "data": output_data.decode('utf-8', errors='replace')
-                    }, sess_id)
-
-            terminal.add_output_callback(output_callback)
-            client.terminal_callbacks[session_id] = output_callback
-
-            await self.subscribe(sid, session_id)
-
-            await self.send_to_client(sid, "terminal", "connected", {
-                "terminal_id": session_id,
-                "original_session_id": original_session_id,
-                "pid": terminal.pid
-            }, session_id)
-
-            # 发送输出历史
-            history = terminal.get_output_history()
-            if history:
-                await self.send_to_client(sid, "terminal", "output", {
-                    "data": history.decode('utf-8', errors='replace')
-                }, session_id)
-
-        elif msg_type == "disconnect":
-            await self.unsubscribe(sid, session_id)
-
-        elif msg_type == "input":
-            text = data.get("text", "")
-            if text and session_id:
-                real_session_id = self._session_id_mapping.get((sid, session_id), session_id)
-                terminal = await terminal_manager.get_terminal(real_session_id)
-                if terminal:
-                    terminal.write(text)
-
-        elif msg_type == "resize":
-            rows = data.get("rows", 40)
-            cols = data.get("cols", 120)
-            if session_id:
-                real_session_id = self._session_id_mapping.get((sid, session_id), session_id)
-                terminal = await terminal_manager.get_terminal(real_session_id)
-                if terminal:
-                    terminal.resize(rows, cols)
-
-        elif msg_type == "close":
-            if session_id:
-                real_session_id = self._session_id_mapping.get((sid, session_id), session_id)
-                await self.unsubscribe(sid, real_session_id)
-                await terminal_manager.close_terminal(real_session_id)
 
     async def _handle_chat_message(self, sid: str, session_id: str, msg_type: str, data: dict):
         """处理 Chat 消息。"""
@@ -399,9 +257,9 @@ class SocketIOConnectionManager:
             # 检查是否有 session ID 映射
             if session_id and not self._is_valid_uuid(session_id):
                 # 1. 尝试从内存映射获取
-                mapping_key = (sid, session_id)
+                mapping_key = (sid, 'chat', session_id)
                 mapped_id = self._session_id_mapping.get(mapping_key)
-                
+
                 # 2. 尝试从数据库获取持久化映射
                 if not mapped_id:
                     mapped_id = db.get_chat_session_id(session_id)
@@ -450,7 +308,7 @@ class SocketIOConnectionManager:
                 logger.info(f"[SocketIO] Got session object: {session is not None}")
 
                 if original_session_id and original_session_id != session_id:
-                    mapping_key = (sid, original_session_id)
+                    mapping_key = (sid, 'chat', original_session_id)
                     self._session_id_mapping[mapping_key] = session_id
                     logger.info(f"[SocketIO] Stored chat UUID mapping: '{original_session_id[:8]}' -> {session_id[:8]}")
 
@@ -544,16 +402,21 @@ class SocketIOConnectionManager:
             content = data.get("content", "")
             logger.info(f"[SocketIO] Chat message received: sid={sid[:8]}, session={session_id[:8] if session_id else 'None'}, content={content[:30] if content else 'None'}...")
             if content and session_id:
-                # 直接查找 session（跟 MuxWebSocket 版本一致）
-                session = chat_manager.get_session(session_id)
+                # BUG FIX: 先查找映射的 session ID（使用 chat channel 前缀）
+                # 前端发送的是 originalSessionId，需要转换为后端存储的 UUID
+                real_session_id = self._session_id_mapping.get((sid, 'chat', session_id), session_id)
+                if real_session_id != session_id:
+                    logger.info(f"[SocketIO] Chat message using mapped session: {session_id[:8]} -> {real_session_id[:8]}")
+
+                session = chat_manager.get_session(real_session_id)
 
                 # 如果找不到，尝试用 session_id 作为 resume_session_id 查找
                 if not session:
                     for sess_id, sess in chat_manager._sessions.items():
                         if getattr(sess, 'resume_session_id', None) == session_id:
                             session = sess
-                            session_id = sess_id
-                            logger.info(f"[SocketIO] Found session via resume_session_id: {session_id[:8]}")
+                            real_session_id = sess_id
+                            logger.info(f"[SocketIO] Found session via resume_session_id: {real_session_id[:8]}")
                             break
 
                 logger.info(f"[SocketIO] Session found: {session is not None}, active sessions: {list(chat_manager._sessions.keys())[:5]}")
@@ -563,14 +426,15 @@ class SocketIOConnectionManager:
                         "content": content
                     }, session_id)
 
-                    # 异步处理消息
-                    asyncio.create_task(self._process_chat_message(sid, session_id, content))
+                    # 异步处理消息（使用 real_session_id）
+                    asyncio.create_task(self._process_chat_message(sid, real_session_id, content))
 
         elif msg_type == "load_more_history":
             offset = data.get("offset", 0)
             limit = data.get("limit", 15)
             if session_id:
-                real_session_id = self._session_id_mapping.get((sid, session_id), session_id)
+                # 使用 chat channel 前缀查找映射
+                real_session_id = self._session_id_mapping.get((sid, 'chat', session_id), session_id)
                 session = chat_manager.get_session(real_session_id)
                 if session:
                     claude_sid = getattr(session, 'resume_session_id', None) or getattr(session, '_claude_session_id', None)
@@ -591,7 +455,8 @@ class SocketIOConnectionManager:
 
         elif msg_type == "close":
             if session_id:
-                real_session_id = self._session_id_mapping.get((sid, session_id), session_id)
+                # 使用 chat channel 前缀查找映射
+                real_session_id = self._session_id_mapping.get((sid, 'chat', session_id), session_id)
                 await self.unsubscribe(sid, real_session_id)
                 await chat_manager.close_session(real_session_id)
 

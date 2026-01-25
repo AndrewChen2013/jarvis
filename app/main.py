@@ -18,7 +18,7 @@ Jarvis - 主应用入口
 简化后的架构：
 - 直接使用 Claude 的 ~/.claude/projects/ 作为数据源
 - 只提供附加命名能力
-- 简化的终端管理
+- Chat 会话管理
 """
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,11 +33,9 @@ import re
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.services.terminal_manager import terminal_manager
 from app.services.ssh_manager import ssh_manager
 from app.services.scheduler import scheduler
-from app.api import auth, projects, system, upload, download, history, pinned, remote_machines, monitor, scheduled_tasks, debug, chat
-from app.api.terminal import handle_terminal_websocket
+from app.api import auth, projects, system, upload, download, pinned, remote_machines, monitor, scheduled_tasks, debug, chat
 from app.api.ssh_terminal import handle_ssh_websocket
 from app.api.debug import handle_debug_websocket
 from app.services.mux_connection_manager import mux_manager
@@ -67,9 +65,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to start CLAUDE.md watcher: {e}")
 
-    # 启动终端管理器
-    await terminal_manager.start()
-
     # 启动 SSH 管理器
     await ssh_manager.start()
 
@@ -84,7 +79,6 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutting down...")
     await scheduler.stop()
     await ssh_manager.stop()
-    await terminal_manager.stop()
 
     # 停止 CLAUDE.md 监控器
     if _claude_md_watcher_available:
@@ -160,7 +154,6 @@ app.include_router(projects.router)
 app.include_router(system.router)
 app.include_router(upload.router)
 app.include_router(download.router)
-app.include_router(history.router)
 app.include_router(pinned.router)
 app.include_router(remote_machines.router)
 app.include_router(monitor.router)
@@ -186,46 +179,7 @@ async def root():
 @app.get("/health")
 async def health():
     """健康检查"""
-    try:
-        stats = terminal_manager.get_stats()
-        return {
-            "status": "healthy",
-            "active_terminals": stats["active_terminals"]
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
-
-
-@app.websocket("/ws/terminal")
-async def websocket_terminal(
-    websocket: WebSocket,
-    working_dir: str = Query(...),
-    session_id: str = Query(default=None),
-    rows: int = Query(default=None),
-    cols: int = Query(default=None)
-):
-    """终端 WebSocket 端点
-
-    Args:
-        working_dir: 工作目录（必填）
-        session_id: Claude session_id（可选，None 表示新建会话）
-        rows: 前端期望的终端行数（可选）
-        cols: 前端期望的终端列数（可选）
-
-    Note:
-        认证通过连接后的第一条消息完成：{ type: "auth", token: "xxx" }
-    """
-    await handle_terminal_websocket(
-        websocket=websocket,
-        working_dir=working_dir,
-        session_id=session_id,
-        rows=rows,
-        cols=cols
-    )
+    return {"status": "healthy"}
 
 
 @app.websocket("/ws/ssh")
@@ -275,12 +229,12 @@ async def websocket_debug(
 async def websocket_mux(websocket: WebSocket):
     """多路复用 WebSocket 端点
 
-    单一 WebSocket 连接支持多个 Terminal/Chat 会话。
+    单一 WebSocket 连接支持多个 Chat 会话。
     通过 channel 和 session_id 路由消息。
 
     Message Format:
         {
-            "channel": "terminal" | "chat" | "system",
+            "channel": "chat" | "system",
             "session_id": "uuid" (optional for system),
             "type": "message type",
             "data": {...}

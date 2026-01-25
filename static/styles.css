@@ -24,8 +24,7 @@
   --bg-secondary: #2a2a2a;
   --bg-tertiary: #3a3a3a;
   --bg-card: #252525;
-  --bg-terminal: #1e1e1e;
-  --bg-input: #1e1e1e;
+    --bg-input: #1e1e1e;
   --bg-hover: #333;
 
   /* 文字色 */
@@ -83,8 +82,7 @@
   --bg-secondary: #ffffff;
   --bg-tertiary: #e5e5ea;
   --bg-card: #ffffff;
-  --bg-terminal: #ffffff;
-  --bg-input: #ffffff;
+    --bg-input: #ffffff;
   --bg-hover: #d1d1d6;
 
   /* 文字色 - iOS 风格 */
@@ -1599,59 +1597,6 @@ html, body {
 }
 
 
-/* 终端容器 - 适配 xterm.js */
-.terminal-container {
-  flex: 1;
-  overflow: hidden;
-  background-color: var(--bg-input);
-  padding: 8px;
-  /* 给固定定位的工具栏留出空间 */
-  margin-top: calc(48px + env(safe-area-inset-top, 0px));
-  /* 确保不会超出剩余空间 */
-  min-height: 0;
-  /* 为子容器的绝对定位提供参照 */
-  position: relative;
-}
-
-/* xterm.js 容器自动填充 */
-.terminal-container .xterm {
-  width: 100% !important;
-  height: 100% !important;
-  max-height: 100% !important;
-}
-
-.terminal-container .xterm-screen {
-  height: 100% !important;
-}
-
-/* 隐藏光标 */
-.terminal-container .xterm-cursor-layer {
-  display: none !important;
-}
-
-.terminal-container .xterm-viewport {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* xterm.js 滚动条样式 */
-.terminal-container .xterm-viewport::-webkit-scrollbar {
-  width: 8px;
-}
-
-.terminal-container .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
-  background: var(--border-secondary);
-  border-radius: 4px;
-}
-
-.terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
-}
-
 /* ========== 底部输入栏（常驻） ========== */
 .bottom-input-bar {
   background-color: var(--bg-secondary);
@@ -2521,10 +2466,6 @@ html, body {
   .btn {
     padding: 8px 14px;
     font-size: var(--font-sm);
-  }
-
-  .terminal-container {
-    padding: 4px;
   }
 
   .bottom-input-bar {
@@ -4041,32 +3982,6 @@ html, body {
   color: var(--text-primary);
 }
 
-/* ========== 多 Session 终端容器 ========== */
-.terminal-session-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-}
-
-/* session 容器内的 xterm 也需要填充 */
-.terminal-session-container .xterm {
-  width: 100% !important;
-  height: 100% !important;
-  max-height: 100% !important;
-}
-
-.terminal-session-container .xterm-screen {
-  height: 100% !important;
-}
-
-.terminal-session-container .xterm-viewport {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch;
-}
-
 /* ========== File Browser ========== */
 .file-browser {
   display: flex;
@@ -4508,17 +4423,6 @@ html, body {
 
 @keyframes history-spin {
   to { transform: rotate(360deg); }
-}
-
-/* ========== Terminal History Modal ========== */
-#terminal-history-modal .modal-content {
-  max-height: 80vh;
-}
-
-#terminal-history-modal .modal-body {
-  padding: 8px 16px 16px;
-  overflow-y: auto;
-  max-height: calc(80vh - 60px);
 }
 
 /* ========== File History Modal ========== */
@@ -6030,266 +5934,6 @@ html, body {
   font-size: var(--font-sm);
   text-align: center;
   padding: 8px;
-}
-
-/* ==================== SSH 终端页面 ==================== */
-#ssh-terminal-view {
-  display: none;
-  flex-direction: column;
-  height: 100%;
-  background-color: var(--bg-primary);
-}
-
-#ssh-terminal-view.active {
-  display: flex;
-}
-
-/* SSH 工具栏 */
-.ssh-toolbar {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-primary);
-  min-height: 44px;
-  flex-shrink: 0;
-}
-
-.ssh-toolbar-center {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.ssh-toolbar-right {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-disconnect {
-  color: var(--color-danger) !important;
-}
-
-.btn-disconnect:active {
-  background-color: var(--color-danger) !important;
-  color: var(--text-primary) !important;
-}
-
-/* SSH 终端容器 (全屏) */
-.ssh-terminal-container {
-  flex: 1;
-  overflow: hidden;
-  background-color: var(--bg-primary);
-  padding: 4px;
-  /* 确保终端可以接收键盘焦点 */
-  cursor: text;
-}
-
-/* SSH 悬浮字体控制（和 Claude terminal 对齐） */
-.ssh-font-controls-float {
-  position: fixed;
-  top: 60px;
-  right: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  z-index: 100;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-.ssh-font-controls-float:hover,
-.ssh-font-controls-float:active {
-  opacity: 1;
-}
-
-.ssh-font-controls-float .btn-font {
-  width: 32px;
-  height: 28px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: var(--font-sm);
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(8px);
-  transition: all 0.2s;
-}
-
-.ssh-font-controls-float .btn-font:active {
-  background: var(--color-success);
-  border-color: var(--color-success);
-  color: #ffffff;
-}
-
-/* SSH 主题按钮特殊样式 */
-.ssh-font-controls-float .btn-theme {
-  font-size: var(--font-base);
-}
-
-/* ==================== SSH 悬浮球 ==================== */
-.ssh-floating-btn {
-  position: fixed;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 9998;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.3s, transform 0.2s, box-shadow 0.2s;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: none;
-}
-
-.ssh-floating-btn.visible {
-  opacity: 1;
-  visibility: visible;
-}
-
-.ssh-floating-btn.pressed {
-  transform: translate(-50%, -50%) scale(0.9);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.6);
-}
-
-.ssh-floating-btn.snapping {
-  transition: left 0.3s ease-out, top 0.3s ease-out, opacity 0.3s, transform 0.2s;
-}
-
-.ssh-floating-btn-count {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text-primary);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-/* SSH 扇形菜单 */
-.ssh-radial-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 9997;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s;
-}
-
-.ssh-radial-menu.active {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-}
-
-.ssh-radial-menu-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.ssh-radial-menu-item {
-  position: absolute;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 2px solid var(--color-success);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: translate(-50%, -50%) scale(0);
-  animation: sshRadialItemIn 0.2s ease-out forwards;
-  cursor: pointer;
-  transition: transform 0.15s, border-color 0.15s;
-}
-
-@keyframes sshRadialItemIn {
-  from {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0;
-  }
-  to {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-}
-
-.ssh-radial-menu-item.hover {
-  transform: translate(-50%, -50%) scale(1.2);
-  border-color: #34d399;
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
-}
-
-.ssh-radial-menu-item.current {
-  border-color: var(--color-warning);
-}
-
-.ssh-radial-menu-item.connected::after {
-  content: '';
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success);
-  border: 1px solid #1a1a2e;
-}
-
-.ssh-radial-menu-item-text {
-  font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--color-success);
-}
-
-.ssh-radial-menu-item-tooltip {
-  position: absolute;
-  white-space: nowrap;
-  background: rgba(0, 0, 0, 0.9);
-  color: var(--text-primary);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: var(--font-xs);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 8px;
-}
-
-.ssh-radial-menu-item.hover .ssh-radial-menu-item-tooltip {
-  opacity: 1;
-}
-
-/* SSH Session 容器 */
-.ssh-session-container {
-  width: 100%;
-  height: 100%;
-}
-
-#ssh-send-btn {
-  flex-shrink: 0;
-  padding: 10px 20px;
 }
 
 /* ==================== Scheduled Tasks Page (第六屏) ==================== */

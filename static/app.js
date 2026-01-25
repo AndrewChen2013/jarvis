@@ -23,29 +23,22 @@
  * - dialogs.js: 对话框、Toast、帮助面板
  * - settings.js: 设置、用量显示
  * - projects.js: 项目和会话管理
- * - websocket.js: WebSocket 连接、终端控制
+ * - websocket.js: WebSocket 连接、Chat 控制
  */
 class App {
   constructor() {
     this.token = localStorage.getItem('auth_token') || '';
     this.currentSession = null;
-    this.ws = null;
-    this.terminal = null;
     this.isComposing = false; // 中文输入法状态
     this.selectedWorkDir = null; // 选中的工作目录
     this.currentBrowsePath = null; // 当前浏览路径
     this.parentPath = null; // 父目录路径
     // === 重连相关属性 ===
-    // 注意：在 MuxWebSocket 模式下，重连由三层处理：
-    // 1. MuxWebSocket 层：WebSocket 连接级别的重连
-    // 2. Session 层：session.reconnectAttempts, session.reconnectTimeout
-    // 3. App 层（下面这些）：legacy 模式和常量
-    this.reconnectAttempts = 0; // [legacy] 仅 legacy 模式使用
-    this.maxReconnectAttempts = 5; // [常量] session 重连的最大次数
-    this.reconnectTimeout = null; // [legacy] 仅 legacy 模式使用
-    this.shouldReconnect = false; // [active] app 级别重连标志
-    this.isConnecting = false; // 连接锁，防止并发连接
-    this.outputQueue = []; // 输出消息队列（终端未就绪时缓存）
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectTimeout = null;
+    this.shouldReconnect = false;
+    this.isConnecting = false;
     this.currentSessionName = ''; // 当前会话名称
 
     // 多 Session 管理
@@ -189,7 +182,7 @@ class App {
    * 软键盘弹出时，使用 visualViewport API 让工具栏和相关按钮固定在可视区域
    */
   initKeyboardHandler() {
-    const toolbar = document.querySelector('#terminal-view .toolbar');
+    const toolbar = document.querySelector('#chat-view .toolbar');
     const fontControls = document.querySelector('.font-controls-float');
 
     // 使用 visualViewport API（iOS Safari 支持）
@@ -203,7 +196,7 @@ class App {
         // 键盘高度 = 布局视口高度 - 可视视口高度
         const keyboardHeight = layoutHeight - viewportHeight - offsetTop;
 
-        // Terminal 工具栏
+        // Chat 工具栏
         if (toolbar) {
           toolbar.style.transform = `translateY(${offsetTop}px)`;
         }
@@ -587,109 +580,29 @@ class App {
       this.createSession(this.selectedWorkDir, null);
     });
 
-    // 发送按钮
-    document.getElementById('send-btn').addEventListener('click', () => {
-      this.sendInput();
-    });
-
-    // input 事件在 showView 中动态绑定
-
-    // 虚拟按键
-    document.querySelectorAll('.key-btn').forEach(btn => {
-      const key = btn.dataset.key;
-
-      // 跳过展开更多按钮
-      if (btn.id === 'more-keys-btn') return;
-
-      // ⤒ ⤓ 按钮：支持单击跳转和长按持续滚动
-      if (key === 'top' || key === 'bottom') {
-        this.setupScrollButton(btn, key);
-      } else {
-        btn.addEventListener('click', () => {
-          console.log('Key pressed:', key);
-          this.sendKey(key);
-          // 如果按钮在展开面板内，自动收起面板
-          if (btn.closest('#more-keys-panel')) {
-            this.closeMoreKeysPanel();
-          }
-        });
-      }
-    });
-
-    // 展开更多按键按钮
-    document.getElementById('more-keys-btn').addEventListener('click', () => {
-      this.toggleMoreKeysPanel();
-    });
-
-    // 字体大小调整
-    document.getElementById('font-decrease').addEventListener('click', () => {
-      this.adjustFontSize(-1);
-    });
-
-    document.getElementById('font-increase').addEventListener('click', () => {
-      this.adjustFontSize(1);
-    });
-
-    // 主题切换按钮
-    document.getElementById('theme-toggle').addEventListener('click', () => {
-      this.debugLog('theme-toggle button clicked');
-      this.toggleTheme();
-    });
-
-    // Context 展开/收起按钮
-    document.getElementById('context-toggle').addEventListener('click', () => {
-      this.toggleContextPanel();
-    });
-
-    // 工作目录按钮 - 打开 Files 页面
-    document.getElementById('workdir-btn').addEventListener('click', () => {
-      this.debugLog('workdir button clicked');
-      this.openWorkingDir();
-    });
-
-    // 重命名当前 session 按钮
-    const renameSessionBtn = document.getElementById('rename-session-btn');
-    if (renameSessionBtn) {
-      renameSessionBtn.addEventListener('click', () => {
-        this.debugLog('rename-session button clicked');
-        this.renameCurrentSession();
+    // 主题切换按钮（可选，可能在 Chat view 中动态创建）
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        this.debugLog('theme-toggle button clicked');
+        this.toggleTheme();
       });
-    } else {
-      console.warn('rename-session-btn not found');
     }
 
-    // 返回按钮 - 关闭session
-    document.getElementById('back-btn').addEventListener('click', () => {
-      this.debugLog('back button clicked (close session)');
-      this.closeCurrentSession();
-    });
-
-    // 收起按钮 - 放入后台，保持连接
-    const minimizeBtn = document.getElementById('minimize-btn');
-    if (minimizeBtn) {
-      this.debugLog('minimize button bindend');
-      minimizeBtn.addEventListener('click', () => {
-        this.debugLog('minimize button clicked');
-        // 记住当前视图模式为 terminal
-        const session = this.sessionManager?.getActive();
-        if (session) {
-          session.viewMode = 'terminal';
-        }
-        this.minimizeCurrentSession();
+    // Context 展开/收起按钮（可选，可能在 Chat view 中动态创建）
+    const contextToggle = document.getElementById('context-toggle');
+    if (contextToggle) {
+      contextToggle.addEventListener('click', () => {
+        this.toggleContextPanel();
       });
-    } else {
-      this.debugLog('warning: minimize button not found!');
     }
 
-    // Chat 模式切换按钮
-    const chatModeBtn = document.getElementById('chat-mode-btn');
-    if (chatModeBtn) {
-      chatModeBtn.addEventListener('click', () => {
-        this.debugLog('chat mode button clicked');
-        this.debugLog(`currentSession=${this.currentSession}, currentWorkDir=${this.currentWorkDir}`);
-        if (this.currentSession && this.currentWorkDir) {
-          this.showChat(this.currentSession, this.currentWorkDir);
-        }
+    // 工作目录按钮（可选，可能在 Chat view 中动态创建）
+    const workdirBtn = document.getElementById('workdir-btn');
+    if (workdirBtn) {
+      workdirBtn.addEventListener('click', () => {
+        this.debugLog('workdir button clicked');
+        this.openWorkingDir();
       });
     }
 
@@ -965,44 +878,6 @@ class App {
     document.getElementById(`${viewName}-view`).classList.add('active');
     this.debugLog('add active done');
 
-    // 动态创建/销毁 input
-    const inputRow = document.getElementById('input-row');
-    let input = inputRow.querySelector('.input-field');
-
-    if (viewName === 'terminal') {
-      if (!input) {
-        input = document.createElement('textarea');
-        input.className = 'input-field';
-        input.autocomplete = 'off';
-        input.rows = 1;
-        input.placeholder = this.t('terminal.inputPlaceholder');
-
-        // 监听输入法
-        input.addEventListener('compositionstart', () => { this.isComposing = true; });
-        input.addEventListener('compositionend', () => { this.isComposing = false; });
-
-        // 回车发送（Shift+Enter 换行）
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !this.isComposing) {
-            e.preventDefault();
-            this.sendInput();
-          }
-        });
-
-        // 自动调整高度
-        input.addEventListener('input', () => {
-          input.style.height = 'auto';
-          input.style.height = Math.min(input.scrollHeight, 300) + 'px';
-        });
-
-        inputRow.insertBefore(input, inputRow.firstChild);
-      }
-    } else {
-      if (input) {
-        input.remove();
-      }
-    }
-
     if (viewName === 'sessions') {
       // 并发加载会话列表和用量数据
       Promise.all([
@@ -1034,36 +909,7 @@ class App {
     this.debugLog(`showChat: ${sessionId}, ${workingDir}`);
     this.chatSessionId = sessionId;
     this.chatWorkingDir = workingDir;
-    // 记住当前视图模式为 chat
-    const session = this.sessionManager?.getActive();
-    if (session) {
-      session.viewMode = 'chat';
-    }
     this.showView('chat');
-  }
-
-  /**
-   * Switch from chat to terminal mode
-   */
-  switchToTerminalMode(sessionId, workingDir) {
-    this.debugLog(`switchToTerminalMode: ${sessionId}, ${workingDir}`);
-    // Don't disconnect chat - keep connection alive for quick switching
-
-    // 使用 Terminal 专用的 session ID，不被 Chat 覆盖
-    const session = this.sessionManager?.getActive();
-    if (session) {
-      session.viewMode = 'terminal';
-    }
-    // 优先使用 terminalSessionId（Terminal 专用），避免被 Chat 的 session ID 覆盖
-    const actualSessionId = session?.terminalSessionId || session?.claudeSessionId || sessionId;
-    this.debugLog(`switchToTerminalMode: using terminalSessionId=${actualSessionId?.substring(0, 8)}`);
-
-    // 重新连接 Terminal，使用 Terminal 的 session ID 恢复历史
-    // Note: connectTerminal calls showChat by default, so we override it below
-    this.connectTerminal(workingDir, actualSessionId, workingDir.split('/').pop());
-
-    // Switch to terminal view (override the showChat call in connectTerminal)
-    this.showView('terminal');
   }
 }
 
@@ -1093,7 +939,6 @@ if (window.AppProjects) mixinModule(window.AppProjects);
 if (window.AppWebSocket) mixinModule(window.AppWebSocket);
 if (window.AppUpload) mixinModule(window.AppUpload);
 if (window.AppDownload) mixinModule(window.AppDownload);
-if (window.AppHistory) mixinModule(window.AppHistory);
 if (window.AppFiles) mixinModule(window.AppFiles);
 
 // 页面加载完成后初始化

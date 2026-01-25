@@ -29,8 +29,6 @@
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="/static/styles.css?v=123">
   <link rel="stylesheet" href="/static/chat.css?v=15">
-  <!-- xterm.js -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
 <body>
   <!-- 登录视图 (不设置 active，由 JS 控制显示) -->
@@ -598,157 +596,6 @@
   <!-- Chat 视图 -->
   <div id="chat-view" class="view"></div>
 
-  <!-- 终端视图 -->
-  <div id="terminal-view" class="view">
-    <!-- 工具栏 -->
-    <header class="toolbar">
-      <button id="back-btn" class="btn-toolbar" data-i18n-title="terminal.close" title="Close">←</button>
-      <button id="minimize-btn" class="btn-toolbar" data-i18n-title="terminal.minimize" title="Minimize">⌄</button>
-      <div class="toolbar-center" onclick="window.app && window.app.toggleDebugPanel()">
-        <div class="toolbar-title-row">
-          <span id="connection-dot" class="connection-dot"></span>
-          <span id="terminal-title" class="terminal-title">Terminal</span>
-          <span id="connection-status" class="connection-status"></span>
-        </div>
-        <span id="git-branch" class="git-branch-text"></span>
-      </div>
-      <div class="toolbar-right">
-        <button id="chat-mode-btn" class="btn-toolbar btn-chat-mode" data-i18n-title="terminal.chatMode" title="Chat Mode">⬡</button>
-        <button id="terminal-history-btn" class="btn-toolbar" data-i18n-title="terminal.historyBtn" title="History">▤</button>
-        <button id="help-btn" class="btn-help" onclick="window.app && window.app.toggleHelpPanel(event)">?</button>
-      </div>
-    </header>
-
-    <!-- 悬浮字体控制 + 主题 + Context 按钮 -->
-    <div class="font-controls-float">
-      <button id="font-decrease" class="btn-font">A-</button>
-      <button id="font-increase" class="btn-font">A+</button>
-      <button id="theme-toggle" class="btn-font btn-theme" title="Theme">◐</button>
-      <button id="context-toggle" class="btn-font btn-context" title="Context Info">⛁</button>
-      <button id="workdir-btn" class="btn-font btn-workdir" title="Open Working Directory">📂</button>
-      <button id="rename-session-btn" class="btn-font btn-rename" data-i18n-title="common.rename" title="Rename Session">✎</button>
-    </div>
-
-    <!-- Context 信息悬浮条（默认收起） -->
-    <div id="context-bar" class="context-bar collapsed" onclick="window.app && window.app.refreshContextInfo()">
-      <!-- 内容由 JS 动态生成 -->
-    </div>
-
-    <!-- 帮助面板 -->
-    <div id="help-panel" class="help-panel">
-      <div class="help-content">
-        <div class="help-header">
-          <span data-i18n="terminal.help.title">Keyboard shortcuts</span>
-          <button onclick="window.app && window.app.toggleHelpPanel(event)">✕</button>
-        </div>
-        <div class="help-section-title" data-i18n="terminal.help.keysTitle">Shortcuts</div>
-        <div class="help-color-legend">
-          <span class="legend-item legend-nav" data-i18n="terminal.help.nav">Nav</span>
-          <span class="legend-item legend-danger" data-i18n="terminal.help.danger">Stop</span>
-          <span class="legend-item legend-action" data-i18n="terminal.help.action">Action</span>
-        </div>
-        <div class="help-list">
-          <div class="help-item"><span class="help-key help-key-nav">↑↓</span><span data-i18n="terminal.help.history">History</span></div>
-          <div class="help-item"><span class="help-key help-key-nav">⤒⤓</span><span data-i18n="terminal.help.scroll">Scroll (hold for continuous)</span></div>
-          <div class="help-item"><span class="help-key help-key-danger">ESC</span><span data-i18n="terminal.help.stop">Stop</span></div>
-          <div class="help-item"><span class="help-key help-key-action">TAB</span><span data-i18n="terminal.help.complete">Auto complete</span></div>
-          <div class="help-item"><span class="help-key help-key-action">↵</span><span data-i18n="terminal.help.send">Send</span></div>
-        </div>
-        <div class="help-section-title" data-i18n="terminal.help.floatTitle">Float buttons</div>
-        <div class="help-list">
-          <div class="help-item"><span class="help-key">A+A-</span><span data-i18n="terminal.help.fontSize">Font size</span></div>
-          <div class="help-item"><span class="help-key">◐</span><span data-i18n="terminal.help.theme">Switch terminal theme</span></div>
-          <div class="help-item"><span class="help-key help-key-purple">⛁</span><span data-i18n="terminal.help.context">Context (tap to refresh & scroll)</span></div>
-          <div class="help-item"><span class="help-key">⊞</span><span data-i18n="terminal.help.workdir">Open working directory</span></div>
-          <div class="help-item"><span class="help-key help-key-nav">❷</span><span data-i18n="terminal.help.switchSession">Switch session / hold to select</span></div>
-          <div class="help-item"><span class="help-key">▤</span><span data-i18n="terminal.help.historyBtn">Terminal history (scroll / pull refresh)</span></div>
-        </div>
-        <div class="help-tips">
-          <div class="help-tip">💡 <span data-i18n="terminal.help.tip">Click ⋯ for combo keys and slash commands</span></div>
-          <div class="help-tip">💡 <span data-i18n="terminal.help.tipDebug">Click title for debug logs</span></div>
-          <div class="help-tip">💡 <span data-i18n="terminal.help.tipFont">Garbled output? Try adjusting font size</span></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 终端输出区域 -->
-    <div id="terminal-output" class="terminal-container"></div>
-
-    <!-- 底部输入栏（常驻） -->
-    <div class="bottom-input-bar">
-      <!-- 展开的更多按键面板 -->
-      <div id="more-keys-panel" class="more-keys-panel">
-        <div class="more-keys-section">
-          <div class="more-keys-label" data-i18n="terminal.keys.combo">Combo keys</div>
-          <div class="more-keys-row">
-            <button class="key-btn key-edit" data-key="ctrl-l">^L <span data-i18n="terminal.keys.clear">Clear</span></button>
-            <button class="key-btn key-edit" data-key="ctrl-o">^O <span data-i18n="terminal.keys.verbose">Verbose</span></button>
-            <button class="key-btn key-nav" data-key="ctrl-b">^B <span data-i18n="terminal.keys.background">Background</span></button>
-            <button class="key-btn key-danger" data-key="esc-esc">ESC×2 <span data-i18n="terminal.keys.rollback">Rollback</span></button>
-            <button class="key-btn key-nav" data-key="shift-tab">⇧Tab <span data-i18n="terminal.keys.mode">Mode</span></button>
-          </div>
-        </div>
-        <div class="more-keys-section">
-          <div class="more-keys-label" data-i18n="terminal.keys.slash">Slash commands</div>
-          <div class="more-keys-row">
-            <button class="key-btn key-action" data-key="cmd-resume">/resume</button>
-            <button class="key-btn key-action" data-key="cmd-clear">/clear</button>
-            <button class="key-btn key-action" data-key="cmd-help">/help</button>
-            <button class="key-btn key-action" data-key="cmd-compact">/compact</button>
-          </div>
-          <div class="more-keys-row">
-            <button class="key-btn key-action" data-key="cmd-memory">/memory</button>
-            <button class="key-btn key-action" data-key="cmd-mcp">/mcp</button>
-            <button class="key-btn key-action" data-key="cmd-doctor">/doctor</button>
-          </div>
-        </div>
-      </div>
-      <!-- 主按键行 -->
-      <div class="special-keys">
-        <button class="key-btn key-action" data-key="tab">TAB</button>
-        <button class="key-btn key-nav" data-key="up">↑</button>
-        <button class="key-btn key-nav" data-key="down">↓</button>
-        <button class="key-btn key-danger" data-key="escape">ESC</button>
-        <button class="key-btn key-edit" data-key="backspace">⌫</button>
-        <button class="key-btn key-nav" data-key="top">⤒</button>
-        <button class="key-btn key-nav" data-key="bottom">⤓</button>
-        <button class="key-btn key-action" data-key="enter">↵</button>
-        <button class="key-btn key-more" id="more-keys-btn">⋯</button>
-      </div>
-      <div class="input-row" id="input-row">
-        <!-- input 动态创建 -->
-        <button id="send-btn" class="btn btn-primary" data-i18n="terminal.send">Send</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- SSH 终端视图 -->
-  <div id="ssh-terminal-view" class="view">
-    <!-- 工具栏 -->
-    <header class="ssh-toolbar">
-      <button id="ssh-back-btn" class="btn-toolbar" data-i18n-title="ssh.back" title="Back">&larr;</button>
-      <button id="ssh-minimize-btn" class="btn-toolbar" data-i18n-title="ssh.minimize" title="Minimize">&or;</button>
-      <div class="ssh-toolbar-center">
-        <span id="ssh-connection-dot" class="connection-dot"></span>
-        <span id="ssh-terminal-title" class="terminal-title">SSH Terminal</span>
-        <span id="ssh-connection-status" class="connection-status"></span>
-      </div>
-      <div class="ssh-toolbar-right">
-        <button id="ssh-pin-btn" class="btn-toolbar" data-i18n-title="ssh.pin" title="Pin to Sessions">&#x2630;</button>
-      </div>
-    </header>
-
-    <!-- 悬浮字体控制 + 主题（和 Claude terminal 对齐） -->
-    <div class="ssh-font-controls-float">
-      <button id="ssh-font-decrease" class="btn-font">A-</button>
-      <button id="ssh-font-increase" class="btn-font">A+</button>
-      <button id="ssh-theme-toggle" class="btn-font btn-theme" title="Theme">◐</button>
-    </div>
-
-    <!-- SSH 终端输出区域 (全屏，接收键盘输入) -->
-    <div id="ssh-terminal-output" class="ssh-terminal-container"></div>
-  </div>
-
   <!-- 全局错误捕获 -->
   <script>
     window.onerror = function(msg, url, line, col, error) {
@@ -773,10 +620,6 @@
   <script defer src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script defer src="/static/socketio-websocket.js?v=7"></script>
   <script defer src="/static/mux-websocket.js?v=17"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
-  <script defer src="/static/terminal.js?v=12"></script>
   <script defer src="/static/chat-session.js?v=1"></script>
   <!-- chat-core.js must be loaded first, creates ChatMode object -->
   <script defer src="/static/chat/chat-core.js?v=1"></script>
@@ -801,13 +644,9 @@
   <script defer src="/static/websocket.js?v=74"></script>
   <script defer src="/static/upload.js?v=5"></script>
   <script defer src="/static/download.js?v=3"></script>
-  <script defer src="/static/history.js?v=12"></script>
   <script defer src="/static/remote-machines.js?v=6"></script>
-  <script defer src="/static/ssh-floating-button.js?v=14"></script>
-  <script defer src="/static/ssh-session-manager.js?v=10"></script>
-  <script defer src="/static/ssh-terminal.js?v=5"></script>
   <script defer src="/static/monitor.js?v=6"></script>
   <script defer src="/static/scheduled-tasks.js?v=9"></script>
-  <script defer src="/static/app.js?v=46"></script>
+  <script defer src="/static/app.js?v=47"></script>
 </body>
 </html>

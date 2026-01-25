@@ -38,7 +38,6 @@ class SessionInstance {
     this.id = sessionId;
     this.name = name;
     // WebSocket 由 MuxWebSocket 统一管理，不再存储在 session 中
-    this.terminal = null;
     this.container = null;
     this.status = 'idle'; // idle | connecting | connected | disconnected
     this.lastActive = Date.now();
@@ -49,12 +48,7 @@ class SessionInstance {
     // rename 后 this.id === this.claudeSessionId
     this.claudeSessionId = null;
 
-    // Terminal 模式的 session ID（独立于 Chat 模式）
-    // 用于切换回 Terminal 时恢复正确的会话
-    this.terminalSessionId = null;
-
     // 重连状态（每个 session 独立）
-    // 用于 websocket.js 中的 attemptReconnectForSession()
     this.shouldReconnect = false;   // 是否应该自动重连
     this.reconnectAttempts = 0;     // 当前重连尝试次数
     this.reconnectTimeout = null;   // 重连定时器
@@ -66,20 +60,11 @@ class SessionInstance {
     // Context bar 展开状态（每个 session 独立）
     this.contextBarExpanded = false;
 
-    // 字体大小（每个 session 独立，null 表示使用默认值）
-    this.fontSize = null;
-
-    // 主题（每个 session 独立，null 表示使用默认值）
-    this.theme = null;
-
     // 输入框内容（每个 session 独立）
     this.inputValue = '';
 
     // Git 分支信息（每个 session 独立）
     this.gitBranch = null;
-
-    // 视图模式（每个 session 独立，默认 chat）
-    this.viewMode = 'chat';
 
     // Chat 相关（每个 session 独立）
     this.chatContainer = null;      // Chat DOM 容器
@@ -87,7 +72,7 @@ class SessionInstance {
     this.chatIsStreaming = false;   // 是否正在流式输出
     this.chatStreamingMessageId = null;  // 当前流式消息 ID
     this.chatInputValue = '';       // Chat 输入框内容（切换时暂存）
-    this.chatClaudeSessionId = null; // Chat 模式独立的 Claude session ID（与 Terminal 分离）
+    this.chatClaudeSessionId = null; // Chat 模式独立的 Claude session ID
   }
 
   /**
@@ -176,13 +161,6 @@ class SessionManager {
    */
   getActiveClaudeSessionId() {
     return this.getActive()?.claudeSessionId || null;
-  }
-
-  /**
-   * 获取当前活跃 session 的 terminal
-   */
-  getActiveTerminal() {
-    return this.getActive()?.terminal || null;
   }
 
   /**
@@ -458,19 +436,9 @@ class SessionManager {
     // 通过 MuxWebSocket 关闭连接
     if (window.muxWs) {
       this.log('closeSession: close via MuxWebSocket');
-      if (window.muxWs.handlers.has(`terminal:${sessionId}`)) {
-        window.muxWs.closeTerminal(sessionId);
-      }
       if (window.muxWs.handlers.has(`chat:${sessionId}`)) {
         window.muxWs.closeChat(sessionId);
       }
-    }
-
-    // 销毁终端
-    if (session.terminal) {
-      this.log('closeSession: destroy terminal');
-      session.terminal.dispose();
-      session.terminal = null;
     }
 
     // 移除容器
@@ -522,140 +490,16 @@ class SessionManager {
    * 显示 session（切换到前台）
    */
   showSession(session) {
-    const expectedContainerId = `terminal-container-${session.id}`;
-    this.log(`showSession: ${session.id.substring(0, 8)}, expectedId=${expectedContainerId}`);
-    this.log(`showSession: session.container=${session.container ? session.container.id : 'NULL'}, session.terminal=${session.terminal ? 'exists' : 'NULL'}`);
-
-    const terminalOutput = document.getElementById('terminal-output');
-    if (!terminalOutput) {
-      this.log(`showSession: ERROR - terminalOutput not found!`);
-      return;
-    }
-
-    // 通过 ID 查找正确的容器（不依赖可能过期的 session.container 引用）
-    let targetContainer = document.getElementById(expectedContainerId);
-    this.log(`showSession: targetContainer by ID = ${targetContainer ? 'found' : 'NOT FOUND'}`);
-
-    // 如果 session.container 引用过期（不在 DOM 中或 ID 不匹配），更新它
-    if (session.container) {
-      const inDOM = document.body.contains(session.container);
-      const idMatch = session.container.id === expectedContainerId;
-      this.log(`showSession: session.container check - inDOM=${inDOM}, idMatch=${idMatch}`);
-      if (!inDOM || !idMatch) {
-        this.log(`showSession: session.container is STALE, will use targetContainer`);
-        session.container = targetContainer;
-      }
-    } else if (targetContainer) {
-      this.log(`showSession: session.container was NULL, set to targetContainer`);
-      session.container = targetContainer;
-    }
-
-    // 验证 terminal 是否真的在 container 里（防止 Connected 但不渲染）
-    if (session.terminal && session.container) {
-      const xtermElement = session.container.querySelector('.xterm');
-      if (!xtermElement) {
-        this.log(`showSession: WARNING - terminal exists but xterm element NOT in container! Clearing terminal reference.`);
-        // terminal 存在但 DOM 不在 container 里，标记为无效
-        // 下次 initTerminal 会重新创建
-        try {
-          session.terminal.dispose();
-        } catch (e) {
-          this.log(`showSession: dispose error: ${e.message}`);
-        }
-        session.terminal = null;
-      } else {
-        this.log(`showSession: terminal xterm element found in container`);
-      }
-    }
-
-    // 如果没有 container，创建一个
-    if (!session.container) {
-      this.log(`showSession: creating new container`);
-      targetContainer = this.createContainer(session);
-    }
-
-    // 隐藏所有 container，然后只显示目标 container
-    const allContainers = terminalOutput.querySelectorAll('.terminal-session-container');
-    this.log(`showSession: found ${allContainers.length} containers in DOM`);
-
-    allContainers.forEach(container => {
-      if (container.id === expectedContainerId) {
-        container.style.display = 'block';
-        this.log(`showSession: SHOW ${container.id}`);
-      } else {
-        container.style.display = 'none';
-        this.log(`showSession: HIDE ${container.id}`);
-      }
-    });
-
-    // 最终确认
-    if (session.container) {
-      session.container.style.display = 'block';
-      this.log(`showSession: final confirm - ${session.container.id} is visible`);
-    } else {
-      this.log(`showSession: WARNING - no container available!`);
-    }
-
-    // 恢复该 session 的字体大小
-    if (session.fontSize && session.terminal) {
-      this.log(`showSession: restoring fontSize ${session.fontSize}`);
-      session.terminal.setFontSize(session.fontSize);
-    }
-
-    // 恢复该 session 的主题
-    if (session.theme && session.terminal) {
-      this.log(`showSession: restoring theme ${session.theme}`);
-      session.terminal.setTheme(session.theme);
-      // 更新主题按钮
-      if (this.app && this.app.updateThemeButton) {
-        this.app.updateThemeButton(session.theme);
-      }
-    }
+    this.log(`showSession: ${session.id.substring(0, 8)}`);
+    // 主要由 Chat 容器管理，这里只做基本的切换记录
   }
 
   /**
    * 隐藏 session（放入后台）
    */
   hideSession(session) {
-    this.log(`hideSession: ${session.id}, container=${session.container ? session.container.id : 'null'}`);
-    if (session.container) {
-      session.container.style.display = 'none';
-      this.log(`hideSession: set display=none`);
-    }
-  }
-
-  /**
-   * 为 session 创建终端容器
-   */
-  createContainer(session) {
-    this.log(`createContainer: ${session.id}`);
-    const container = document.createElement('div');
-    container.id = `terminal-container-${session.id}`;
-    container.className = 'terminal-session-container';
-    container.style.display = 'none';
-
-    const terminalOutput = document.getElementById('terminal-output');
-    this.log(`createContainer: terminalOutput=${terminalOutput ? 'exists' : 'null'}`);
-    if (terminalOutput) {
-      terminalOutput.appendChild(container);
-      this.log(`createContainer: added to terminalOutput`);
-    } else {
-      this.log(`createContainer: terminalOutput not found!`);
-    }
-
-    session.container = container;
-    return container;
-  }
-
-  /**
-   * 获取或创建 session 的容器
-   */
-  getOrCreateContainer(session) {
-    this.log(`getOrCreateContainer: ${session.id}, hasContainer=${!!session.container}`);
-    if (!session.container) {
-      this.createContainer(session);
-    }
-    return session.container;
+    this.log(`hideSession: ${session.id}`);
+    // Chat 容器由 showChatContainer 管理
   }
 
   /**

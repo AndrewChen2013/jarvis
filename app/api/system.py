@@ -26,7 +26,6 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query
 
 from app.api.auth import verify_token
-from app.services.terminal_manager import terminal_manager
 from app.services.anthropic_oauth import anthropic_oauth
 from app.core.logging import logger
 
@@ -65,27 +64,16 @@ async def get_system_info(_: str = Depends(verify_token)):
 
 @router.get("/active-sessions")
 async def get_active_sessions(_: str = Depends(verify_token)):
-    """获取当前活跃的终端连接"""
-    try:
-        return terminal_manager.get_active_sessions()
-    except Exception as e:
-        logger.error(f"Get active sessions error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """获取当前活跃的 Chat 连接"""
+    return []
 
 
 @router.get("/connections/count")
 async def get_connections_count(_: str = Depends(verify_token)):
     """获取活跃连接数"""
-    try:
-        stats = terminal_manager.get_stats()
-        total = sum(t.get("websocket_count", 0) for t in stats.get("terminals", []))
-        return {
-            "total_connections": total,
-            "active_terminals": stats.get("active_terminals", 0)
-        }
-    except Exception as e:
-        logger.error(f"Get connections count error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "total_connections": 0
+    }
 
 
 @router.get("/account/info")

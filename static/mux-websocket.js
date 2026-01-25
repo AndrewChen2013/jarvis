@@ -34,27 +34,18 @@
 // ============================================================================
 
 // Channel codes
-const CH_TERMINAL = 0;
 const CH_CHAT = 1;
 const CH_SYSTEM = 2;
 
 const CHANNEL_CODES = {
-  terminal: CH_TERMINAL,
   chat: CH_CHAT,
   system: CH_SYSTEM
 };
 
 const CODE_TO_CHANNEL = {
-  [CH_TERMINAL]: 'terminal',
   [CH_CHAT]: 'chat',
   [CH_SYSTEM]: 'system'
 };
-
-// Message type codes - Terminal (0-9)
-const MT_TERM_CONNECTED = 0;
-const MT_TERM_OUTPUT = 1;
-const MT_TERM_ERROR = 2;
-const MT_TERM_CLOSED = 3;
 
 // Message type codes - Chat (0-19)
 const MT_CHAT_READY = 0;
@@ -80,18 +71,6 @@ const MT_SYS_PONG = 2;
 
 // Forward mapping (name to code) for sending
 const MSG_TYPE_CODES = {
-  terminal: {
-    connected: MT_TERM_CONNECTED,
-    output: MT_TERM_OUTPUT,
-    error: MT_TERM_ERROR,
-    closed: MT_TERM_CLOSED,
-    // Client-to-server types (not in backend response codes)
-    connect: 'connect',
-    disconnect: 'disconnect',
-    input: 'input',
-    resize: 'resize',
-    close: 'close'
-  },
   chat: {
     ready: MT_CHAT_READY,
     stream: MT_CHAT_STREAM,
@@ -126,12 +105,6 @@ const MSG_TYPE_CODES = {
 
 // Reverse mapping (code to name) for receiving
 const CODE_TO_MSG_TYPE = {
-  terminal: {
-    [MT_TERM_CONNECTED]: 'connected',
-    [MT_TERM_OUTPUT]: 'output',
-    [MT_TERM_ERROR]: 'error',
-    [MT_TERM_CLOSED]: 'closed'
-  },
   chat: {
     [MT_CHAT_READY]: 'ready',
     [MT_CHAT_STREAM]: 'stream',
@@ -379,86 +352,6 @@ class MuxWebSocket {
     }
 
     this._sendRaw(message);
-  }
-
-  /**
-   * Connect to a terminal session
-   * @param {string} sessionId - Session ID
-   * @param {string} workingDir - Working directory
-   * @param {object} options - {rows, cols, onMessage, onConnect, onDisconnect}
-   */
-  connectTerminal(sessionId, workingDir, options = {}) {
-    const key = `terminal:${sessionId}`;
-
-    // Check if already connected to this terminal session
-    if (this.handlers.has(key)) {
-      this.log(`Terminal ${sessionId.substring(0, 8)} already connected, skip`);
-      // Update callbacks if provided
-      const handler = this.handlers.get(key);
-      if (options.onMessage) handler.onMessage = options.onMessage;
-      if (options.onConnect) handler.onConnect = options.onConnect;
-      if (options.onDisconnect) handler.onDisconnect = options.onDisconnect;
-      // Trigger onConnect immediately if already connected
-      if (this.state === 'connected' && options.onConnect) {
-        options.onConnect({ working_dir: workingDir });
-      }
-      return;
-    }
-
-    this.subscribe(sessionId, 'terminal', {
-      onMessage: options.onMessage,
-      onConnect: options.onConnect,
-      onDisconnect: options.onDisconnect
-    });
-
-    // Save subscription data for reconnection (use compound key)
-    const connectData = {
-      working_dir: workingDir,
-      rows: options.rows || 40,
-      cols: options.cols || 120
-    };
-    this.subscriptionData.set(key, { channel: 'terminal', sessionId, data: connectData });
-
-    this.send('terminal', sessionId, 'connect', connectData);
-  }
-
-  /**
-   * Disconnect from a terminal session (keep it running)
-   * @param {string} sessionId - Session ID
-   */
-  disconnectTerminal(sessionId) {
-    this.send('terminal', sessionId, 'disconnect', {});
-    this.unsubscribe(sessionId, 'terminal');
-    this.subscriptionData.delete(`terminal:${sessionId}`);
-  }
-
-  /**
-   * Close a terminal session (stop it)
-   * @param {string} sessionId - Session ID
-   */
-  closeTerminal(sessionId) {
-    this.send('terminal', sessionId, 'close', {});
-    this.unsubscribe(sessionId, 'terminal');
-    this.subscriptionData.delete(`terminal:${sessionId}`);
-  }
-
-  /**
-   * Send input to a terminal
-   * @param {string} sessionId - Session ID
-   * @param {string} text - Input text
-   */
-  terminalInput(sessionId, text) {
-    this.send('terminal', sessionId, 'input', { text });
-  }
-
-  /**
-   * Resize a terminal
-   * @param {string} sessionId - Session ID
-   * @param {number} rows - Row count
-   * @param {number} cols - Column count
-   */
-  terminalResize(sessionId, rows, cols) {
-    this.send('terminal', sessionId, 'resize', { rows, cols });
   }
 
   /**
