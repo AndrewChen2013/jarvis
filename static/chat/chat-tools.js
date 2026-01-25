@@ -533,60 +533,71 @@ Object.assign(ChatMode, {
   },
 
   /**
-   * Create a tool element for history display (collapsed, completed state)
-   * Used when loading chat history that includes tool calls
+   * Create tool message element (same as addToolMessage but returns element without inserting)
+   * Used for history loading
    */
-  createHistoryToolElement(toolCall, timestamp) {
-    const msgId = this._generateMessageId();
+  createToolMessageElement(toolName, data, timestamp) {
+    const msgId = 'tool-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
     const msgEl = document.createElement('div');
     msgEl.className = 'chat-message tool';
     msgEl.id = msgId;
 
-    const toolName = toolCall.name || 'Unknown';
-    const toolInput = toolCall.input || {};
-
-    // Get tool icon
-    const toolIcon = this.getToolIcon(toolName);
+    // Tools that should be expanded by default
+    const expandedByDefault = ['Grep', 'Edit', 'Read', 'Write', 'Glob', 'Bash', 'LSP'];
+    const shouldExpand = expandedByDefault.includes(toolName);
+    const contentClass = shouldExpand ? 'tool-content show' : 'tool-content';
+    const toggleClass = shouldExpand ? 'tool-toggle expanded' : 'tool-toggle';
 
     // Render tool-specific content
     let toolContent = '';
     switch (toolName) {
       case 'Edit':
-        toolContent = this.renderEditTool(toolInput);
+        toolContent = this.renderEditTool(data);
         break;
       case 'Write':
-        toolContent = this.renderWriteTool(toolInput);
+        toolContent = this.renderWriteTool(data);
         break;
       case 'Read':
-        toolContent = this.renderReadTool(toolInput);
+        toolContent = this.renderReadTool(data);
         break;
       case 'Bash':
-        toolContent = this.renderBashTool(toolInput);
+        toolContent = this.renderBashTool(data);
         break;
       case 'Grep':
-        toolContent = this.renderGrepTool(toolInput);
+        toolContent = this.renderGrepTool(data);
         break;
       default:
-        toolContent = `<pre>${this.escapeHtml(JSON.stringify(toolInput, null, 2))}</pre>`;
+        toolContent = `<pre>${this.escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
     }
+
+    // Get tool icon
+    const toolIcon = this.getToolIcon(toolName);
 
     // Format timestamp
     const timeStr = timestamp ? this.formatTimestamp(timestamp) : '';
     const timeHtml = timeStr ? `<span class="tool-time">${timeStr}</span>` : '';
 
-    // History tools are collapsed by default since we don't have the result
     msgEl.innerHTML = `
-      <div class="tool-header" onclick="ChatMode.toggleTool(this)">
-        <span class="tool-icon">${toolIcon}</span>
-        <span class="tool-name">${toolName}</span>
-        <span class="tool-status completed">✓</span>
-        ${timeHtml}
-        <span class="tool-toggle">▶</span>
-      </div>
-      <div class="tool-content">
-        ${toolContent}
-        <div class="tool-result">
-          <div class="tool-result-note">Tool result not available in history</div>
+      <div class="chat-bubble">
+        <div class="tool-header" onclick="ChatMode.toggleToolContent('${msgId}', event)">
+          <span class="tool-icon">${toolIcon}</span>
+          <span class="tool-name">${toolName}</span>
+          ${timeHtml}
+          <div class="tool-actions">
+            <button class="tool-action-btn" onclick="ChatMode.showFullscreenTool('${msgId}', event)" title="Fullscreen">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+              </svg>
+            </button>
+            <span class="${toggleClass}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+        <div class="${contentClass}" id="${msgId}-content">
+          ${toolContent}
         </div>
       </div>
     `;

@@ -542,7 +542,7 @@ Object.assign(ChatMode, {
           // If message has tool_calls from history, render them first
           if (data.extra && data.extra.tool_calls && Array.isArray(data.extra.tool_calls)) {
             for (const toolCall of data.extra.tool_calls) {
-              const toolEl = this.createHistoryToolElement(toolCall, data.timestamp);
+              const toolEl = this.createToolMessageElement(toolCall.name, toolCall.input, data.timestamp);
               this.messagesEl.appendChild(toolEl);
             }
           }
@@ -678,7 +678,8 @@ Object.assign(ChatMode, {
             // If message has tool_calls, render them first (before the text content)
             if (msg.extra && msg.extra.tool_calls && Array.isArray(msg.extra.tool_calls)) {
               for (const toolCall of msg.extra.tool_calls) {
-                const toolEl = this.createHistoryToolElement(toolCall, msg.extra.timestamp);
+                // Reuse createToolMessageElement (same as addToolMessage but returns element)
+                const toolEl = this.createToolMessageElement(toolCall.name, toolCall.input, msg.extra.timestamp);
                 fragment.appendChild(toolEl);
               }
             }

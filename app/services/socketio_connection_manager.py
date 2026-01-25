@@ -434,8 +434,10 @@ class SocketIOConnectionManager:
                     asyncio.create_task(self._process_chat_message(sid, real_session_id, content))
 
         elif msg_type == "load_more_history":
-            offset = data.get("offset", 0)
-            limit = data.get("limit", 15)
+            # Frontend sends before_index (the oldest message index it has)
+            # We need to load messages older than that
+            before_index = data.get("before_index", 0)
+            limit = data.get("limit", 50)
             if session_id:
                 # 使用 chat channel 前缀查找映射
                 real_session_id = self._session_id_mapping.get((sid, 'chat', session_id), session_id)
@@ -443,21 +445,31 @@ class SocketIOConnectionManager:
                 if session:
                     claude_sid = getattr(session, 'resume_session_id', None) or getattr(session, '_claude_session_id', None)
                     if claude_sid:
+                        # Get total count to calculate offset
+                        total_count = db.get_chat_message_count(claude_sid)
+                        # before_index is the oldest message index frontend has
+                        # offset = total - before_index (skip already loaded messages)
+                        offset = max(0, total_count - before_index)
                         history_desc = db.get_chat_messages_desc(claude_sid, limit=limit, offset=offset)
                         history = list(reversed(history_desc))  # 反转为时间升序
                         for msg in history:
-                            msg_type = msg.get("role", "assistant")
+                            msg_role = msg.get("role", "assistant")
                             msg_data = {
-                                "type": msg_type,
+                                "type": msg_role,
                                 "content": msg.get("content", ""),
                                 "timestamp": msg.get("timestamp"),
                             }
                             # Include extra field if present (contains tool_calls)
                             if msg.get("extra"):
                                 msg_data["extra"] = msg.get("extra")
-                            await self.send_to_client(sid, "chat", msg_type, msg_data, real_session_id)
+                            await self.send_to_client(sid, "chat", msg_role, msg_data, real_session_id)
+
+                        # Calculate new oldest_index and has_more
+                        new_oldest_index = max(0, before_index - len(history))
+                        has_more = new_oldest_index > 0
                         await self.send_to_client(sid, "chat", "history_page_end", {
-                            "offset": offset,
+                            "oldest_index": new_oldest_index,
+                            "has_more": has_more,
                             "count": len(history)
                         }, real_session_id)
 

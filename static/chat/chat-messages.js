@@ -42,7 +42,7 @@ Object.assign(ChatMode, {
     // If message has tool_calls (from history), render them first
     if (extra.tool_calls && Array.isArray(extra.tool_calls)) {
       for (const toolCall of extra.tool_calls) {
-        const toolEl = this.createHistoryToolElement(toolCall, extra.timestamp);
+        const toolEl = this.createToolMessageElement(toolCall.name, toolCall.input, extra.timestamp);
         if (extra.prepend) {
           const insertBefore = this.messagesEl.firstChild;
           if (insertBefore) {
