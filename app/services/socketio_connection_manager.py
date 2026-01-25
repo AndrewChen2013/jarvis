@@ -319,23 +319,25 @@ class SocketIOConnectionManager:
                      except Exception as e:
                          logger.error(f"[SocketIO] Failed to save session mapping: {e}")
 
-            # BUG FIX: Clean up ALL callbacks from other clients for this session
+            # BUG FIX: Clean up callbacks from DISCONNECTED clients only
             # When Socket.IO reconnects, it gets a new sid, but old callbacks are still registered
             # This causes messages to be sent to multiple consumers (some dead)
-            # Solution: Only ONE client should have callback for a given session at a time
+            # Solution: Only remove callbacks from clients that are no longer connected
+            # (Allow multiple active clients to receive messages from the same session)
             for other_sid, other_client in list(self.clients.items()):
                 if other_sid != sid and session_id in other_client.chat_callbacks:
-                    # Always clean up - new client takes over this session
-                    logger.info(f"[SocketIO] Cleaning up callback from {other_sid[:8]} for session {session_id[:8]} (new client {sid[:8]} taking over)")
-                    if session:
-                        session.remove_callback(other_client.chat_callbacks[session_id])
-                    del other_client.chat_callbacks[session_id]
-                    # Also cancel their consumer task
-                    if session_id in other_client.chat_consumer_tasks:
-                        other_client.chat_consumer_tasks[session_id].cancel()
-                        del other_client.chat_consumer_tasks[session_id]
-                    if session_id in other_client.chat_message_queues:
-                        del other_client.chat_message_queues[session_id]
+                    # Check if this client is actually disconnected (is_closed flag)
+                    if other_client.is_closed:
+                        logger.info(f"[SocketIO] Cleaning up callback from disconnected client {other_sid[:8]} for session {session_id[:8]}")
+                        if session:
+                            session.remove_callback(other_client.chat_callbacks[session_id])
+                        del other_client.chat_callbacks[session_id]
+                        # Also cancel their consumer task
+                        if session_id in other_client.chat_consumer_tasks:
+                            other_client.chat_consumer_tasks[session_id].cancel()
+                            del other_client.chat_consumer_tasks[session_id]
+                        if session_id in other_client.chat_message_queues:
+                            del other_client.chat_message_queues[session_id]
 
             # 设置消息队列和消费者
             # Use unbounded queue to prevent message loss; consumer processes quickly
@@ -344,11 +346,11 @@ class SocketIOConnectionManager:
 
             async def chat_message_consumer():
                 """消费消息队列，确保有序发送。"""
-                logger.info(f"[SocketIO] Chat consumer started: sid={sid[:8]}, session={session_id[:8]}")
+                logger.info(f"[SocketIO] Chat consumer started: sid={sid[:8]}, session={session_id[:8]}, queue_id={id(message_queue)}")
                 try:
                     while True:
                         msg = await message_queue.get()
-                        logger.debug(f"[SocketIO] Chat consumer got message: sid={sid[:8]}, session={session_id[:8]}, msg_type={msg.type}")
+                        logger.info(f"[SocketIO] Chat consumer processing: sid={sid[:8]}, msg_type={msg.type}")
                         c = self.clients.get(sid)
                         if not c or c.is_closed:
                             logger.warning(f"[SocketIO] Chat consumer stopping: client gone or closed")
@@ -371,7 +373,7 @@ class SocketIOConnectionManager:
                 try:
                     # Only log non-stream events to reduce noise
                     if msg.type not in ('stream_event', 'stream'):
-                        logger.info(f"[SocketIO] Chat callback: sid={sid_for_log[:8]}, session={sess_id_for_log[:8]}, msg_type={msg.type}")
+                        logger.info(f"[SocketIO] Chat callback: sid={sid_for_log[:8]}, session={sess_id_for_log[:8]}, msg_type={msg.type}, queue_id={id(q)}")
                     q.put_nowait(msg)
                 except Exception as e:
                     logger.warning(f"[SocketIO] Chat callback error for {session_id[:8]}: {e}")
