@@ -192,6 +192,11 @@ class SocketIOConnectionManager:
         if not client:
             return
 
+        # 幂等性检查：如果已认证，直接返回（不重复发送 auth_success）
+        if client.authenticated:
+            logger.debug(f"[SocketIO] Client {sid[:8]} already authenticated, skipping")
+            return
+
         token = data.get('token', '')
         if hmac.compare_digest(token, settings.AUTH_TOKEN):
             client.authenticated = True
@@ -417,6 +422,13 @@ class SocketIOConnectionManager:
 
             # 创建或恢复会话
             logger.info(f"[SocketIO] Chat connect: session_id={session_id[:8] if session_id else 'None'}, workDir={working_dir[:30]}...")
+
+            # 幂等性检查：如果该 session 已有回调注册，说明已连接，跳过重复处理
+            # 这防止了网络重连时多次发送历史消息
+            if session_id and session_id in client.chat_callbacks:
+                logger.info(f"[SocketIO] Chat connect duplicate: session={session_id[:8]}, already connected, skipping")
+                return
+
             session = chat_manager.get_session(session_id) if self._is_valid_uuid(session_id) else None
 
             if not session:
