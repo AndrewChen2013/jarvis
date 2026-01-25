@@ -67,13 +67,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  width: 40px;
   height: 32px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   cursor: pointer;
   border-radius: var(--radius-sm);
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.chat-minimize-btn:hover {
+  opacity: 1;
 }
 
 .chat-minimize-btn:active {

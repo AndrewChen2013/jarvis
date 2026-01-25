@@ -43,19 +43,18 @@ Object.assign(ChatMode, {
         <div class="chat-header">
           <div class="chat-header-left">
             <button class="chat-back-btn" id="chatBackBtn" title="${t('common.close', 'Close')}">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M15 18l-6-6 6-6"/>
-              </svg>
-            </button>
-            <button class="chat-minimize-btn" id="chatMinimizeBtn" title="${t('terminal.minimize', 'Minimize')}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M6 9l6 6 6-6"/>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
             </button>
             <span class="chat-title" id="chatTitle" style="cursor: pointer;" title="${t('debug.title', 'Debug Log')}">${t('chat.title', 'Chat')}</span>
           </div>
           <div class="chat-header-right">
-            <!-- Terminal button removed -->
+            <button class="chat-minimize-btn" id="chatMinimizeBtn" title="${t('terminal.minimize', 'Minimize')}">
+              <svg width="28" height="4" viewBox="0 0 28 4" fill="none">
+                <rect x="0" y="0" width="28" height="4" rx="2" fill="currentColor"/>
+              </svg>
+            </button>
           </div>
         </div>
 
