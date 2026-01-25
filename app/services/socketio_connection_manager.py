@@ -384,11 +384,15 @@ class SocketIOConnectionManager:
             for msg in history:
                 # 数据库字段: role, content; 前端期望: type, content
                 msg_type = msg.get("role", "assistant")
-                await self.send_to_client(sid, "chat", msg_type, {
+                msg_data = {
                     "type": msg_type,
                     "content": msg.get("content", ""),
                     "timestamp": msg.get("timestamp"),
-                }, session_id)
+                }
+                # Include extra field if present (contains tool_calls)
+                if msg.get("extra"):
+                    msg_data["extra"] = msg.get("extra")
+                await self.send_to_client(sid, "chat", msg_type, msg_data, session_id)
 
             await self.send_to_client(sid, "chat", "history_end", {
                 "count": len(history),
@@ -443,11 +447,15 @@ class SocketIOConnectionManager:
                         history = list(reversed(history_desc))  # 反转为时间升序
                         for msg in history:
                             msg_type = msg.get("role", "assistant")
-                            await self.send_to_client(sid, "chat", msg_type, {
+                            msg_data = {
                                 "type": msg_type,
                                 "content": msg.get("content", ""),
                                 "timestamp": msg.get("timestamp"),
-                            }, real_session_id)
+                            }
+                            # Include extra field if present (contains tool_calls)
+                            if msg.get("extra"):
+                                msg_data["extra"] = msg.get("extra")
+                            await self.send_to_client(sid, "chat", msg_type, msg_data, real_session_id)
                         await self.send_to_client(sid, "chat", "history_page_end", {
                             "offset": offset,
                             "count": len(history)

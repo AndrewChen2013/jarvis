@@ -530,5 +530,67 @@ Object.assign(ChatMode, {
     }
 
     resultsEl.innerHTML = html;
+  },
+
+  /**
+   * Create a tool element for history display (collapsed, completed state)
+   * Used when loading chat history that includes tool calls
+   */
+  createHistoryToolElement(toolCall, timestamp) {
+    const msgId = this._generateMessageId();
+    const msgEl = document.createElement('div');
+    msgEl.className = 'chat-message tool';
+    msgEl.id = msgId;
+
+    const toolName = toolCall.name || 'Unknown';
+    const toolInput = toolCall.input || {};
+
+    // Get tool icon
+    const toolIcon = this.getToolIcon(toolName);
+
+    // Render tool-specific content
+    let toolContent = '';
+    switch (toolName) {
+      case 'Edit':
+        toolContent = this.renderEditTool(toolInput);
+        break;
+      case 'Write':
+        toolContent = this.renderWriteTool(toolInput);
+        break;
+      case 'Read':
+        toolContent = this.renderReadTool(toolInput);
+        break;
+      case 'Bash':
+        toolContent = this.renderBashTool(toolInput);
+        break;
+      case 'Grep':
+        toolContent = this.renderGrepTool(toolInput);
+        break;
+      default:
+        toolContent = `<pre>${this.escapeHtml(JSON.stringify(toolInput, null, 2))}</pre>`;
+    }
+
+    // Format timestamp
+    const timeStr = timestamp ? this.formatTimestamp(timestamp) : '';
+    const timeHtml = timeStr ? `<span class="tool-time">${timeStr}</span>` : '';
+
+    // History tools are collapsed by default since we don't have the result
+    msgEl.innerHTML = `
+      <div class="tool-header" onclick="ChatMode.toggleTool(this)">
+        <span class="tool-icon">${toolIcon}</span>
+        <span class="tool-name">${toolName}</span>
+        <span class="tool-status completed">✓</span>
+        ${timeHtml}
+        <span class="tool-toggle">▶</span>
+      </div>
+      <div class="tool-content">
+        ${toolContent}
+        <div class="tool-result">
+          <div class="tool-result-note">Tool result not available in history</div>
+        </div>
+      </div>
+    `;
+
+    return msgEl;
   }
 });

@@ -585,6 +585,7 @@ class ChatSession:
                         # Extract content based on message type
                         role = msg_type
                         content = ""
+                        tool_calls = []  # Initialize for both user and assistant
 
                         if msg_type == "user":
                             message_data = data.get("message", {})
@@ -605,16 +606,31 @@ class ChatSession:
                                 content = content_blocks
                             elif isinstance(content_blocks, list):
                                 for block in content_blocks:
-                                    if isinstance(block, dict) and block.get("type") == "text":
-                                        content += block.get("text", "")
+                                    if isinstance(block, dict):
+                                        block_type = block.get("type")
+                                        if block_type == "text":
+                                            content += block.get("text", "")
+                                        elif block_type == "tool_use":
+                                            # Save tool_use block for history
+                                            tool_calls.append({
+                                                "id": block.get("id"),
+                                                "name": block.get("name"),
+                                                "input": block.get("input", {})
+                                            })
 
-                        if content.strip():
+                        # Save message with or without tool calls
+                        extra = None
+                        if tool_calls:
+                            extra = {"tool_calls": tool_calls}
+
+                        if content.strip() or tool_calls:
                             messages_to_sync.append({
                                 "session_id": self.resume_session_id,
                                 "role": role,
                                 "content": content,
                                 "timestamp": msg_timestamp,
-                                "source": "sync"
+                                "source": "sync",
+                                "extra": extra
                             })
 
                     except json.JSONDecodeError:

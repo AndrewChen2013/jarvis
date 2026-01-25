@@ -521,10 +521,15 @@ Object.assign(ChatMode, {
         this.hideTypingIndicator();
         if (this.isLoadingHistory) {
           // Collect for batch insert at top
+          // Include tool_calls from extra if present
+          const extraData = { timestamp: data.timestamp };
+          if (data.extra && data.extra.tool_calls) {
+            extraData.tool_calls = data.extra.tool_calls;
+          }
           this.pendingHistoryMessages.push({
             type: 'assistant',
             content: data.content,
-            extra: { timestamp: data.timestamp }
+            extra: extraData
           });
         } else if (this.isStreaming) {
           this.finalizeStreaming(data.content);
@@ -534,7 +539,17 @@ Object.assign(ChatMode, {
             this.log('Skipping duplicate assistant message');
             return;
           }
-          this.addMessage('assistant', data.content, { timestamp: data.timestamp });
+          // If message has tool_calls from history, render them first
+          if (data.extra && data.extra.tool_calls && Array.isArray(data.extra.tool_calls)) {
+            for (const toolCall of data.extra.tool_calls) {
+              const toolEl = this.createHistoryToolElement(toolCall, data.timestamp);
+              this.messagesEl.appendChild(toolEl);
+            }
+          }
+          // Render text content if present
+          if (data.content && data.content.trim()) {
+            this.addMessage('assistant', data.content, { timestamp: data.timestamp });
+          }
         }
         break;
 
@@ -660,8 +675,18 @@ Object.assign(ChatMode, {
           // Create document fragment for batch insert
           const fragment = document.createDocumentFragment();
           for (const msg of this.pendingHistoryMessages) {
-            const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra);
-            fragment.appendChild(msgEl);
+            // If message has tool_calls, render them first (before the text content)
+            if (msg.extra && msg.extra.tool_calls && Array.isArray(msg.extra.tool_calls)) {
+              for (const toolCall of msg.extra.tool_calls) {
+                const toolEl = this.createHistoryToolElement(toolCall, msg.extra.timestamp);
+                fragment.appendChild(toolEl);
+              }
+            }
+            // Render the text content (if any)
+            if (msg.content && msg.content.trim()) {
+              const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra);
+              fragment.appendChild(msgEl);
+            }
           }
 
           // Insert at the top
