@@ -19,7 +19,6 @@
 """
 import os
 import time
-import stat
 from pathlib import Path
 from typing import Optional
 
@@ -419,3 +418,93 @@ async def get_download_history(
     """
     history = db.get_download_history(limit, offset)
     return JSONResponse(content={"downloads": history})
+
+
+# ==================== 目录收藏 ====================
+
+@router.get("/directory-favorites")
+async def get_directory_favorites(
+    limit: int = Query(default=50, description="返回记录数量限制"),
+    offset: int = Query(default=0, description="分页偏移量"),
+    _: str = Depends(verify_token)
+):
+    """获取目录收藏列表
+
+    Args:
+        limit: 返回记录数量限制
+        offset: 分页偏移量
+
+    Returns:
+        收藏目录列表
+    """
+    favorites = db.get_directory_favorites(limit, offset)
+    return JSONResponse(content={"favorites": favorites})
+
+
+@router.post("/directory-favorites")
+async def add_directory_favorite(
+    path: str = Query(..., description="要收藏的目录路径"),
+    name: Optional[str] = Query(default=None, description="收藏名称（可选）"),
+    _: str = Depends(verify_token)
+):
+    """添加目录收藏
+
+    Args:
+        path: 目录路径
+        name: 收藏名称（可选，默认使用目录名）
+
+    Returns:
+        添加结果
+    """
+    # 展开路径
+    target_path = Path(os.path.expanduser(path)).resolve()
+
+    # 检查是否为有效目录
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="Directory not found")
+
+    if not target_path.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    # 使用目录名作为默认名称
+    display_name = name or target_path.name
+
+    # 添加到数据库
+    result_id = db.add_directory_favorite(str(target_path), display_name)
+
+    if result_id is None:
+        return JSONResponse(
+            status_code=200,
+            content={"success": False, "message": "Directory already favorited"}
+        )
+
+    return JSONResponse(content={
+        "success": True,
+        "id": result_id,
+        "path": str(target_path),
+        "name": display_name
+    })
+
+
+@router.delete("/directory-favorites")
+async def remove_directory_favorite(
+    path: str = Query(..., description="要取消收藏的目录路径"),
+    _: str = Depends(verify_token)
+):
+    """移除目录收藏
+
+    Args:
+        path: 目录路径
+
+    Returns:
+        删除结果
+    """
+    # 展开路径
+    target_path = Path(os.path.expanduser(path)).resolve()
+
+    success = db.remove_directory_favorite(str(target_path))
+
+    return JSONResponse(content={
+        "success": success,
+        "path": str(target_path)
+    })

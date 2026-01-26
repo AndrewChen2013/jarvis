@@ -63,11 +63,11 @@ class SocketIOManager {
     this.log('Connecting...');
 
     // Connect to Socket.IO endpoint
-    // Use polling ONLY to bypass VPN/proxy WebSocket issues completely
-    // WebSocket upgrade is disabled because the proxy corrupts the upgrade request
+    // WebSocket preferred, polling as fallback
+    // Note: If using proxy/VPN that corrupts WebSocket, change to ['polling'] only
     this.socket = io({
       path: '/socket.io/',
-      transports: ['polling'],  // Polling only - no WebSocket (proxy corrupts upgrade)
+      transports: ['websocket', 'polling'],  // WebSocket preferred for better performance
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,

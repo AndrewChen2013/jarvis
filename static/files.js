@@ -101,10 +101,12 @@ const AppFiles = {
   /**
    * Initialize Files page
    */
-  initFiles() {
+  async initFiles() {
     // Initialize state (properties can't be mixed in via mixin)
     // Only initialize if not already set (loadFilesPage might have been called before initFiles)
-    if (this._currentPath === undefined) this._currentPath = '~';
+    // Load last browsed path from localStorage
+    const lastPath = localStorage.getItem('files_last_path');
+    if (this._currentPath === undefined) this._currentPath = lastPath || '~';
     if (this._pathHistory === undefined) this._pathHistory = [];
     if (this._showHidden === undefined) this._showHidden = false;
     if (this._filesLoaded === undefined) this._filesLoaded = false;
@@ -112,7 +114,13 @@ const AppFiles = {
     if (this._currentPreviewPath === undefined) this._currentPreviewPath = null;
     if (this._sortMode === undefined) this._sortMode = 0; // 0=A↓, 1=A↑, 2=T↓, 3=T↑
     if (this._previewFontSize === undefined) this._previewFontSize = 14; // default font size for preview
-    if (this._fileFavorites === undefined) this._fileFavorites = this.loadFileFavorites();
+    if (this._fileFavorites === undefined) this._fileFavorites = [];
+
+    // Load favorites from backend (async)
+    this.loadFileFavorites().then(favorites => {
+      this._fileFavorites = favorites;
+      this.renderFileFavorites();
+    });
 
     // Bind back button
     const backBtn = document.getElementById('files-back-btn');
@@ -146,54 +154,68 @@ const AppFiles = {
 
     // Update button states
     this.updateFilesButtonStates();
-
-    // Render favorites bar
-    this.renderFileFavorites();
   },
 
   /**
-   * Load favorites from localStorage
+   * Load favorites from backend API
    */
-  loadFileFavorites() {
+  async loadFileFavorites() {
     try {
-      const data = localStorage.getItem('file_favorites');
-      return data ? JSON.parse(data) : [];
+      const response = await fetch('/api/directory-favorites?limit=50', {
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return data.favorites || [];
+      }
+      return [];
     } catch {
       return [];
     }
   },
 
   /**
-   * Save favorites to localStorage
+   * Add path to favorites (via backend API)
    */
-  saveFileFavorites() {
-    localStorage.setItem('file_favorites', JSON.stringify(this._fileFavorites || []));
-  },
-
-  /**
-   * Add path to favorites
-   */
-  addToFavorites(path, name) {
-    if (!this._fileFavorites) this._fileFavorites = [];
-    // Check if already exists
-    if (this._fileFavorites.some(f => f.path === path)) {
-      this.showToast?.('Already in favorites') || alert('Already in favorites');
-      return;
+  async addToFavorites(path, name) {
+    try {
+      const response = await fetch(`/api/directory-favorites?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        this.showToast?.('Added to favorites') || console.log('Added to favorites');
+        // Reload favorites
+        this._fileFavorites = await this.loadFileFavorites();
+        this.renderFileFavorites();
+      } else {
+        this.showToast?.(data.message || 'Already in favorites') || alert(data.message || 'Already in favorites');
+      }
+    } catch (error) {
+      console.error('Add to favorites error:', error);
+      this.showToast?.('Failed to add favorite') || alert('Failed to add favorite');
     }
-    this._fileFavorites.push({ path, name });
-    this.saveFileFavorites();
-    this.renderFileFavorites();
-    this.showToast?.('Added to favorites') || console.log('Added to favorites');
   },
 
   /**
-   * Remove path from favorites
+   * Remove path from favorites (via backend API)
    */
-  removeFromFavorites(path) {
-    if (!this._fileFavorites) return;
-    this._fileFavorites = this._fileFavorites.filter(f => f.path !== path);
-    this.saveFileFavorites();
-    this.renderFileFavorites();
+  async removeFromFavorites(path) {
+    try {
+      const response = await fetch(`/api/directory-favorites?path=${encodeURIComponent(path)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Reload favorites
+        this._fileFavorites = await this.loadFileFavorites();
+        this.renderFileFavorites();
+      }
+    } catch (error) {
+      console.error('Remove from favorites error:', error);
+    }
   },
 
   /**
@@ -274,6 +296,9 @@ const AppFiles = {
       // Update state
       const oldPath = this._currentPath;
       this._currentPath = data.path;
+
+      // Save to localStorage for next visit
+      localStorage.setItem('files_last_path', data.path);
 
       // Update path display (shortened)
       pathDisplay.textContent = this.shortenFilesPath(data.path);
@@ -647,6 +672,22 @@ const AppFiles = {
       return;
     }
 
+    // Get recent favorites (top 5)
+    const favorites = (this._fileFavorites || []).slice(0, 5);
+    let favoritesHtml = '';
+    if (favorites.length > 0) {
+      favoritesHtml = `
+        <div class="files-menu-divider"></div>
+        <div class="files-menu-section-title">${this.t('files.favorites', 'Favorites')}</div>
+        ${favorites.map(fav => `
+          <div class="files-menu-item files-menu-favorite" data-fav-path="${this.escapeHtml(fav.path)}">
+            <span class="files-menu-icon">★</span>
+            <span>${this.escapeHtml(fav.name)}</span>
+          </div>
+        `).join('')}
+      `;
+    }
+
     const popup = document.createElement('div');
     popup.className = 'files-menu-popup';
     popup.innerHTML = `
@@ -672,6 +713,7 @@ const AppFiles = {
         <span class="files-menu-icon">↓</span>
         <span>${this.t('files.downloadHistory', 'Download History')}</span>
       </div>
+      ${favoritesHtml}
     `;
 
     document.body.appendChild(popup);
@@ -710,6 +752,15 @@ const AppFiles = {
     popup.querySelector('#files-menu-download-history').addEventListener('click', () => {
       popup.remove();
       this.showDownloadHistory();
+    });
+
+    // Bind favorite items
+    popup.querySelectorAll('.files-menu-favorite').forEach(item => {
+      item.addEventListener('click', () => {
+        const path = item.dataset.favPath;
+        popup.remove();
+        this.loadFilesDirectory(path);
+      });
     });
 
     // Click outside to close
@@ -1607,6 +1658,7 @@ const AppFiles = {
     const modal = document.getElementById('file-preview-modal');
     const closeBtn = document.getElementById('preview-close-btn');
     const downloadBtn = document.getElementById('preview-download-btn');
+    const refreshBtn = document.getElementById('preview-refresh-btn');
     const fontIncreaseBtn = document.getElementById('preview-font-increase');
     const fontDecreaseBtn = document.getElementById('preview-font-decrease');
 
@@ -1620,6 +1672,11 @@ const AppFiles = {
           this.downloadFileFromPath(this._currentPreviewPath);
         }
       });
+    }
+
+    // Refresh button - reload current file
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => this.refreshFilePreview());
     }
 
     // Font size controls
@@ -1637,6 +1694,16 @@ const AppFiles = {
           this.closeFilePreview();
         }
       });
+    }
+  },
+
+  /**
+   * Refresh current file preview
+   */
+  refreshFilePreview() {
+    if (this._currentPreviewPath) {
+      const name = document.getElementById('preview-file-name')?.textContent || '';
+      this.openFilePreview(this._currentPreviewPath, name);
     }
   },
 

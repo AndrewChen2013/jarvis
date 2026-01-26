@@ -279,6 +279,20 @@ class Database:
                     )
                 """)
 
+                # 目录收藏表
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS directory_favorites (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        path TEXT NOT NULL UNIQUE,
+                        name TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_directory_favorites_created
+                    ON directory_favorites(created_at DESC)
+                """)
+
                 logger.info("Database initialized")
 
     def _migrate_scheduled_tasks(self, cursor):
@@ -1381,6 +1395,60 @@ class Database:
                 """, (f"-{days} days",))
                 if cursor.rowcount > 0:
                     logger.info(f"Cleaned up {cursor.rowcount} old chat messages")
+
+    # ==================== 目录收藏 ====================
+
+    def add_directory_favorite(self, path: str, name: str = None) -> Optional[int]:
+        """添加目录收藏，返回记录ID（如果已存在则返回 None）"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("""
+                        INSERT INTO directory_favorites (path, name)
+                        VALUES (?, ?)
+                    """, (path, name))
+                    logger.info(f"Added directory favorite: {path}")
+                    return cursor.lastrowid
+                except sqlite3.IntegrityError:
+                    # 已存在
+                    return None
+
+    def remove_directory_favorite(self, path: str) -> bool:
+        """移除目录收藏"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM directory_favorites WHERE path = ?
+                """, (path,))
+                if cursor.rowcount > 0:
+                    logger.info(f"Removed directory favorite: {path}")
+                    return True
+                return False
+
+    def get_directory_favorites(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """获取目录收藏列表（按创建时间倒序）"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, path, name, created_at
+                    FROM directory_favorites
+                    ORDER BY created_at DESC
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
+                return [dict(row) for row in cursor.fetchall()]
+
+    def is_directory_favorited(self, path: str) -> bool:
+        """检查目录是否已收藏"""
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 1 FROM directory_favorites WHERE path = ?
+                """, (path,))
+                return cursor.fetchone() is not None
 
 
 # 全局实例

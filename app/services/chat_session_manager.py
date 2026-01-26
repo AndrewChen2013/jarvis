@@ -222,11 +222,30 @@ class ChatSession:
 
                 try:
                     data = json.loads(line.decode('utf-8').strip())
-                    msg = ChatMessage(
-                        type=data.get("type", "unknown"),
-                        content=data,
-                        session_id=self.session_id
-                    )
+
+                    # Extract timestamp from Claude CLI output (if present)
+                    msg_timestamp = None
+                    if "timestamp" in data:
+                        try:
+                            ts_str = data["timestamp"].replace("Z", "+00:00")
+                            msg_timestamp = datetime.fromisoformat(ts_str)
+                        except (ValueError, TypeError):
+                            pass  # Fall back to auto-generated timestamp
+
+                    # Create message with original timestamp if available
+                    if msg_timestamp:
+                        msg = ChatMessage(
+                            type=data.get("type", "unknown"),
+                            content=data,
+                            session_id=self.session_id,
+                            timestamp=msg_timestamp
+                        )
+                    else:
+                        msg = ChatMessage(
+                            type=data.get("type", "unknown"),
+                            content=data,
+                            session_id=self.session_id
+                        )
 
                     # Extract Claude's session ID
                     if data.get("type") == "system" and data.get("subtype") == "init":
@@ -722,8 +741,16 @@ class ChatSessionManager:
                 raise ValueError(f"Session {session_id} already exists")
 
             # Check if working directory exists
+            # Fix: handle paths missing leading dot (e.g., /Users/bill/claude-remote -> /Users/bill/.claude-remote)
             if not os.path.exists(working_dir):
-                raise FileNotFoundError(f"Working directory does not exist: {working_dir}")
+                # Try adding dot to directory name
+                import re
+                fixed_dir = re.sub(r'/([^/]+)$', r'/.\1', working_dir)
+                if fixed_dir != working_dir and os.path.exists(fixed_dir):
+                    logger.info(f"[Session] Auto-fixed working dir: {working_dir} -> {fixed_dir}")
+                    working_dir = fixed_dir
+                else:
+                    raise FileNotFoundError(f"Working directory does not exist: {working_dir}")
 
             session = ChatSession(
                 session_id=session_id,

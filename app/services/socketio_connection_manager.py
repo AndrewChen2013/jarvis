@@ -100,6 +100,7 @@ class SocketIOConnectionManager:
         # Chat 事件
         @sio.on('chat:connect')
         async def handle_chat_connect(sid, data):
+            logger.info(f"[SocketIO] Received chat:connect from {sid[:8]}, data={data}")
             await self._handle_chat_message(sid, data.get('session_id'), 'connect', data)
 
         @sio.on('chat:disconnect')
@@ -175,21 +176,26 @@ class SocketIOConnectionManager:
             await sio.emit('auth_failed', {'reason': 'Invalid token'}, to=sid)
             logger.warning(f"[SocketIO] Client {sid[:8]} auth failed")
 
-    async def send_to_client(self, sid: str, channel: str, msg_type: str, data: dict, session_id: str = None):
+    async def send_to_client(self, sid: str, channel: str, msg_type: str, data: dict, session_id: str = None, _debug_tag: str = None):
         """发送消息给客户端。"""
         client = self.clients.get(sid)
         if not client or client.is_closed:
             return
 
         try:
+            import time as _time
             event_name = f"{channel}:{msg_type}"
             payload = dict(data)
             if session_id:
                 payload['session_id'] = session_id
+            _t0 = _time.time()
             await sio.emit(event_name, payload, to=sid)
+            _elapsed = (_time.time() - _t0) * 1000
+            if _elapsed > 50 or _debug_tag:  # Log slow emits or tagged ones
+                logger.info(f"[SocketIO] emit took {_elapsed:.0f}ms: {event_name} tag={_debug_tag}")
         except Exception as e:
             client.is_closed = True
-            logger.debug(f"[SocketIO] Client {sid[:8]} send error: {e}")
+            logger.warning(f"[SocketIO] Client {sid[:8]} send error: {e}")
 
     async def broadcast_to_session(self, session_id: str, channel: str, msg_type: str, data: dict):
         """广播消息到会话的所有订阅者。"""
@@ -279,7 +285,9 @@ class SocketIOConnectionManager:
                         logger.info(f"[SocketIO] Auto-resume mapped session: {resume[:8]}")
 
             # 创建或恢复会话
-            logger.info(f"[SocketIO] Chat connect: session_id={session_id[:8] if session_id else 'None'}, workDir={working_dir[:30]}...")
+            import time as _time
+            _t0 = _time.time()
+            logger.info(f"[SocketIO] Chat connect START: session_id={session_id[:8] if session_id else 'None'}, workDir={working_dir[:30]}...")
 
             # 幂等性检查：如果该 session 已有回调注册，说明已连接，跳过重复处理
             # 这防止了网络重连时多次发送历史消息
@@ -288,6 +296,7 @@ class SocketIOConnectionManager:
                 return
 
             session = chat_manager.get_session(session_id) if self._is_valid_uuid(session_id) else None
+            logger.info(f"[SocketIO] Chat connect T1 get_session: {(_time.time()-_t0)*1000:.0f}ms, found={session is not None}")
 
             if not session:
                 import uuid as uuid_module
@@ -319,6 +328,7 @@ class SocketIOConnectionManager:
                      except Exception as e:
                          logger.error(f"[SocketIO] Failed to save session mapping: {e}")
 
+            logger.info(f"[SocketIO] Chat connect T2 session_ready: {(_time.time()-_t0)*1000:.0f}ms")
             # 清理当前客户端的其他 session（用户切换 session 时）
             for old_session_id in list(client.chat_callbacks.keys()):
                 if old_session_id != session_id:
@@ -332,6 +342,14 @@ class SocketIOConnectionManager:
                     if old_session_id in client.chat_message_queues:
                         del client.chat_message_queues[old_session_id]
                     logger.info(f"[SocketIO] Switched session: sid={sid[:8]}, {old_session_id[:8]} -> {session_id[:8]}")
+
+            # 清理同一个 session 的旧 consumer（重连时）
+            if session_id in client.chat_consumer_tasks:
+                logger.info(f"[SocketIO] Cancelling old consumer for reconnect: sid={sid[:8]}, session={session_id[:8]}")
+                client.chat_consumer_tasks[session_id].cancel()
+                del client.chat_consumer_tasks[session_id]
+            if session_id in client.chat_message_queues:
+                del client.chat_message_queues[session_id]
 
             # 设置消息队列和消费者
             message_queue: asyncio.Queue = asyncio.Queue()
@@ -372,6 +390,7 @@ class SocketIOConnectionManager:
             client.chat_callbacks[session_id] = chat_callback
 
             await self.subscribe(sid, session_id)
+            logger.info(f"[SocketIO] Chat connect T3 callback_set: {(_time.time()-_t0)*1000:.0f}ms")
 
             # 获取历史消息
             # 优先使用 resume_session_id（恢复会话时），否则使用 _claude_session_id
@@ -385,13 +404,15 @@ class SocketIOConnectionManager:
                 total_count = db.get_chat_message_count(claude_sid)
                 logger.info(f"[SocketIO] Loaded {len(history)}/{total_count} history messages for {claude_sid[:8]}")
 
+            logger.info(f"[SocketIO] Chat connect T4 history_loaded: {(_time.time()-_t0)*1000:.0f}ms")
             # 发送 ready 事件（必须在 history 之前，以便前端完成 handler 映射）
             await self.send_to_client(sid, "chat", "ready", {
                 "working_dir": working_dir,
                 "original_session_id": original_session_id,
                 "history_count": total_count,
                 "claude_session_id": claude_sid
-            }, session_id)
+            }, session_id, _debug_tag="connect_ready")
+            logger.info(f"[SocketIO] Chat connect T5 ready_sent: {(_time.time()-_t0)*1000:.0f}ms")
 
             # 发送历史消息（数据库格式转换为前端期望的格式）
             for msg in history:
@@ -407,10 +428,12 @@ class SocketIOConnectionManager:
                     msg_data["extra"] = msg.get("extra")
                 await self.send_to_client(sid, "chat", msg_type, msg_data, session_id)
 
+            logger.info(f"[SocketIO] Chat connect T6 history_sent: {(_time.time()-_t0)*1000:.0f}ms")
             await self.send_to_client(sid, "chat", "history_end", {
                 "count": len(history),
                 "total": total_count
             }, session_id)
+            logger.info(f"[SocketIO] Chat connect DONE: {(_time.time()-_t0)*1000:.0f}ms total")
 
         elif msg_type == "disconnect":
             await self.unsubscribe(sid, session_id)
