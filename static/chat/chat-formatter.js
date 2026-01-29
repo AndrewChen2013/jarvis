@@ -53,7 +53,62 @@ Object.assign(ChatMode, {
     // Line breaks
     html = html.replace(/\n/g, '<br>');
 
+    // Plain text file paths (not inside HTML tags)
+    // Match paths like /path/to/file.js, ./relative/path.py, ../parent/file.ts
+    html = this.linkifyFilePaths(html);
+
     return html;
+  },
+
+  /**
+   * Convert plain text file paths to clickable links
+   * Avoids paths already inside HTML tags
+   */
+  linkifyFilePaths(html) {
+    // Regex to match file paths:
+    // - Absolute paths: /path/to/file.ext
+    // - Relative paths: ./path/file.ext or ../path/file.ext
+    // - Home paths: ~/path/file.ext
+    // - Optional line numbers: :123 or :123:45
+    const pathPattern = /((?:\/|\.\.?\/|~\/)[^\s<>"'`\(\)\[\]]+\.[a-zA-Z0-9]+(?::\d+(?::\d+)?)?)/g;
+
+    // Split HTML into parts: inside tags vs outside tags
+    const parts = [];
+    let lastIndex = 0;
+    const tagRegex = /<[^>]+>/g;
+    let match;
+
+    while ((match = tagRegex.exec(html)) !== null) {
+      // Text before this tag
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', content: html.slice(lastIndex, match.index) });
+      }
+      // The tag itself
+      parts.push({ type: 'tag', content: match[0] });
+      lastIndex = match.index + match[0].length;
+    }
+    // Remaining text after last tag
+    if (lastIndex < html.length) {
+      parts.push({ type: 'text', content: html.slice(lastIndex) });
+    }
+
+    // Process only text parts, linkify file paths
+    const result = parts.map(part => {
+      if (part.type === 'tag') {
+        return part.content;
+      }
+      // Replace file paths in text content
+      return part.content.replace(pathPattern, (path) => {
+        // Verify it actually looks like a file path
+        if (this.looksLikeFilePath(path)) {
+          const escapedPath = this.escapeHtml(path);
+          return `<span class="file-link" data-path="${escapedPath}" onclick="ChatMode.openFilePath('${escapedPath}')">${escapedPath}</span>`;
+        }
+        return path;
+      });
+    }).join('');
+
+    return result;
   },
 
   /**
