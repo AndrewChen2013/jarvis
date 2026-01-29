@@ -153,7 +153,7 @@ Object.assign(ChatMode, {
 
     let html = `<div class="tool-file-header">`;
     html += `<span class="tool-file-icon">📄</span>`;
-    html += `<span class="tool-file-path" title="${this.escapeHtml(filePath)}">${this.escapeHtml(fileName)}</span>`;
+    html += `<span class="tool-file-path file-link" data-path="${this.escapeHtml(filePath)}" onclick="ChatMode.openFilePath('${this.escapeHtml(filePath)}')" title="${this.escapeHtml(filePath)}">${this.escapeHtml(fileName)}</span>`;
     if (isNewFile) {
       html += `<span class="tool-badge new">NEW</span>`;
     } else if (replaceAll) {
@@ -208,7 +208,7 @@ Object.assign(ChatMode, {
 
     let html = `<div class="tool-file-header">`;
     html += `<span class="tool-file-icon">📄</span>`;
-    html += `<span class="tool-file-path" title="${this.escapeHtml(filePath)}">${this.escapeHtml(fileName)}</span>`;
+    html += `<span class="tool-file-path file-link" data-path="${this.escapeHtml(filePath)}" onclick="ChatMode.openFilePath('${this.escapeHtml(filePath)}')" title="${this.escapeHtml(filePath)}">${this.escapeHtml(fileName)}</span>`;
     html += `<span class="tool-badge new">NEW FILE</span>`;
     html += `</div>`;
 
@@ -231,7 +231,7 @@ Object.assign(ChatMode, {
 
     let html = `<div class="tool-file-header">`;
     html += `<span class="tool-file-icon">📖</span>`;
-    html += `<span class="tool-file-path" title="${this.escapeHtml(filePath)}">${this.escapeHtml(fileName)}</span>`;
+    html += `<span class="tool-file-path file-link" data-path="${this.escapeHtml(filePath)}" onclick="ChatMode.openFilePath('${this.escapeHtml(filePath)}')" title="${this.escapeHtml(filePath)}">${this.escapeHtml(fileName)}</span>`;
     if (offset || limit) {
       html += `<span class="tool-badge info">`;
       if (offset) html += `offset: ${offset}`;
