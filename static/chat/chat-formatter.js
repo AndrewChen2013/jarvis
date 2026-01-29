@@ -35,8 +35,14 @@ Object.assign(ChatMode, {
       </div>`;
     });
 
-    // Inline code (`)
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Inline code (`) - check for file paths inside
+    html = html.replace(/`([^`]+)`/g, (match, code) => {
+      // Check if the code looks like a file path
+      if (this.looksLikeFilePath(code)) {
+        return `<code class="file-link" data-path="${this.escapeHtml(code)}" onclick="ChatMode.openFilePath('${this.escapeHtml(code)}')">${this.escapeHtml(code)}</code>`;
+      }
+      return `<code>${code}</code>`;
+    });
 
     // Bold (**)
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -141,6 +147,86 @@ Object.assign(ChatMode, {
       }
     } catch (e) {
       return '';
+    }
+  },
+
+  /**
+   * Check if a string looks like a file path
+   */
+  looksLikeFilePath(text) {
+    if (!text || text.length < 3) return false;
+
+    // Remove trailing line number (e.g., :123 or :123:45)
+    const pathPart = text.replace(/:\d+(:\d+)?$/, '');
+
+    // Common file extensions that we can preview
+    const previewableExts = [
+      '.txt', '.log', '.text',
+      '.json', '.xml', '.yaml', '.yml', '.toml', '.csv', '.tsv',
+      '.md', '.markdown', '.rst', '.tex',
+      '.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs',
+      '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hxx',
+      '.java', '.kt', '.kts', '.scala', '.groovy',
+      '.go', '.rs', '.rb', '.php', '.swift', '.m', '.mm',
+      '.lua', '.r', '.R', '.pl', '.pm',
+      '.html', '.htm', '.css', '.scss', '.sass', '.less', '.vue', '.svelte',
+      '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+      '.conf', '.ini', '.cfg', '.config', '.properties', '.plist',
+      '.env', '.gitignore', '.gitattributes', '.dockerignore', '.editorconfig',
+      '.sql', '.vim', '.el', '.clj', '.cljs', '.edn', '.ex', '.exs',
+      '.erl', '.hrl', '.hs', '.lhs', '.ml', '.mli', '.fs', '.fsx', '.dart', '.nim'
+    ];
+
+    // Check if it has a previewable extension
+    const ext = pathPart.substring(pathPart.lastIndexOf('.')).toLowerCase();
+    const hasPreviewableExt = previewableExts.includes(ext);
+
+    // Check if it looks like a path (has / or starts with ./ or ../)
+    const looksLikePath = pathPart.includes('/') ||
+                          pathPart.startsWith('./') ||
+                          pathPart.startsWith('../') ||
+                          pathPart.startsWith('~');
+
+    // Either: has a previewable extension AND looks like a path
+    // Or: is an absolute path starting with /
+    return (hasPreviewableExt && looksLikePath) ||
+           (pathPart.startsWith('/') && hasPreviewableExt);
+  },
+
+  /**
+   * Open a file path in the file browser
+   */
+  openFilePath(path) {
+    if (!path) return;
+
+    console.log('[ChatMode] openFilePath called:', path);
+
+    // Remove trailing line number if present (e.g., :123 or :123:45)
+    const cleanPath = path.replace(/:\d+(:\d+)?$/, '');
+
+    // Get current session's working directory
+    const currentSession = window.sessionManager?.getCurrentSession();
+    const workingDir = currentSession?.workDir || '~';
+
+    console.log('[ChatMode] openFilePath: workingDir=', workingDir, 'cleanPath=', cleanPath);
+
+    // Resolve relative path
+    let fullPath = cleanPath;
+    if (!cleanPath.startsWith('/') && !cleanPath.startsWith('~')) {
+      // Relative path - prepend working directory
+      fullPath = workingDir + '/' + cleanPath;
+    }
+
+    console.log('[ChatMode] openFilePath: fullPath=', fullPath, 'app.openFileFromChat=', !!window.app?.openFileFromChat);
+
+    // Minimize chat window first so preview modal is visible
+    this.minimize?.();
+
+    // Call the global file opener function
+    if (window.app?.openFileFromChat) {
+      window.app.openFileFromChat(fullPath);
+    } else {
+      console.warn('File opener not available');
     }
   }
 });

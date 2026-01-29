@@ -217,6 +217,11 @@ Object.assign(ChatMode, {
     let lastTapTarget = null;
 
     const handleBubbleTap = (e) => {
+      // If clicked on a file link, let it handle the click normally
+      if (e.target.closest('.file-link')) {
+        return;
+      }
+
       const bubble = e.target.closest('.chat-bubble');
       if (!bubble) return;
 
@@ -278,11 +283,25 @@ Object.assign(ChatMode, {
     };
 
     // Listen for both click and touchend for best compatibility
-    this.messagesEl.addEventListener('click', handleBubbleTap);
+    // Track if touchend was handled to prevent duplicate from click
+    let touchHandled = false;
+
+    this.messagesEl.addEventListener('click', (e) => {
+      // Skip if touchend already handled this interaction
+      if (touchHandled) {
+        touchHandled = false;
+        return;
+      }
+      handleBubbleTap(e);
+    });
+
     this.messagesEl.addEventListener('touchend', (e) => {
       // Only handle single touch
       if (e.changedTouches && e.changedTouches.length === 1) {
+        touchHandled = true;
         handleBubbleTap(e);
+        // Reset flag after a short delay (in case click doesn't fire)
+        setTimeout(() => { touchHandled = false; }, 100);
       }
     });
 

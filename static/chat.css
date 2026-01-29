@@ -496,6 +496,25 @@
   color: inherit;
 }
 
+/* File path link in chat */
+.chat-bubble code.file-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  transition: all 0.15s ease;
+}
+
+.chat-bubble code.file-link:hover {
+  background: var(--color-primary);
+  color: var(--bg-primary);
+  text-decoration: none;
+}
+
+.chat-bubble code.file-link:active {
+  opacity: 0.8;
+}
+
 /* ========== Streaming Indicator ========== */
 .chat-message.streaming .chat-bubble::after {
   content: '';

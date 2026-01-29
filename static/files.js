@@ -1754,6 +1754,66 @@ const AppFiles = {
    */
   refreshFilesPage() {
     this.loadFilesDirectory(this._currentPath);
+  },
+
+  /**
+   * Open a file from external source (e.g., chat message)
+   * This will switch to the Files page and open the file preview
+   * @param {string} filePath - Full path to the file
+   */
+  openFileFromChat(filePath) {
+    console.log('[Files] openFileFromChat called:', filePath);
+    if (!filePath) return;
+
+    const fileName = filePath.split('/').pop();
+    console.log('[Files] openFileFromChat: fileName=', fileName);
+
+    // Switch to Files page first (page-files is index 2 in default order)
+    this.switchToFilesPage();
+
+    // Open the file preview directly
+    // Small delay to ensure page switch animation completes
+    setTimeout(() => {
+      console.log('[Files] openFileFromChat: opening preview for', filePath);
+      this.openFilePreview(filePath, fileName);
+    }, 100);
+  },
+
+  /**
+   * Switch to the Files page
+   */
+  switchToFilesPage() {
+    console.log('[Files] switchToFilesPage called');
+    const container = document.getElementById('swipe-container');
+    if (!container) {
+      console.log('[Files] switchToFilesPage: swipe-container not found');
+      return;
+    }
+
+    // Find the index of page-files in the current page order
+    const order = this.getPageOrder?.() || [0, 1, 2, 3, 4];
+    const SWIPE_PAGE_IDS = ['page-projects', 'page-all-sessions', 'page-files', 'page-monitor', 'page-scheduled-tasks'];
+    const filesPageIndex = order.indexOf(SWIPE_PAGE_IDS.indexOf('page-files'));
+
+    console.log('[Files] switchToFilesPage: order=', order, 'filesPageIndex=', filesPageIndex);
+
+    if (filesPageIndex === -1) {
+      console.log('[Files] switchToFilesPage: filesPageIndex is -1, aborting');
+      return;
+    }
+
+    // Scroll to the Files page
+    const pageWidth = container.offsetWidth;
+    console.log('[Files] switchToFilesPage: scrolling to', pageWidth * filesPageIndex);
+    container.scrollTo({
+      left: pageWidth * filesPageIndex,
+      behavior: 'smooth'
+    });
+
+    // Update current page index
+    this._currentPage = filesPageIndex;
+    localStorage.setItem('currentPageIndex', filesPageIndex.toString());
+    this.updatePageIndicator?.();
   }
 };
 
