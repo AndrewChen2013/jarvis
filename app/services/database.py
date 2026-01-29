@@ -196,6 +196,9 @@ class Database:
                     ON pinned_sessions(position ASC)
                 """)
 
+                # 迁移：为 pinned_sessions 添加 type 和 machine_id 列（如果不存在）
+                self._migrate_pinned_sessions(cursor)
+
                 # 定时任务表
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS scheduled_tasks (
@@ -306,6 +309,22 @@ class Database:
                 logger.info("Added 'execution_mode' column to scheduled_tasks")
         except Exception as e:
             logger.error(f"Migration error for scheduled_tasks: {e}")
+
+    def _migrate_pinned_sessions(self, cursor):
+        """为 pinned_sessions 表添加 type 和 machine_id 列（向后兼容）"""
+        try:
+            cursor.execute("PRAGMA table_info(pinned_sessions)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'type' not in columns:
+                cursor.execute("ALTER TABLE pinned_sessions ADD COLUMN type TEXT DEFAULT 'session'")
+                logger.info("Added 'type' column to pinned_sessions")
+
+            if 'machine_id' not in columns:
+                cursor.execute("ALTER TABLE pinned_sessions ADD COLUMN machine_id TEXT")
+                logger.info("Added 'machine_id' column to pinned_sessions")
+        except Exception as e:
+            logger.error(f"Migration error for pinned_sessions: {e}")
 
     def _migrate_from_json(self):
         """从 JSON 文件迁移数据"""
