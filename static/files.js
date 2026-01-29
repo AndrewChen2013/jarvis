@@ -1766,16 +1766,24 @@ const AppFiles = {
     if (!filePath) return;
 
     const fileName = filePath.split('/').pop();
-    console.log('[Files] openFileFromChat: fileName=', fileName);
+    // Get directory path (remove filename from path)
+    const dirPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+    console.log('[Files] openFileFromChat: fileName=', fileName, 'dirPath=', dirPath);
 
     // Switch to Files page first (page-files is index 2 in default order)
     this.switchToFilesPage();
 
-    // Open the file preview directly
+    // Navigate to the file's directory and open the file preview
     // Small delay to ensure page switch animation completes
     setTimeout(() => {
-      console.log('[Files] openFileFromChat: opening preview for', filePath);
-      this.openFilePreview(filePath, fileName);
+      console.log('[Files] openFileFromChat: navigating to', dirPath);
+      // Load the directory so when preview closes, user sees the file's location
+      this.loadFilesDirectory(dirPath);
+      // Open preview after a short delay to let directory load start
+      setTimeout(() => {
+        console.log('[Files] openFileFromChat: opening preview for', filePath);
+        this.openFilePreview(filePath, fileName);
+      }, 50);
     }, 100);
   },
 
