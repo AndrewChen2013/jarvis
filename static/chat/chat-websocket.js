@@ -175,7 +175,8 @@ Object.assign(ChatMode, {
    * Connect using multiplexed WebSocket
    */
   connectMux(sessionId, workingDir, session) {
-    this.log(`connectMux: session=${sessionId?.substring(0, 8)}, workingDir=${workingDir}`);
+    const startTime = performance.now();
+    this.log(`[TIMING] connectMux START: session=${sessionId?.substring(0, 8)}, workingDir=${workingDir}`);
     this.updateStatus('connecting');
 
     // BUG FIX: Store the session ID used for this connection
@@ -199,9 +200,11 @@ Object.assign(ChatMode, {
     const capturedSessionId = sessionId;
 
     // Use muxWs to connect
+    this.log(`[TIMING] connectMux calling muxWs.connectChat at +${(performance.now() - startTime).toFixed(1)}ms`);
     window.muxWs.connectChat(sessionId, workingDir, {
       resume: claudeSessionId,
       onConnect: (data) => {
+        this.log(`[TIMING] onConnect callback received at +${(performance.now() - startTime).toFixed(1)}ms`);
         this.log(`[DIAG] onConnect: workingDir=${data.working_dir}, this.sessionId=${this.sessionId?.substring(0, 8)}, capturedSessionId=${capturedSessionId?.substring(0, 8)}, original_session_id=${data.original_session_id?.substring(0, 8)}`);
         // Only active session updates UI state
         // BUG-011 FIX: Also check original_session_id, because session may have been renamed

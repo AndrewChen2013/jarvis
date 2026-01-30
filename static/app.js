@@ -33,17 +33,14 @@ class App {
     this.selectedWorkDir = null; // 选中的工作目录
     this.currentBrowsePath = null; // 当前浏览路径
     this.parentPath = null; // 父目录路径
-    // === 重连相关属性 ===
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.reconnectTimeout = null;
-    this.shouldReconnect = false;
-    this.isConnecting = false;
     this.currentSessionName = ''; // 当前会话名称
 
     // 多 Session 管理
     this.sessionManager = new SessionManager(this);
     this.floatingButton = new FloatingButton(this);
+
+    // ConnectionManager 实例（在 init() 中初始化）
+    this.connectionManager = null;
 
     // 下拉刷新状态
     this.pullRefresh = {
@@ -69,6 +66,9 @@ class App {
     // 使用 Socket.IO（支持 WebSocket + HTTP polling 降级）
     window.muxWs = window.socketIOManager;
     console.log('[App] Using Socket.IO transport');
+
+    // 初始化 ConnectionManager（统一管理连接和重连）
+    this._initConnectionManager();
 
     // 初始化国际化
     if (window.i18n) {
@@ -98,43 +98,13 @@ class App {
     // 检查认证状态
     this.checkAuth();
 
-    // 监听页面可见性变化（iOS Safari 挂起/恢复）
-    document.addEventListener('visibilitychange', () => {
-      const now = new Date().toISOString().substr(11, 12);
-      if (document.hidden) {
-        this.debugLog(`[${now}] page hidden`);
-      } else {
-        this.debugLog(`[${now}] page visible`);
-        // 详细记录当前状态
-        this.debugLog(`[${now}] visibility check: currentSession=${!!this.currentSession}, shouldReconnect=${this.shouldReconnect}, isConnecting=${this.isConnecting}`);
-        if (this.ws) {
-          const stateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
-          this.debugLog(`[${now}] ws.readyState=${this.ws.readyState} (${stateNames[this.ws.readyState]})`);
-        } else {
-          this.debugLog(`[${now}] ws=null`);
-        }
-
-        // 如果连接已断开或正在关闭，尝试重连
-        if (this.currentSession && this.shouldReconnect && !this.isConnecting) {
-          // 扩展检查：CLOSING(2) 和 CLOSED(3) 都应该重连
-          if (!this.ws || this.ws.readyState >= WebSocket.CLOSING) {
-            this.debugLog(`[${now}] page visible, triggering reconnect`);
-            this.attemptReconnect();
-          } else {
-            this.debugLog(`[${now}] ws still open/connecting, no reconnect needed`);
-          }
-        } else {
-          this.debugLog(`[${now}] reconnect conditions not met`);
-        }
-      }
-    });
-
     // 调试：捕获页面离开事件
     window.addEventListener('beforeunload', (e) => {
       console.log('beforeunload triggered!');
       // 在开发阶段，如果有活动连接，阻止页面离开以便调试
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        console.log('WARNING: Page unloading with active WebSocket!');
+      const socketIO = window.muxWs;
+      if (socketIO && socketIO.state === 'connected') {
+        console.log('WARNING: Page unloading with active connection!');
       }
     });
 
@@ -231,6 +201,73 @@ class App {
     } else {
       this.debugLog('initKeyboardHandler: visualViewport not supported');
     }
+  }
+
+  /**
+   * 初始化 ConnectionManager
+   *
+   * ConnectionManager 提供：
+   * - 统一的连接状态管理
+   * - 快速重连（100ms 起，最大 2s）
+   * - 页面可见性感知（后台暂停，前台恢复）
+   * - 网络状态感知
+   */
+  _initConnectionManager() {
+    if (!window.ConnectionManager) {
+      this.debugLog('[ConnMgr] ConnectionManager not loaded, skipping');
+      return;
+    }
+
+    const socketIO = window.muxWs || window.socketIOManager;
+    if (!socketIO) {
+      this.debugLog('[ConnMgr] SocketIOManager not available, skipping');
+      return;
+    }
+
+    // 创建 ConnectionManager 实例
+    this.connectionManager = new window.ConnectionManager(socketIO, {
+      baseDelay: 100,    // 首次重连 100ms
+      maxDelay: 2000,    // 最大延迟 2s
+      maxRetries: 20     // 最多重试 20 次
+    });
+
+    // 监听状态变化
+    this.connectionManager.on('stateChange', ({ from, to, event }) => {
+      this.debugLog(`[ConnMgr] ${from} -> ${to} (${event})`);
+
+      // 更新 UI 状态
+      if (to === 'connected') {
+        this.updateConnectStatus('connected', '');
+      } else if (to === 'reconnecting') {
+        const info = this.connectionManager.getReconnectInfo();
+        this.updateConnectStatus('connecting', `Reconnecting (${info.attempts}/${info.maxRetries})...`);
+      } else if (to === 'suspended') {
+        this.updateConnectStatus('connecting', 'Suspended (page hidden)');
+      } else if (to === 'failed') {
+        this.updateConnectStatus('disconnected', 'Connection failed');
+      } else if (to === 'idle') {
+        this.updateConnectStatus('disconnected', '');
+      }
+    });
+
+    this.connectionManager.on('connected', () => {
+      this.debugLog('[ConnMgr] Connected');
+    });
+
+    this.connectionManager.on('reconnecting', ({ attempt }) => {
+      this.debugLog(`[ConnMgr] Reconnecting attempt ${attempt}`);
+    });
+
+    this.connectionManager.on('suspended', () => {
+      this.debugLog('[ConnMgr] Suspended (page in background)');
+    });
+
+    this.connectionManager.on('failed', ({ attempts }) => {
+      this.debugLog(`[ConnMgr] Failed after ${attempts} attempts`);
+      // 可以在这里显示一个重试按钮
+    });
+
+    this.debugLog('[ConnMgr] ConnectionManager initialized');
   }
 
   /**

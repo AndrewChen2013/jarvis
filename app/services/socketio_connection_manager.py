@@ -100,7 +100,9 @@ class SocketIOConnectionManager:
         # Chat 事件
         @sio.on('chat:connect')
         async def handle_chat_connect(sid, data):
-            logger.info(f"[SocketIO] Received chat:connect from {sid[:8]}, data={data}")
+            import time as _t
+            _recv_ts = _t.time()
+            logger.info(f"[SocketIO] Received chat:connect from {sid[:8]}, data={data}, recv_ts={_recv_ts:.3f}")
             await self._handle_chat_message(sid, data.get('session_id'), 'connect', data)
 
         @sio.on('chat:disconnect')
@@ -304,17 +306,17 @@ class SocketIOConnectionManager:
                 # 否则生成新的 UUID
                 if not self._is_valid_uuid(session_id):
                     session_id = str(uuid_module.uuid4())
-                
-                logger.info(f"[SocketIO] Creating new chat session: {session_id[:8]}")
+
+                logger.info(f"[SocketIO] Creating new chat session: {session_id[:8]}, T1.1: {(_time.time()-_t0)*1000:.0f}ms")
                 # create_session returns session_id, need to get the session object
                 created_session_id = await chat_manager.create_session(
                     session_id=session_id,
                     working_dir=working_dir,
                     resume_session_id=resume
                 )
-                logger.info(f"[SocketIO] Session created: {created_session_id[:8] if created_session_id else 'None'}")
+                logger.info(f"[SocketIO] Session created: {created_session_id[:8] if created_session_id else 'None'}, T1.2: {(_time.time()-_t0)*1000:.0f}ms")
                 session = chat_manager.get_session(created_session_id)
-                logger.info(f"[SocketIO] Got session object: {session is not None}")
+                logger.info(f"[SocketIO] Got session object: {session is not None}, T1.3: {(_time.time()-_t0)*1000:.0f}ms")
 
                 if original_session_id and original_session_id != session_id:
                     mapping_key = (sid, 'chat', original_session_id)
@@ -322,9 +324,13 @@ class SocketIOConnectionManager:
                     logger.info(f"[SocketIO] Stored chat UUID mapping: '{original_session_id[:8]}' -> {session_id[:8]}")
 
                 # Save persistent mapping in DB (allow any non-empty ID)
+                # Use run_in_executor to avoid blocking event loop
                 if original_session_id and session_id:
                      try:
-                         db.set_chat_session_id(original_session_id, session_id)
+                         _t_db = _time.time()
+                         loop = asyncio.get_event_loop()
+                         await loop.run_in_executor(None, lambda: db.set_chat_session_id(original_session_id, session_id))
+                         logger.info(f"[SocketIO] DB set_chat_session_id: {(_time.time()-_t_db)*1000:.0f}ms")
                      except Exception as e:
                          logger.error(f"[SocketIO] Failed to save session mapping: {e}")
 
@@ -399,22 +405,29 @@ class SocketIOConnectionManager:
             total_count = 0
             if claude_sid:
                 # 获取最近的消息（按时间降序），然后反转为升序发送
-                history_desc = db.get_chat_messages_desc(claude_sid, limit=15)
+                # 使用 run_in_executor 避免数据库 threading.Lock 阻塞事件循环
+                loop = asyncio.get_event_loop()
+                _t_db1 = _time.time()
+                history_desc = await loop.run_in_executor(None, lambda: db.get_chat_messages_desc(claude_sid, limit=15))
+                logger.info(f"[SocketIO] DB get_chat_messages_desc: {(_time.time()-_t_db1)*1000:.0f}ms, rows={len(history_desc)}")
                 history = list(reversed(history_desc))  # 反转为时间升序
-                total_count = db.get_chat_message_count(claude_sid)
+                _t_db2 = _time.time()
+                total_count = await loop.run_in_executor(None, lambda: db.get_chat_message_count(claude_sid))
+                logger.info(f"[SocketIO] DB get_chat_message_count: {(_time.time()-_t_db2)*1000:.0f}ms, count={total_count}")
                 logger.info(f"[SocketIO] Loaded {len(history)}/{total_count} history messages for {claude_sid[:8]}")
 
             logger.info(f"[SocketIO] Chat connect T4 history_loaded: {(_time.time()-_t0)*1000:.0f}ms")
             # 发送 ready 事件（必须在 history 之前，以便前端完成 handler 映射）
+            _t_emit1 = _time.time()
             await self.send_to_client(sid, "chat", "ready", {
                 "working_dir": working_dir,
                 "original_session_id": original_session_id,
                 "history_count": total_count,
                 "claude_session_id": claude_sid
             }, session_id, _debug_tag="connect_ready")
-            logger.info(f"[SocketIO] Chat connect T5 ready_sent: {(_time.time()-_t0)*1000:.0f}ms")
+            logger.info(f"[SocketIO] Chat connect T5 ready_sent: {(_time.time()-_t0)*1000:.0f}ms, emit took {(_time.time()-_t_emit1)*1000:.0f}ms")
 
-            # 发送历史消息（数据库格式转换为前端期望的格式）
+            # 发送历史消息（逐条发送，前端已有处理逻辑）
             for msg in history:
                 # 数据库字段: role, content; 前端期望: type, content
                 msg_type = msg.get("role", "assistant")
@@ -429,10 +442,12 @@ class SocketIOConnectionManager:
                 await self.send_to_client(sid, "chat", msg_type, msg_data, session_id)
 
             logger.info(f"[SocketIO] Chat connect T6 history_sent: {(_time.time()-_t0)*1000:.0f}ms")
+            _t_emit3 = _time.time()
             await self.send_to_client(sid, "chat", "history_end", {
                 "count": len(history),
                 "total": total_count
             }, session_id)
+            logger.info(f"[SocketIO] history_end emit took {(_time.time()-_t_emit3)*1000:.0f}ms")
             logger.info(f"[SocketIO] Chat connect DONE: {(_time.time()-_t0)*1000:.0f}ms total")
 
         elif msg_type == "disconnect":

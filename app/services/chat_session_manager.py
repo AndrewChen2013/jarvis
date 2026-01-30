@@ -160,6 +160,9 @@ class ChatSession:
 
     async def start(self) -> bool:
         """Start the Claude CLI process."""
+        import time as _time
+        _t0 = _time.time()
+
         if self._is_running:
             return True
 
@@ -184,6 +187,7 @@ class ChatSession:
                     logger.warning(f"Session file not found for {self.resume_session_id[:8]}, creating new session")
                     self.resume_session_id = None  # Clear so we don't try to load history from non-existent file
 
+            logger.info(f"[ChatSession:{self.session_id[:8]}] start() S1 before subprocess: {(_time.time()-_t0)*1000:.0f}ms")
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -192,6 +196,7 @@ class ChatSession:
                 cwd=self.working_dir,
                 limit=10 * 1024 * 1024,  # 10MB，支持大图片和长输出
             )
+            logger.info(f"[ChatSession:{self.session_id[:8]}] start() S2 subprocess created: {(_time.time()-_t0)*1000:.0f}ms")
 
             self._is_running = True
             self._reader_task = asyncio.create_task(self._read_output())
@@ -199,7 +204,9 @@ class ChatSession:
             self._stderr_task = asyncio.create_task(self._read_stderr())
 
             # Load history from file if resuming
+            logger.info(f"[ChatSession:{self.session_id[:8]}] start() S3 before load_history: {(_time.time()-_t0)*1000:.0f}ms")
             await self.load_history_if_resume()
+            logger.info(f"[ChatSession:{self.session_id[:8]}] start() S4 after load_history: {(_time.time()-_t0)*1000:.0f}ms")
 
             logger.info(f"Chat session {self.session_id} started in {self.working_dir}")
             logger.info(f"Claude command: {' '.join(cmd)}")
@@ -255,8 +262,9 @@ class ChatSession:
                     if data.get("type") != "stream_event":
                         self._message_history.append(msg)
 
-                    # Save to database for persistent history
-                    self._save_message_to_db(msg)
+                    # Save to database for persistent history (in thread pool to avoid blocking event loop)
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, self._save_message_to_db, msg)
 
                     # 单一 callback 模式
                     if self._callback:
@@ -337,16 +345,17 @@ class ChatSession:
             self._process.stdin.write(line.encode('utf-8'))
             await self._process.stdin.drain()
 
-            # Save user message to database
+            # Save user message to database (in thread pool to avoid blocking event loop)
             # Prefer Claude's internal ID, then resume ID (for history), then local ID
             session_id = self._claude_session_id or self.resume_session_id or self.session_id
-            db.save_chat_message(
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, lambda: db.save_chat_message(
                 session_id=session_id,
                 role="user",
                 content=content,
                 timestamp=_utc_now(),
                 source="realtime"
-            )
+            ))
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
             raise RuntimeError(f"Failed to send message: {e}")
@@ -688,12 +697,28 @@ class ChatSession:
 
     async def load_history_if_resume(self):
         """Load history from file if this is a resume session and sync to database."""
+        import time as _time
+        _t0 = _time.time()
+
         if self.resume_session_id:
-            # First sync from Claude file to database (as backup)
-            self._sync_history_to_db()
-            # Then load into memory for backward compatibility
+            # Run sync operations in thread pool to avoid blocking event loop
+            # These are I/O heavy operations (file read + database write)
+            import asyncio
+            loop = asyncio.get_event_loop()
+
+            # Sync to database in background (fire and forget)
+            # This is a backup operation, doesn't need to complete before session is ready
+            logger.info(f"[ChatSession:{self.session_id[:8]}] load_history L1 before sync_to_db: {(_time.time()-_t0)*1000:.0f}ms")
+            loop.run_in_executor(None, self._sync_history_to_db)
+            logger.info(f"[ChatSession:{self.session_id[:8]}] load_history L2 after sync_to_db submit: {(_time.time()-_t0)*1000:.0f}ms")
+
+            # Load history into memory - need to wait for this one
             if not self._message_history:
-                self._message_history = self._load_history_from_file()
+                logger.info(f"[ChatSession:{self.session_id[:8]}] load_history L3 before load_from_file: {(_time.time()-_t0)*1000:.0f}ms")
+                self._message_history = await loop.run_in_executor(
+                    None, self._load_history_from_file
+                )
+                logger.info(f"[ChatSession:{self.session_id[:8]}] load_history L4 after load_from_file: {(_time.time()-_t0)*1000:.0f}ms, msgs={len(self._message_history) if self._message_history else 0}")
 
 
 class ChatSessionManager:

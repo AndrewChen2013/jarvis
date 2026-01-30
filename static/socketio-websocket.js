@@ -65,13 +65,11 @@ class SocketIOManager {
     // Connect to Socket.IO endpoint
     // WebSocket preferred, polling as fallback
     // Note: If using proxy/VPN that corrupts WebSocket, change to ['polling'] only
+    // 重连由 ConnectionManager 控制，禁用 Socket.IO 内置重连
     this.socket = io({
       path: '/socket.io/',
       transports: ['websocket', 'polling'],  // WebSocket preferred for better performance
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnection: false,  // ConnectionManager handles reconnection
       timeout: 10000,
     });
 
@@ -131,7 +129,8 @@ class SocketIOManager {
   }
 
   _onAuthSuccess() {
-    this.log('[DIAG] Authentication successful, setting state to connected');
+    const transport = this.socket?.io?.engine?.transport?.name || 'unknown';
+    this.log(`[DIAG] Authentication successful, transport=${transport}`);
     this.authenticated = true;
     this._setState('connected');
 
@@ -233,7 +232,7 @@ class SocketIOManager {
 
     if (handler) {
       if (type === 'connected' || type === 'ready') {
-        this.log(`[DIAG] _handleMessage: ${channel}:${type}, triggering onConnect for ${handlerKey.substring(0, 15)}`);
+        this.log(`[TIMING] _handleMessage: RECEIVED ${channel}:${type}, triggering onConnect for ${handlerKey.substring(0, 15)}`);
         if (handler.onConnect) handler.onConnect(data);
       }
       if (handler.onMessage) handler.onMessage(type, data);
@@ -274,7 +273,8 @@ class SocketIOManager {
 
     const eventName = `${channel}:${type}`;
     const payload = { ...data, session_id: sessionId };
-    this.log(`[DIAG] send EMIT: ${eventName} to ${sessionId?.substring(0, 8) || 'unknown'}, socket.connected=${this.socket?.connected}`);
+    const transport = this.socket?.io?.engine?.transport?.name || 'unknown';
+    this.log(`[DIAG] send EMIT: ${eventName} to ${sessionId?.substring(0, 8) || 'unknown'}, transport=${transport}`);
     this.socket.emit(eventName, payload);
   }
 
@@ -330,16 +330,33 @@ class SocketIOManager {
 
   connectChat(sessionId, workingDir, options = {}) {
     const key = `chat:${sessionId}`;
+    const startTime = performance.now();
+    this.log(`[TIMING] connectChat START: sessionId=${sessionId?.substring(0, 8)}, state=${this.state}`);
+
+    const connectData = {
+      working_dir: workingDir,
+      resume: options.resume
+    };
 
     if (this.handlers.has(key)) {
-      this.log(`Chat ${sessionId.substring(0, 8)} already connected, updating callbacks`);
+      this.log(`[TIMING] connectChat: handler EXISTS, updating callbacks at +${(performance.now() - startTime).toFixed(1)}ms`);
       const handler = this.handlers.get(key);
       if (options.onMessage) handler.onMessage = options.onMessage;
       if (options.onConnect) handler.onConnect = options.onConnect;
       if (options.onDisconnect) handler.onDisconnect = options.onDisconnect;
 
-      // Trigger onConnect immediately since we're already connected
+      // BUG FIX: Always send chat:connect to backend to re-establish callback
+      // The backend clears callbacks when switching sessions, but frontend handler remains.
+      // Without sending connect, backend has no callback and triggers auto-connect on message,
+      // causing delays up to 14-42 seconds.
+      this.log(`[TIMING] connectChat: sending connect to re-establish backend callback at +${(performance.now() - startTime).toFixed(1)}ms`);
+      this.subscriptionData.set(key, { channel: 'chat', sessionId, data: connectData });
+      this.send('chat', sessionId, 'connect', connectData);
+
+      // Trigger onConnect immediately for UI responsiveness
+      // Backend will also send chat:ready, but we use already_connected flag to skip duplicate
       if (this.state === 'connected' || this.state === 'authenticating') {
+        this.log(`[TIMING] connectChat: triggering immediate onConnect (state=${this.state}) at +${(performance.now() - startTime).toFixed(1)}ms`);
         setTimeout(() => {
           if (options.onConnect) options.onConnect({ working_dir: workingDir, already_connected: true });
         }, 0);
@@ -347,24 +364,23 @@ class SocketIOManager {
         // If not connected yet, mark handler as pending so onConnect
         // will be triggered when connection is established
         handler.pendingConnect = { working_dir: workingDir, already_connected: true };
-        this.log(`Chat ${sessionId.substring(0, 8)} not yet connected (state=${this.state}), will trigger onConnect later`);
+        this.log(`[TIMING] connectChat: NOT connected (state=${this.state}), marking pending at +${(performance.now() - startTime).toFixed(1)}ms`);
       }
       return;
     }
 
+    this.log(`[TIMING] connectChat: NEW handler, subscribing at +${(performance.now() - startTime).toFixed(1)}ms`);
     this.subscribe(sessionId, 'chat', {
       onMessage: options.onMessage,
       onConnect: options.onConnect,
       onDisconnect: options.onDisconnect
     });
 
-    const connectData = {
-      working_dir: workingDir,
-      resume: options.resume
-    };
     this.subscriptionData.set(key, { channel: 'chat', sessionId, data: connectData });
 
+    this.log(`[TIMING] connectChat: calling send() at +${(performance.now() - startTime).toFixed(1)}ms`);
     this.send('chat', sessionId, 'connect', connectData);
+    this.log(`[TIMING] connectChat END at +${(performance.now() - startTime).toFixed(1)}ms`);
   }
 
   disconnectChat(sessionId) {
