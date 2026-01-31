@@ -51,6 +51,12 @@ class SocketIOManager {
       return;
     }
 
+    // Prevent duplicate connect calls while connecting
+    if (this.state === 'connecting' || this.state === 'authenticating') {
+      this.log('Already connecting, skip');
+      return;
+    }
+
     // Clean up existing socket before creating new one to prevent duplicate event listeners
     if (this.socket) {
       this.log('Cleaning up existing socket before reconnect');
