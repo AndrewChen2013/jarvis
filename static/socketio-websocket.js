@@ -103,7 +103,15 @@ class SocketIOManager {
       'system', 'result', 'error', 'user_ack', 'history_end', 'history_page_end'
     ];
     chatEvents.forEach(type => {
-      this.socket.on(`chat:${type}`, (data) => this._handleMessage('chat', type, data));
+      this.socket.on(`chat:${type}`, (data) => {
+        // Log when Socket.IO delivers the message (before any processing)
+        if (type === 'ready' && data.server_ts) {
+          const clientNow = Date.now();
+          const networkDelay = clientNow - data.server_ts;
+          this.log(`[TIMING] Socket.IO delivered chat:ready, network_delay=${networkDelay.toFixed(0)}ms (server=${data.server_ts.toFixed(0)}, client=${clientNow})`);
+        }
+        this._handleMessage('chat', type, data);
+      });
     });
   }
 

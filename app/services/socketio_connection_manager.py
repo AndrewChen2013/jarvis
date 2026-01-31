@@ -424,7 +424,8 @@ class SocketIOConnectionManager:
                 "working_dir": working_dir,
                 "original_session_id": original_session_id,
                 "history_count": total_count,
-                "claude_session_id": claude_sid
+                "claude_session_id": claude_sid,
+                "server_ts": _t_emit1 * 1000  # milliseconds since epoch for frontend comparison
             }, session_id, _debug_tag="connect_ready")
             logger.info(f"[SocketIO] Chat connect T5 ready_sent: {(_time.time()-_t0)*1000:.0f}ms, emit took {(_time.time()-_t_emit1)*1000:.0f}ms")
 
