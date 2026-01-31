@@ -900,6 +900,8 @@ class App {
    * 显示视图
    */
   showView(viewName) {
+    console.time(`[PERF] showView(${viewName})`);
+    const perfStart = performance.now();
     this.debugLog('showView: ' + viewName);
     document.querySelectorAll('.view').forEach(view => {
       view.classList.remove('active');
@@ -908,6 +910,7 @@ class App {
 
     document.getElementById(`${viewName}-view`).classList.add('active');
     this.debugLog('add active done');
+    console.log(`[PERF] showView(${viewName}): +${(performance.now() - perfStart).toFixed(1)}ms - DOM updated`);
 
     if (viewName === 'sessions') {
       // 并发加载会话列表和用量数据
@@ -923,14 +926,23 @@ class App {
 
     // Chat view initialization
     if (viewName === 'chat') {
+      console.log(`[PERF] showView(chat): +${(performance.now() - perfStart).toFixed(1)}ms - initializing chat`);
       const chatContainer = document.getElementById('chat-view');
       if (window.ChatMode && chatContainer) {
+        console.time('[PERF] ChatMode.init');
         window.ChatMode.init(chatContainer);
+        console.timeEnd('[PERF] ChatMode.init');
+
         if (this.chatSessionId && this.chatWorkingDir) {
+          console.time('[PERF] ChatMode.connect');
           window.ChatMode.connect(this.chatSessionId, this.chatWorkingDir);
+          console.timeEnd('[PERF] ChatMode.connect');
         }
       }
     }
+
+    console.timeEnd(`[PERF] showView(${viewName})`);
+    console.log(`[PERF] showView(${viewName}) DONE: TOTAL ${(performance.now() - perfStart).toFixed(1)}ms`);
   }
 
   /**

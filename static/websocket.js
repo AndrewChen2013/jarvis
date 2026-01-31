@@ -35,11 +35,13 @@ const AppWebSocket = {
    * @param {string} chatClaudeSessionId - Chat 模式专用的 session ID
    */
   connectSession(workDir, sessionId, sessionName, chatClaudeSessionId) {
+    const perfStart = performance.now();
+    console.time('[PERF] connectSession TOTAL');
     this.closeCreateModal();
 
     const prevSession = this.currentSession;
     const isNewSession = !sessionId;
-    this.debugLog(`=== connectSession START ===`);
+    this.debugLog(`=== connectSession START at ${perfStart.toFixed(2)}ms ===`);
     this.debugLog(`connectSession: isNew=${isNewSession}, workDir=${workDir}, sessionId=${sessionId?.substring(0, 8)}, chatSid=${chatClaudeSessionId?.substring(0, 8)}`);
 
     // 保存当前工作目录和会话信息
@@ -68,14 +70,20 @@ const AppWebSocket = {
 
     if (existingSession && existingSession.status === 'connected') {
       this.debugLog(`connectSession: session already connected, reuse it`);
+      console.log(`[PERF] connectSession: +${(performance.now() - perfStart).toFixed(1)}ms - REUSING existing connected session`);
       this.shouldReconnect = existingSession.shouldReconnect;
 
       if (chatClaudeSessionId) {
         existingSession.chatClaudeSessionId = chatClaudeSessionId;
       }
 
+      console.time('[PERF] switchTo');
       this.sessionManager.switchTo(this.currentSession);
+      console.timeEnd('[PERF] switchTo');
+
+      console.time('[PERF] showChat');
       this.showChat(this.currentSession, existingSession.workDir);
+      console.timeEnd('[PERF] showChat');
 
       const titleEl = document.getElementById('terminal-title');
       if (titleEl && this.currentSessionName) {
@@ -92,19 +100,26 @@ const AppWebSocket = {
       }
 
       this.updateConnectStatus('connected', '');
+      console.timeEnd('[PERF] connectSession TOTAL');
+      console.log(`[PERF] connectSession DONE: TOTAL ${(performance.now() - perfStart).toFixed(1)}ms`);
       return;
     }
 
     // BUG-003 FIX: 如果找到了 closed 的 session，复用它
     let session;
+    console.log(`[PERF] connectSession: +${(performance.now() - perfStart).toFixed(1)}ms - creating NEW session`);
     if (existingSession && existingSession.status === 'closed') {
       this.debugLog(`connectSession: reusing closed session ${this.currentSession.substring(0, 8)}`);
       session = existingSession;
       session.status = 'connecting';
       session.name = this.currentSessionName;
+      console.time('[PERF] switchTo (reuse closed)');
       this.sessionManager.switchTo(this.currentSession);
+      console.timeEnd('[PERF] switchTo (reuse closed)');
     } else {
+      console.time('[PERF] openSession (new)');
       session = this.sessionManager.openSession(this.currentSession, this.currentSessionName);
+      console.timeEnd('[PERF] openSession (new)');
     }
 
     // 保存连接参数到 session
@@ -113,9 +128,12 @@ const AppWebSocket = {
     session.chatClaudeSessionId = chatClaudeSessionId;
 
     this.debugLog(`connectSession: session registered, sessions.size=${this.sessionManager.sessions.size}`);
+    console.log(`[PERF] connectSession: +${(performance.now() - perfStart).toFixed(1)}ms - session registered`);
 
     // 显示 Chat 视图
+    console.time('[PERF] showChat (new session)');
     this.showChat(this.currentSession, workDir);
+    console.timeEnd('[PERF] showChat (new session)');
 
     const titleEl = document.getElementById('terminal-title');
     if (titleEl && this.currentSessionName) {
@@ -124,6 +142,9 @@ const AppWebSocket = {
 
     this.fetchGitBranch(workDir);
     this.restoreContextBarState(session);
+
+    console.timeEnd('[PERF] connectSession TOTAL');
+    console.log(`[PERF] connectSession DONE: TOTAL ${(performance.now() - perfStart).toFixed(1)}ms`);
   },
 
   /**
