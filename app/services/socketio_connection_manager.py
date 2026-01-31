@@ -291,11 +291,12 @@ class SocketIOConnectionManager:
             _t0 = _time.time()
             logger.info(f"[SocketIO] Chat connect START: session_id={session_id[:8] if session_id else 'None'}, workDir={working_dir[:30]}...")
 
-            # 幂等性检查：如果该 session 已有回调注册，说明已连接，跳过重复处理
-            # 这防止了网络重连时多次发送历史消息
-            if session_id and session_id in client.chat_callbacks:
-                logger.info(f"[SocketIO] Chat connect duplicate: session={session_id[:8]}, already connected, skipping")
-                return
+            # 幂等性检查：如果该 session 已有回调注册，说明已连接
+            # 但仍需发送历史消息，因为前端可能已丢失状态（页面刷新、返回等）
+            # FIX: 不再跳过，而是继续处理以重新发送历史
+            is_reconnect = session_id and session_id in client.chat_callbacks
+            if is_reconnect:
+                logger.info(f"[SocketIO] Chat connect reconnect: session={session_id[:8]}, will re-send history")
 
             session = chat_manager.get_session(session_id) if self._is_valid_uuid(session_id) else None
             logger.info(f"[SocketIO] Chat connect T1 get_session: {(_time.time()-_t0)*1000:.0f}ms, found={session is not None}")
