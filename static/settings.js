@@ -274,7 +274,7 @@ const AppSettings = {
 
       if (response.ok) {
         const data = await response.json();
-        this.updateAccountDisplay(data);
+        this.updateProfileDisplay(data);
       }
     } catch (error) {
       console.error('Load account info error:', error);

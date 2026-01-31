@@ -396,7 +396,8 @@ class App {
       const pageAtTop = page.scrollTop <= 0;
       const listAtTop = list.scrollTop <= 0;
       if (deltaY > 0 && pageAtTop && listAtTop) {
-        e.preventDefault();
+        // 只在事件可取消时才调用 preventDefault，避免浏览器警告
+        if (e.cancelable) e.preventDefault();
 
         // 拖拽时禁用过渡动画
         pullRefresh.classList.add('dragging');
