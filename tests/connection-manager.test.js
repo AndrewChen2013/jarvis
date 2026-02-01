@@ -194,6 +194,99 @@ describe('ConnectionManager 状态机', () => {
     });
   });
 
+  describe('RECONNECTING 状态下重连失败应该继续重试', () => {
+    test('BUG复现：重连失败后应该调度下一次重连', () => {
+      // 模拟场景：
+      // 1. 已连接状态
+      manager.connect();
+      mockSocketIO.simulateConnect();
+      expect(manager.state).toBe('connected');
+
+      // 2. 连接断开，进入 RECONNECTING
+      mockSocketIO.simulateDisconnect();
+      expect(manager.state).toBe('reconnecting');
+
+      // 3. 等待重连定时器触发
+      jest.advanceTimersByTime(100);
+      expect(mockSocketIO.connect).toHaveBeenCalled();
+      expect(manager.reconnectAttempts).toBe(1);
+
+      // 4. 重连失败（Socket.IO 再次变成 disconnected）
+      //    这是 BUG 所在：此时 ConnectionManager 在 RECONNECTING 状态，
+      //    收到 disconnected 事件后应该继续重试，但现有代码不处理这种情况
+      mockSocketIO.connect.mockClear();
+      mockSocketIO.simulateDisconnect();
+
+      // 5. 应该仍然在 RECONNECTING 状态，并且调度了下一次重连
+      expect(manager.state).toBe('reconnecting');
+      expect(manager.reconnectTimer).not.toBeNull();
+
+      // 6. 等待下一次重连定时器触发（200ms）
+      jest.advanceTimersByTime(200);
+      expect(mockSocketIO.connect).toHaveBeenCalled();
+      expect(manager.reconnectAttempts).toBe(2);
+    });
+
+    test('连续多次重连失败应该持续重试直到成功', () => {
+      manager.connect();
+      mockSocketIO.simulateConnect();
+      mockSocketIO.simulateDisconnect();
+      expect(manager.state).toBe('reconnecting');
+
+      // 模拟 5 次重连失败
+      for (let i = 0; i < 5; i++) {
+        jest.advanceTimersByTime(manager._getReconnectDelay());
+        mockSocketIO.connect.mockClear();
+
+        // 重连失败
+        mockSocketIO.simulateDisconnect();
+
+        expect(manager.state).toBe('reconnecting');
+        expect(manager.reconnectTimer).not.toBeNull();
+      }
+
+      // 第 6 次重连成功
+      jest.advanceTimersByTime(manager._getReconnectDelay());
+      mockSocketIO.simulateConnect();
+
+      expect(manager.state).toBe('connected');
+      expect(manager.reconnectAttempts).toBe(0);
+    });
+
+    test('iOS 后台唤醒场景：suspended 恢复后首次重连失败应该继续重试', () => {
+      // 1. 已连接
+      manager.connect();
+      mockSocketIO.simulateConnect();
+      expect(manager.state).toBe('connected');
+
+      // 2. 进入后台，suspended，同时模拟 socket 断开（iOS 常见）
+      manager.state = 'suspended';
+      mockSocketIO.state = 'disconnected';
+
+      // 3. 回到前台，触发 resume
+      manager._transition('resume');
+      expect(manager.state).toBe('reconnecting');
+
+      // 4. 首次重连尝试
+      jest.advanceTimersByTime(100);
+      expect(mockSocketIO.connect).toHaveBeenCalled();
+
+      // 5. 重连失败（网络还没恢复）
+      mockSocketIO.connect.mockClear();
+      mockSocketIO.simulateDisconnect();
+
+      // 6. 应该继续重试
+      expect(manager.state).toBe('reconnecting');
+      expect(manager.reconnectTimer).not.toBeNull();
+
+      // 7. 下一次重连成功
+      jest.advanceTimersByTime(200);
+      mockSocketIO.simulateConnect();
+
+      expect(manager.state).toBe('connected');
+    });
+  });
+
   describe('RECONNECTING -> FAILED (超过最大重试)', () => {
     test('超过最大重试次数应该转换到 failed', () => {
       manager.state = 'reconnecting';

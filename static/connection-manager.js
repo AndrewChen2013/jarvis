@@ -59,6 +59,7 @@ class ConnectionManager {
     },
     'reconnecting': {
       'connected': 'connected',
+      'error': 'reconnecting',  // 重连失败，继续重试（自循环）
       'max_retries': 'failed',
       'disconnect': 'idle',
       'suspend': 'suspended'
@@ -264,6 +265,8 @@ class ConnectionManager {
 
   /**
    * Socket.IO 状态变化回调
+   *
+   * 将 Socket.IO 事件映射为状态机事件，让状态转换表决定下一步
    */
   _onSocketStateChange(newState, oldState) {
     this._log(`SocketIO state: ${oldState} -> ${newState}`);
@@ -274,13 +277,18 @@ class ConnectionManager {
       // 需要先转到 connecting 再转到 connected
       if (this.state === ConnectionManager.States.IDLE) {
         this._log('SocketIO connected while CM in idle, fast-tracking to connected');
-        this.state = ConnectionManager.States.CONNECTING;  // 跳过 connect 事件，直接设置
+        this.state = ConnectionManager.States.CONNECTING;
       }
       this._transition('connected');
     } else if (newState === 'disconnected') {
+      // 统一用 error 事件处理所有断连情况
+      // 状态转换表会根据当前状态决定下一步：
+      // - connected -> reconnecting (通过 disconnected 事件)
+      // - connecting -> reconnecting (通过 error 事件)
+      // - reconnecting -> reconnecting (继续重试)
       if (this.state === ConnectionManager.States.CONNECTED) {
         this._transition('disconnected');
-      } else if (this.state === ConnectionManager.States.CONNECTING) {
+      } else {
         this._transition('error');
       }
     }
