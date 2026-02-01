@@ -269,8 +269,11 @@ class SocketIOConnectionManager:
                 mapped_id = self._session_id_mapping.get(mapping_key)
 
                 # 2. 尝试从数据库获取持久化映射
+                # BUG FIX: 使用 run_in_executor 避免 threading.Lock 阻塞事件循环
+                # 当 _sync_history_to_db 在后台持有数据库锁时，同步调用会阻塞整个事件循环
                 if not mapped_id:
-                    mapped_id = db.get_chat_session_id(session_id)
+                    loop = asyncio.get_event_loop()
+                    mapped_id = await loop.run_in_executor(None, db.get_chat_session_id, session_id)
                     if mapped_id:
                         # 恢复内存映射
                         self._session_id_mapping[mapping_key] = mapped_id
@@ -514,11 +517,15 @@ class SocketIOConnectionManager:
                     claude_sid = getattr(session, 'resume_session_id', None) or getattr(session, '_claude_session_id', None)
                     if claude_sid:
                         # Get total count to calculate offset
-                        total_count = db.get_chat_message_count(claude_sid)
+                        # BUG FIX: 使用 run_in_executor 避免阻塞事件循环
+                        loop = asyncio.get_event_loop()
+                        total_count = await loop.run_in_executor(None, db.get_chat_message_count, claude_sid)
                         # before_index is the oldest message index frontend has
                         # offset = total - before_index (skip already loaded messages)
                         offset = max(0, total_count - before_index)
-                        history_desc = db.get_chat_messages_desc(claude_sid, limit=limit, offset=offset)
+                        history_desc = await loop.run_in_executor(
+                            None, lambda: db.get_chat_messages_desc(claude_sid, limit=limit, offset=offset)
+                        )
                         history = list(reversed(history_desc))  # 反转为时间升序
                         for msg in history:
                             msg_role = msg.get("role", "assistant")
