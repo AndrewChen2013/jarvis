@@ -86,6 +86,9 @@ class SessionInstance {
     // Chat 思考状态（每个 session 独立）
     this.chatThinkingMessageId = null;
     this.chatIsThinking = false;
+
+    // Chat 消息队列（用于在 container 未就绪时暂存消息）
+    this.chatMessageQueue = [];
   }
 
   /**
@@ -133,6 +136,42 @@ class SessionInstance {
    */
   isContextStale() {
     return Date.now() - this.contextLastUpdate > 30000;
+  }
+
+  /**
+   * 将消息加入队列
+   */
+  queueChatMessage(type, data) {
+    this.chatMessageQueue.push({ type, data, timestamp: Date.now() });
+    if (this.chatMessageQueue.length > 1000) {
+      this.chatMessageQueue = this.chatMessageQueue.slice(-500);
+      console.warn(`[Session:${this.id?.substring(0, 8)}] Chat message queue trimmed`);
+    }
+  }
+
+  /**
+   * 处理队列中的所有消息
+   */
+  flushChatMessageQueue(handler) {
+    const count = this.chatMessageQueue.length;
+    if (count === 0) return 0;
+    const messages = this.chatMessageQueue;
+    this.chatMessageQueue = [];
+    for (const msg of messages) {
+      try {
+        handler(msg.type, msg.data);
+      } catch (e) {
+        console.error(`[Session:${this.id?.substring(0, 8)}] Error processing queued message:`, e);
+      }
+    }
+    return count;
+  }
+
+  /**
+   * 检查 Chat container 是否已准备好
+   */
+  isChatReady() {
+    return !!(this.chatContainer && this.chatContainer.querySelector('.chat-messages'));
   }
 }
 

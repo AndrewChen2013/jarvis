@@ -161,6 +161,14 @@ Object.assign(ChatMode, {
       this.log(`Restored input for ${sessionId?.substring(0, 8)}: "${session.chatInputValue.substring(0, 20)}..."`);
     }
 
+    // 处理之前积压的消息队列
+    if (session.chatMessageQueue && session.chatMessageQueue.length > 0) {
+      this.log(`Flushing ${session.chatMessageQueue.length} queued messages for ${sessionId?.substring(0, 8)}`);
+      session.flushChatMessageQueue((type, data) => {
+        this.handleMuxMessageForSession(type, data, session, sessionId);
+      });
+    }
+
     // Use MuxWebSocket uniformly
     if (!window.muxWs) {
       this.log('ERROR: MuxWebSocket not available');
@@ -261,731 +269,69 @@ Object.assign(ChatMode, {
    * @deprecated Use handleMuxMessageForSession instead
    */
   handleMuxMessage(type, data) {
-    // Convert mux message format to the format handleMessage expects
     const message = { type, ...data };
     this.handleMessage(message);
   },
 
   /**
-   * BUG-017 FIX: Handle message for a specific session
-   * Ensure messages are routed to correct session container
+   * Handle message for a specific session
+   * 使用 ChatMessageHandler 处理消息，不再需要临时交换状态
    */
   handleMuxMessageForSession(type, data, targetSession, targetSessionId) {
-    // Get target session's container and elements
-    const container = targetSession?.chatContainer;
-    const sessionIdStr = typeof targetSessionId === 'string' ? targetSessionId : targetSession?.id;
-    if (!container) {
-      this.log(`handleMuxMessageForSession: no container for ${sessionIdStr?.substring(0, 8)}`);
+    // 检查 container 是否准备好
+    if (!targetSession.isChatReady()) {
+      targetSession.queueChatMessage(type, data);
+      this.log(`Message queued for ${targetSessionId?.substring(0, 8)}: type=${type}`);
       return;
     }
 
+    const container = targetSession.chatContainer;
     const messagesEl = container.querySelector('#chatMessages') || container.querySelector('.chat-messages');
-    if (!messagesEl) {
-      this.log(`handleMuxMessageForSession: no messagesEl for ${sessionIdStr?.substring(0, 8)}`);
-      return;
+    const emptyEl = container.querySelector('#chatEmpty') || container.querySelector('.chat-empty');
+    const isActiveSession = this.sessionId === targetSessionId;
+
+    const ctx = { session: targetSession, messagesEl, emptyEl, isActiveSession };
+    ChatMessageHandler.handle(ctx, type, data);
+
+    if (isActiveSession) {
+      this._syncGlobalStateFromSession(targetSession);
     }
-
-    // Convert message to format handleMessage expects
-    const message = { type, ...data };
-
-    // Use target session's container to handle message
-    this.handleMessageForSession(message, targetSession, targetSessionId, container, messagesEl);
   },
 
   /**
-   * BUG-017 FIX: Handle message for a specific session with its own container
-   * Temporarily switch to target session's context to handle message, then restore
+   * 同步 session 状态到全局变量（向后兼容）
    */
-  handleMessageForSession(data, targetSession, targetSessionId, container, messagesEl) {
-    // If target is current active session
-    if (this.sessionId === targetSessionId) {
-      // Fix: If messagesEl reference is inconsistent, update to correct reference
-      if (this.messagesEl !== messagesEl) {
-        this.log(`handleMessageForSession: updating messagesEl reference for active session`);
-        this.messagesEl = messagesEl;
-        this.emptyEl = container.querySelector('#chatEmpty') || container.querySelector('.chat-empty');
-      }
-      this.handleMessage(data);
-      return;
-    }
-
-    // Non-active session: save current context
-    const savedMessagesEl = this.messagesEl;
-    const savedEmptyEl = this.emptyEl;
-    const savedMessages = this.messages;
-    const savedIsStreaming = this.isStreaming;
-    const savedStreamingMessageId = this.streamingMessageId;
-
-    // Temporarily switch to target session's context
-    this.messagesEl = messagesEl;
-    this.emptyEl = container.querySelector('#chatEmpty') || container.querySelector('.chat-empty');
-    this.messages = targetSession.chatMessages;
-    this.isStreaming = targetSession.chatIsStreaming || false;
-    this.streamingMessageId = targetSession.chatStreamingMessageId || null;
-
-    try {
-      // Handle message (skip status update, because not current active session)
-      this.handleMessageWithoutStatusUpdate(data, targetSession);
-    } finally {
-      // Save target session's streaming state
-      targetSession.chatIsStreaming = this.isStreaming;
-      targetSession.chatStreamingMessageId = this.streamingMessageId;
-
-      // Restore original context
-      this.messagesEl = savedMessagesEl;
-      this.emptyEl = savedEmptyEl;
-      this.messages = savedMessages;
-
-      // BUG FIX: If handling current active session, don't restore old isStreaming state
-      // Otherwise result message's isStreaming=false will be overwritten, causing unable to send second message
-      const isCurrentSession = targetSession.id === this.sessionId;
-      if (!isCurrentSession) {
-        this.isStreaming = savedIsStreaming;
-        this.streamingMessageId = savedStreamingMessageId;
-      }
-    }
+  _syncGlobalStateFromSession(session) {
+    this.messages = session.chatMessages;
+    this.isStreaming = session.chatIsStreaming;
+    this.streamingMessageId = session.chatStreamingMessageId;
+    this.historyOldestIndex = session.chatHistoryOldestIndex;
+    this.hasMoreHistory = session.chatHasMoreHistory;
+    this.isLoadingHistory = session.chatIsLoadingHistory;
+    this.autoScrollEnabled = session.chatAutoScrollEnabled;
+    this.isThinking = session.chatIsThinking;
+    this.thinkingMessageId = session.chatThinkingMessageId;
   },
 
   /**
-   * Handle message without updating global status (for non-active sessions)
-   */
-  handleMessageWithoutStatusUpdate(data, targetSession) {
-    switch (data.type) {
-      case 'ready':
-        // BUG-018 FIX: Detect reconnect and set history loading state for non-active session
-        const existingMsgCountReady = this.messagesEl?.querySelectorAll('.chat-message').length || 0;
-        const isReconnectReady = existingMsgCountReady > 0;
-
-        if (data.history_count > 0) {
-          targetSession.chatIsLoadingHistory = true;
-          targetSession.chatPendingHistoryMessages = [];
-          targetSession.chatIsReconnect = isReconnectReady;
-
-          if (isReconnectReady) {
-            this.log(`BUG-018 FIX: Reconnect detected for non-active session ${targetSession.id?.substring(0, 8)}, will skip history`);
-          } else {
-            this.log(`Initial history loading for non-active session ${targetSession.id?.substring(0, 8)}, expecting ${data.history_count} messages`);
-          }
-        }
-        break;
-
-      case 'system':
-        // Update Chat mode's independent Claude session ID to target session
-        if (data.data && data.data.session_id) {
-          targetSession.chatClaudeSessionId = data.data.session_id;
-          this.log(`Updated chatClaudeSessionId for ${targetSession.id?.substring(0, 8)}`);
-        }
-        break;
-
-      case 'user_ack':
-        // User message already shown in sendMessage, here only for confirmation
-        // Don't add message again
-        break;
-
-      case 'user':
-        // BUG-018 FIX: Check if in history loading phase
-        if (targetSession.chatIsLoadingHistory) {
-          targetSession.chatPendingHistoryMessages.push({
-            type: 'user',
-            content: data.content,
-            extra: { timestamp: data.timestamp }
-          });
-          return;
-        }
-        // User message deduplication
-        if (this.isDuplicateMessage('user', data.content, data.timestamp)) {
-          this.log('Skipping duplicate user message');
-          return;
-        }
-        this.addMessage('user', data.content, { timestamp: data.timestamp });
-        break;
-
-      case 'stream':
-        this.appendToStreaming(data.text);
-        break;
-
-      case 'assistant':
-        // BUG-018 FIX: Check if in history loading phase
-        if (targetSession.chatIsLoadingHistory) {
-          const extraData = { timestamp: data.timestamp };
-          if (data.extra && data.extra.tool_calls) {
-            extraData.tool_calls = data.extra.tool_calls;
-          }
-          targetSession.chatPendingHistoryMessages.push({
-            type: 'assistant',
-            content: data.content,
-            extra: extraData
-          });
-          return;
-        }
-        this.hideTypingIndicator();
-        if (this.isStreaming) {
-          this.finalizeStreaming(data.content);
-        } else {
-          // Assistant message deduplication
-          if (this.isDuplicateMessage('assistant', data.content, data.timestamp)) {
-            this.log('Skipping duplicate assistant message');
-            return;
-          }
-          this.addMessage('assistant', data.content, { timestamp: data.timestamp });
-        }
-        break;
-
-      case 'tool_call':
-        this.log(`[DIAG] handleMessageWithoutStatusUpdate tool_call: tool_name=${data.tool_name}`);
-        this.hideTypingIndicator();
-        this.addToolMessage('call', data.tool_name, data.input, data.timestamp);
-        break;
-
-      case 'tool_result':
-        this.log(`[DIAG] handleMessageWithoutStatusUpdate tool_result: tool_id=${data.tool_id}`);
-        this.updateToolResult(data.tool_id, data);
-        this.showTypingIndicator();
-        break;
-
-      case 'thinking_start':
-        this.hideTypingIndicator();
-        this.startThinking();
-        break;
-
-      case 'thinking_delta':
-        this.appendToThinking(data.text);
-        break;
-
-      case 'thinking_end':
-        this.finalizeThinking();
-        this.showTypingIndicator();
-        break;
-
-      case 'thinking':
-        this.hideTypingIndicator();
-        this.addThinkingMessage(data.content);
-        this.showTypingIndicator();
-        break;
-
-      case 'result':
-        this.log(`[DIAG] result(1): isStreaming was ${this.isStreaming}, streamingMessageId=${this.streamingMessageId}`);
-        this.hideTypingIndicator();
-        this.hideProgressMessage();
-        // Ensure remove .streaming class (even if assistant message not properly handled)
-        if (this.streamingMessageId) {
-          const msgEl = this.messagesEl?.querySelector(`#${this.streamingMessageId}`);
-          if (msgEl && msgEl.classList.contains('streaming')) {
-            this.log(`[DIAG] result(1): removing .streaming class from ${this.streamingMessageId}`);
-            msgEl.classList.remove('streaming');
-          }
-        }
-        // BUG FIX: Clean up ALL stale streaming classes to prevent cursor from blinking forever
-        this.messagesEl?.querySelectorAll('.chat-message.streaming').forEach(el => {
-          el.classList.remove('streaming');
-          this.log(`[DIAG] result(1): cleaned up stale .streaming class from ${el.id}`);
-        });
-        this.isStreaming = false;
-        this.streamingMessageId = null;
-        if (data.cost_usd) {
-          this.showResultBadge(data);
-        }
-        break;
-
-      case 'error':
-        this.hideTypingIndicator();
-        this.hideProgressMessage();
-        // BUG FIX: Reset streaming state on error to allow new messages
-        this.isStreaming = false;
-        this.streamingMessageId = null;
-        this.messagesEl?.querySelectorAll('.chat-message.streaming').forEach(el => {
-          el.classList.remove('streaming');
-        });
-        this.addMessage('system', `Error: ${data.message}`);
-        // If permanent error, unsubscribe to prevent retry on reconnect
-        if (data.permanent && this.sessionId) {
-          this.log('Permanent error, unsubscribing from session');
-          if (window.muxWs) {
-            window.muxWs.unsubscribe('chat', this.sessionId);
-          }
-        }
-        break;
-
-      case 'pong':
-        break;
-
-      case 'history_end':
-        // BUG-018 FIX: Handle history_end for non-active session
-        targetSession.chatHistoryOldestIndex = data.total - data.count;
-        targetSession.chatHasMoreHistory = targetSession.chatHistoryOldestIndex > 0;
-
-        this.log(`History loaded for non-active session: ${data.count}/${data.total} messages, isReconnect=${targetSession.chatIsReconnect}`);
-
-        // If reconnect, skip rendering
-        if (targetSession.chatIsReconnect) {
-          this.log(`BUG-018 FIX: Skipping history render on reconnect for non-active session ${targetSession.id?.substring(0, 8)}`);
-          targetSession.chatIsLoadingHistory = false;
-          targetSession.chatPendingHistoryMessages = [];
-          targetSession.chatIsReconnect = false;
-          break;
-        }
-
-        // Render history messages
-        const pendingMsgsNonActive = targetSession.chatPendingHistoryMessages || [];
-        if (pendingMsgsNonActive.length > 0) {
-          if (this.emptyEl) this.emptyEl.style.display = 'none';
-          for (const msg of pendingMsgsNonActive) {
-            if (msg.extra?.tool_calls) {
-              for (const tc of msg.extra.tool_calls) {
-                const toolEl = this.createToolMessageElement(tc.name, tc.input, msg.extra.timestamp);
-                this.messagesEl.appendChild(toolEl);
-              }
-            }
-            if (msg.content?.trim()) {
-              const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra);
-              this.messagesEl.appendChild(msgEl);
-            }
-          }
-          targetSession.chatPendingHistoryMessages = [];
-        }
-
-        targetSession.chatIsLoadingHistory = false;
-        targetSession.chatIsReconnect = false;
-        this.scrollToBottom();
-        break;
-
-      case 'history_page_end':
-        // BUG-018 FIX: Handle history_page_end for non-active session (simplified)
-        targetSession.chatHistoryOldestIndex = data.oldest_index;
-        targetSession.chatHasMoreHistory = data.has_more;
-        targetSession.chatIsLoadingHistory = false;
-        this.log(`History page loaded for non-active session: oldest_index=${data.oldest_index}, hasMore=${data.has_more}`);
-        break;
-    }
-  },
-
-  /**
-   * Handle incoming message
+   * Handle incoming message for current active session
    */
   handleMessage(data) {
-    const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
-
-    switch (data.type) {
-      case 'ready':
-        this.isConnected = true;
-        this.updateStatus('connected');
-        this.sendBtn.disabled = !this.inputEl.value.trim();
-
-        // BUG-018 FIX: Check if this is a reconnect (DOM already has messages)
-        // If so, skip history loading to avoid duplicate messages
-        const existingMsgCount = this.messagesEl?.querySelectorAll('.chat-message').length || 0;
-        const isReconnect = existingMsgCount > 0;
-
-        // Mark initial history loading phase
-        // Backend will push history messages after ready, before history_end
-        if (data.history_count > 0) {
-          // REFACTOR: Use session-level state instead of global
-          const session = this.getSession();
-          if (session) {
-            session.chatIsLoadingHistory = true;
-            session.chatPendingHistoryMessages = [];
-            // BUG-018 FIX: Mark as reconnect so history_end knows to skip rendering
-            session.chatIsReconnect = isReconnect;
-          }
-          // Keep backward compatible global state (will be removed later)
-          this.isLoadingHistory = true;
-          this.pendingHistoryMessages = [];
-          this.historyLoadingForSession = this.sessionId;  // Track which session is loading history
-          this.isReconnect = isReconnect;  // BUG-018 FIX: Track reconnect state
-          if (isReconnect) {
-            this.log(`BUG-018 FIX: Reconnect detected (${existingMsgCount} messages in DOM), will skip history rendering`);
-          } else {
-            this.log(`Initial history loading started, expecting ${data.history_count} messages for session ${this.sessionId?.substring(0, 8)}`);
-          }
-        }
-        break;
-
-      case 'system':
-        // Received Claude's real session ID, update to SessionManager
-        // Use chatClaudeSessionId to store Chat mode's session ID (separate from Terminal)
-        if (data.data && data.data.session_id) {
-          const chatClaudeSessionId = data.data.session_id;
-          this.log(`Received Chat Claude session ID: ${chatClaudeSessionId.substring(0, 8)}`);
-          const session = window.app?.sessionManager?.getActive();
-          if (session) {
-            session.chatClaudeSessionId = chatClaudeSessionId;
-            this.log(`Updated session.chatClaudeSessionId`);
-          }
-        }
-        break;
-
-      case 'user_ack':
-        // User message already shown in sendMessage, here only for confirmation
-        // Don't add message again
-        break;
-
-      case 'user':
-        // User message from history
-        // REFACTOR: Check session-level state first, fallback to global
-        const sessionForUser = this.getSession();
-        const isLoadingHistoryUser = sessionForUser?.chatIsLoadingHistory ?? this.isLoadingHistory;
-        if (isLoadingHistoryUser) {
-          // Collect for batch insert at top - use session-level array
-          const pendingArray = sessionForUser?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
-          pendingArray.push({
-            type: 'user',
-            content: data.content,
-            extra: { timestamp: data.timestamp }
-          });
-        } else {
-          // Realtime user message deduplication
-          if (this.isDuplicateMessage('user', data.content, data.timestamp)) {
-            this.log('Skipping duplicate user message');
-            return;
-          }
-          this.addMessage('user', data.content, { timestamp: data.timestamp });
-        }
-        break;
-
-      case 'stream':
-        this.appendToStreaming(data.text);
-        break;
-
-      case 'assistant':
-        this.hideTypingIndicator();
-        // REFACTOR: Check session-level state first, fallback to global
-        const sessionForAssistant = this.getSession();
-        const isLoadingHistoryAssistant = sessionForAssistant?.chatIsLoadingHistory ?? this.isLoadingHistory;
-        if (isLoadingHistoryAssistant) {
-          // Collect for batch insert at top
-          // Include tool_calls from extra if present
-          const extraData = { timestamp: data.timestamp };
-          if (data.extra && data.extra.tool_calls) {
-            extraData.tool_calls = data.extra.tool_calls;
-          }
-          // Use session-level array
-          const pendingArray = sessionForAssistant?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
-          pendingArray.push({
-            type: 'assistant',
-            content: data.content,
-            extra: extraData
-          });
-        } else if (this.isStreaming) {
-          this.finalizeStreaming(data.content);
-        } else {
-          // Assistant message deduplication
-          if (this.isDuplicateMessage('assistant', data.content, data.timestamp)) {
-            this.log('Skipping duplicate assistant message');
-            return;
-          }
-          // If message has tool_calls from history, render them first
-          if (data.extra && data.extra.tool_calls && Array.isArray(data.extra.tool_calls)) {
-            for (const toolCall of data.extra.tool_calls) {
-              const toolEl = this.createToolMessageElement(toolCall.name, toolCall.input, data.timestamp);
-              this.messagesEl.appendChild(toolEl);
-            }
-          }
-          // Render text content if present
-          if (data.content && data.content.trim()) {
-            this.addMessage('assistant', data.content, { timestamp: data.timestamp });
-          }
-        }
-        break;
-
-      case 'tool_call':
-        this.log(`[DIAG] handleMessage tool_call: tool_name=${data.tool_name}`);
-        this.hideTypingIndicator();
-        this.addToolMessage('call', data.tool_name, data.input, data.timestamp);
-        break;
-
-      case 'tool_result':
-        this.log(`[DIAG] handleMessage tool_result: tool_id=${data.tool_id}`);
-        this.updateToolResult(data.tool_id, data);
-        this.showTypingIndicator();
-        break;
-
-      case 'thinking_start':
-        this.hideTypingIndicator();
-        this.startThinking();
-        break;
-
-      case 'thinking_delta':
-        this.appendToThinking(data.text);
-        break;
-
-      case 'thinking_end':
-        this.finalizeThinking();
-        this.showTypingIndicator();
-        break;
-
-      case 'thinking':
-        this.hideTypingIndicator();
-        this.addThinkingMessage(data.content);
-        this.showTypingIndicator();
-        break;
-
-      case 'result':
-        this.log(`[DIAG] result(2): isStreaming was ${this.isStreaming}, streamingMessageId=${this.streamingMessageId}`);
-        this.hideTypingIndicator();
-        this.hideProgressMessage();
-        // Ensure remove .streaming class (even if assistant message not properly handled)
-        if (this.streamingMessageId) {
-          const msgEl = this.messagesEl?.querySelector(`#${this.streamingMessageId}`);
-          if (msgEl && msgEl.classList.contains('streaming')) {
-            this.log(`[DIAG] result(2): removing .streaming class from ${this.streamingMessageId}`);
-            msgEl.classList.remove('streaming');
-          }
-        }
-        // BUG FIX: Clean up ALL stale streaming classes to prevent cursor from blinking forever
-        this.messagesEl?.querySelectorAll('.chat-message.streaming').forEach(el => {
-          el.classList.remove('streaming');
-          this.log(`[DIAG] result(2): cleaned up stale .streaming class from ${el.id}`);
-        });
-        this.isStreaming = false;
-        this.streamingMessageId = null;
-        // BUG FIX: Update send button state, avoid being disabled after receiving complete
-        if (this.sendBtn && this.inputEl) {
-          this.sendBtn.disabled = !this.inputEl.value.trim() || !this.isConnected;
-          this.log(`[DIAG] result(2): updated sendBtn.disabled=${this.sendBtn.disabled}, inputValue="${this.inputEl.value.substring(0, 10)}", isConnected=${this.isConnected}`);
-        }
-        if (data.cost_usd) {
-          this.showResultBadge(data);
-        }
-        break;
-
-      case 'error':
-        this.hideTypingIndicator();
-        this.hideProgressMessage();
-        // BUG FIX: Reset streaming state on error to allow new messages
-        this.isStreaming = false;
-        this.streamingMessageId = null;
-        this.messagesEl?.querySelectorAll('.chat-message.streaming').forEach(el => {
-          el.classList.remove('streaming');
-        });
-        this.addMessage('system', `Error: ${data.message}`);
-        // Update send button state to allow retrying
-        if (this.sendBtn && this.inputEl) {
-          this.sendBtn.disabled = !this.inputEl.value.trim() || !this.isConnected;
-        }
-        // If permanent error, unsubscribe to prevent retry on reconnect
-        if (data.permanent && this.sessionId) {
-          this.log('Permanent error, unsubscribing from session');
-          if (window.muxWs) {
-            window.muxWs.unsubscribe('chat', this.sessionId);
-          }
-        }
-        break;
-
-      case 'history_end':
-        // Initial history load complete
-        // REFACTOR: Use session-level state
-        const sessionForHistoryEnd = this.getSession();
-
-        // BUG-018 FIX: Check if this is a reconnect - skip rendering if so
-        const isReconnectHistoryEnd = sessionForHistoryEnd?.chatIsReconnect ?? this.isReconnect;
-
-        // Update session-level state
-        if (sessionForHistoryEnd) {
-          sessionForHistoryEnd.chatHistoryOldestIndex = data.total - data.count;
-          sessionForHistoryEnd.chatHasMoreHistory = sessionForHistoryEnd.chatHistoryOldestIndex > 0;
-        }
-        // Keep backward compatible global state
-        this.historyOldestIndex = data.total - data.count;
-        this.hasMoreHistory = this.historyOldestIndex > 0;
-
-        const pendingMsgs = sessionForHistoryEnd?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
-        this.log(`History loaded: ${data.count}/${data.total} messages, oldest_index=${this.historyOldestIndex}, hasMore=${this.hasMoreHistory}, pendingMessages=${pendingMsgs?.length || 0}, isReconnect=${isReconnectHistoryEnd}`);
-
-        // BUG FIX: Validate that this history is for the current session
-        // If user switched sessions while loading, ignore the stale history
-        if (this.historyLoadingForSession && this.historyLoadingForSession !== this.sessionId) {
-          this.log(`BUG FIX: Ignoring history_end for ${this.historyLoadingForSession?.substring(0, 8)}, current session is ${this.sessionId?.substring(0, 8)}`);
-          // Clear both session-level and global state
-          if (sessionForHistoryEnd) {
-            sessionForHistoryEnd.chatIsLoadingHistory = false;
-            sessionForHistoryEnd.chatPendingHistoryMessages = [];
-            sessionForHistoryEnd.chatIsReconnect = false;
-          }
-          this.isLoadingHistory = false;
-          this.pendingHistoryMessages = [];
-          this.historyLoadingForSession = null;
-          this.isReconnect = false;
-          break;
-        }
-
-        // BUG-018 FIX: Skip rendering on reconnect - messages already in DOM
-        if (isReconnectHistoryEnd) {
-          this.log(`BUG-018 FIX: Skipping history render on reconnect`);
-          // Clear state without rendering
-          if (sessionForHistoryEnd) {
-            sessionForHistoryEnd.chatIsLoadingHistory = false;
-            sessionForHistoryEnd.chatPendingHistoryMessages = [];
-            sessionForHistoryEnd.chatIsReconnect = false;
-          }
-          this.isLoadingHistory = false;
-          this.pendingHistoryMessages = [];
-          this.historyLoadingForSession = null;
-          this.isReconnect = false;
-          break;
-        }
-
-        // Render collected initial history messages
-        // REFACTOR: Use session-level pending array
-        if (pendingMsgs && pendingMsgs.length > 0) {
-          // Hide empty state
-          if (this.emptyEl) {
-            this.emptyEl.style.display = 'none';
-          }
-
-          for (const msg of pendingMsgs) {
-            // If message has tool_calls, render them first
-            if (msg.extra && msg.extra.tool_calls && Array.isArray(msg.extra.tool_calls)) {
-              for (const toolCall of msg.extra.tool_calls) {
-                const toolEl = this.createToolMessageElement(toolCall.name, toolCall.input, msg.extra.timestamp);
-                this.messagesEl.appendChild(toolEl);
-              }
-            }
-            // Render the text content (if any)
-            if (msg.content && msg.content.trim()) {
-              const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra);
-              this.messagesEl.appendChild(msgEl);
-            }
-          }
-          // Clear both session-level and global pending arrays
-          if (sessionForHistoryEnd) {
-            sessionForHistoryEnd.chatPendingHistoryMessages = [];
-          }
-          this.pendingHistoryMessages = [];
-        }
-
-        // Clear loading state - both session-level and global
-        if (sessionForHistoryEnd) {
-          sessionForHistoryEnd.chatIsLoadingHistory = false;
-          sessionForHistoryEnd.chatIsReconnect = false;  // BUG-018 FIX
-        }
-        this.isLoadingHistory = false;
-        this.historyLoadingForSession = null;  // Clear tracking
-        this.isReconnect = false;  // BUG-018 FIX
-        // Scroll to bottom after initial history
-        this.scrollToBottom();
-        break;
-
-      case 'history_page_end':
-        // Additional history page loaded - insert all collected messages
-        // REFACTOR: Use session-level state
-        const sessionForPageEnd = this.getSession();
-        const pendingPageMsgs = sessionForPageEnd?.chatPendingHistoryMessages ?? this.pendingHistoryMessages;
-        this.log(`History page loaded: ${data.count} messages, oldest_index=${data.oldest_index}, hasMore=${data.has_more}`);
-
-        // BUG-014 FIX: Validate that this history page is for the current session
-        // If we switched sessions while loading, ignore the stale history
-        if (this.historyLoadingForSession && this.historyLoadingForSession !== this.sessionId) {
-          this.log(`BUG-014 FIX: Ignoring history_page_end for ${this.historyLoadingForSession?.substring(0, 8)}, current session is ${this.sessionId?.substring(0, 8)}`);
-          // Clean up stale state - both session-level and global
-          if (sessionForPageEnd) {
-            sessionForPageEnd.chatIsLoadingHistory = false;
-            sessionForPageEnd.chatPendingHistoryMessages = [];
-          }
-          this.isLoadingHistory = false;
-          this.pendingHistoryMessages = [];
-          this.historyLoadingForSession = null;
-          // Remove loading indicator if present
-          const staleLoadingEl = this.messagesEl.querySelector('#historyLoadingIndicator');
-          if (staleLoadingEl) staleLoadingEl.remove();
-          break;
-        }
-
-        // Remove loading indicator
-        const loadingEl = this.messagesEl.querySelector('#historyLoadingIndicator');
-        if (loadingEl) {
-          loadingEl.remove();
-        }
-
-        // Insert collected messages at the top (in correct order)
-        if (pendingPageMsgs && pendingPageMsgs.length > 0) {
-          // Sync with this.messages data structure (prepend to history)
-          // pendingHistoryMessages are ordered [older -> newer]
-          // this.messages are ordered [older -> newer]
-          // So we unshift them in reverse order or spread
-          this.messages.unshift(...pendingPageMsgs);
-
-          // Preserve scroll position
-          const scrollHeightBefore = this.messagesEl.scrollHeight;
-          const scrollTopBefore = this.messagesEl.scrollTop;
-
-          // Create document fragment for batch insert
-          const fragment = document.createDocumentFragment();
-          for (const msg of pendingPageMsgs) {
-            // If message has tool_calls, render them first (before the text content)
-            if (msg.extra && msg.extra.tool_calls && Array.isArray(msg.extra.tool_calls)) {
-              for (const toolCall of msg.extra.tool_calls) {
-                // Reuse createToolMessageElement (same as addToolMessage but returns element)
-                const toolEl = this.createToolMessageElement(toolCall.name, toolCall.input, msg.extra.timestamp);
-                fragment.appendChild(toolEl);
-              }
-            }
-            // Render the text content (if any)
-            if (msg.content && msg.content.trim()) {
-              const msgEl = this.createMessageElement(msg.type, msg.content, msg.extra);
-              fragment.appendChild(msgEl);
-            }
-          }
-
-          // Insert at the top
-          const firstChild = this.messagesEl.firstChild;
-          if (firstChild) {
-            this.messagesEl.insertBefore(fragment, firstChild);
-          } else {
-            this.messagesEl.appendChild(fragment);
-          }
-
-          // Adjust scroll position to keep view stable
-          requestAnimationFrame(() => {
-            const scrollHeightAfter = this.messagesEl.scrollHeight;
-            this.messagesEl.scrollTop = scrollTopBefore + (scrollHeightAfter - scrollHeightBefore);
-          });
-
-          // Clear both session-level and global pending arrays
-          if (sessionForPageEnd) {
-            sessionForPageEnd.chatPendingHistoryMessages = [];
-          }
-          this.pendingHistoryMessages = [];
-        }
-
-        // Update state - both session-level and global
-        if (sessionForPageEnd) {
-          sessionForPageEnd.chatIsLoadingHistory = false;
-          sessionForPageEnd.chatHistoryOldestIndex = data.oldest_index;
-          sessionForPageEnd.chatHasMoreHistory = data.has_more;
-        }
-        this.isLoadingHistory = false;
-        this.historyLoadingForSession = null;  // BUG-014 FIX: Clear tracking
-        this.historyOldestIndex = data.oldest_index;
-        this.hasMoreHistory = data.has_more;
-
-        // Show "no more history" message if at the beginning
-        const hasMore = sessionForPageEnd?.chatHasMoreHistory ?? this.hasMoreHistory;
-        if (!hasMore) {
-          const noMoreEl = document.createElement('div');
-          noMoreEl.className = 'chat-history-end';
-          noMoreEl.textContent = window.i18n?.t('chat.historyEnd', 'Beginning of conversation') || 'Beginning of conversation';
-          this.messagesEl.insertBefore(noMoreEl, this.messagesEl.firstChild);
-        }
-        break;
-
-      case 'pong':
-        // Heartbeat response
-        break;
-
-      case 'progress':
-        // Progress message (e.g., during /compact)
-        this.showProgressMessage(data.message || 'Processing...');
-        break;
-
-      case 'system_info':
-        // System info for unknown message types (forwarded from backend)
-        this.log(`System info: ${data.original_type}`);
-        // Optionally display to user if relevant
-        if (data.original_type === 'compact') {
-          this.showProgressMessage('Compacting conversation...');
-        }
-        break;
+    const session = this.getSession();
+    if (!session) {
+      this.log('handleMessage: no active session');
+      return;
     }
+
+    const ctx = {
+      session,
+      messagesEl: this.messagesEl,
+      emptyEl: this.emptyEl,
+      isActiveSession: true
+    };
+
+    ChatMessageHandler.handle(ctx, data.type, data);
+    this._syncGlobalStateFromSession(session);
   },
 
   /**
