@@ -913,11 +913,11 @@ class App {
     console.log(`[PERF] showView(${viewName}): +${(performance.now() - perfStart).toFixed(1)}ms - DOM updated`);
 
     if (viewName === 'sessions') {
-      // 并发加载会话列表和用量数据
-      Promise.all([
-        this.loadSessions(),
-        this.loadUsageSummary()
-      ]).catch(e => console.error('Load sessions error:', e));
+      // 暂时禁用 API 调用以排查性能问题
+      // Promise.all([
+      //   this.loadSessions(),
+      //   this.loadUsageSummary()
+      // ]).catch(e => console.error('Load sessions error:', e));
       // 更新悬浮按钮状态
       if (this.floatingButton) {
         this.floatingButton.update();
