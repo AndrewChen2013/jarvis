@@ -238,6 +238,19 @@ class SocketIOManager {
       }
     }
 
+    // BUG FIX: If no handler found, search by originalSessionId or stored sessionId
+    // This handles the case where messages arrive for a session that was renamed
+    if (!handler) {
+      for (const [key, h] of this.handlers) {
+        if (key.startsWith(`${channel}:`) &&
+            (h.originalSessionId === sessionId || h.sessionId === sessionId)) {
+          this.log(`[DIAG] Found handler via fallback search: ${key.substring(0, 15)} for sessionId=${sessionId?.substring(0, 8)}`);
+          handler = h;
+          break;
+        }
+      }
+    }
+
     if (handler) {
       if (type === 'connected' || type === 'ready') {
         this.log(`[TIMING] _handleMessage: RECEIVED ${channel}:${type}, triggering onConnect for ${handlerKey.substring(0, 15)}`);

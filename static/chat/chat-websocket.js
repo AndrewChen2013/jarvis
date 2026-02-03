@@ -288,7 +288,14 @@ Object.assign(ChatMode, {
     const container = targetSession.chatContainer;
     const messagesEl = container.querySelector('#chatMessages') || container.querySelector('.chat-messages');
     const emptyEl = container.querySelector('#chatEmpty') || container.querySelector('.chat-empty');
-    const isActiveSession = this.sessionId === targetSessionId;
+
+    // BUG FIX: Check active session by multiple methods
+    // - this.sessionId might be updated (renamed), but targetSessionId is captured old value
+    // - Also check targetSession.id which is always current
+    // - Also check chatConnectionId which stores the original connection ID
+    const isActiveSession = this.sessionId === targetSessionId ||
+                           this.sessionId === targetSession.id ||
+                           this.sessionId === targetSession.chatConnectionId;
 
     const ctx = { session: targetSession, messagesEl, emptyEl, isActiveSession };
     ChatMessageHandler.handle(ctx, type, data);

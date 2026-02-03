@@ -125,7 +125,9 @@ Object.assign(ChatMode, {
     const hasMore = session?.chatHasMoreHistory ?? this.hasMoreHistory;
     const oldestIndex = session?.chatHistoryOldestIndex ?? this.historyOldestIndex;
 
-    if (!this.isConnected || isLoading || !hasMore) {
+    // Check if already loading - also check if loading indicator already exists
+    const existingIndicator = this.messagesEl?.querySelector('#historyLoadingIndicator');
+    if (!this.isConnected || isLoading || !hasMore || existingIndicator) {
       return;
     }
 
@@ -137,7 +139,7 @@ Object.assign(ChatMode, {
     this.historyLoadingForSession = this.sessionId;  // BUG-014 FIX: Track which session is loading
     this.log(`Loading more history for session ${this.sessionId?.substring(0, 8)}, before index: ${oldestIndex}`);
 
-    // Show loading indicator at top
+    // Show loading indicator at top (only one)
     const loadingEl = document.createElement('div');
     loadingEl.className = 'chat-history-loading';
     loadingEl.id = 'historyLoadingIndicator';

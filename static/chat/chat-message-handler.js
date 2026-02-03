@@ -122,6 +122,10 @@ const ChatMessageHandler = {
 
     if (session.chatIsLoadingHistory) {
       const extraData = { timestamp: data.timestamp };
+      // DEBUG: 检查 data.extra 的内容
+      if (data.extra) {
+        ChatMode.log(`[DEBUG] _handleAssistant history: data.extra=${JSON.stringify(data.extra).substring(0, 200)}`);
+      }
       if (data.extra?.tool_calls) extraData.tool_calls = data.extra.tool_calls;
       session.chatPendingHistoryMessages.push({ type: 'assistant', content: data.content, extra: extraData });
       return;
@@ -278,20 +282,31 @@ const ChatMessageHandler = {
     session.chatHistoryOldestIndex = data.total - data.count;
     session.chatHasMoreHistory = session.chatHistoryOldestIndex > 0;
 
+    // Helper to cleanup loading state
+    const cleanupLoading = () => {
+      session.chatIsLoadingHistory = false;
+      ChatMode.isLoadingHistory = false;
+      const loadingIndicator = messagesEl.querySelector('#historyLoadingIndicator');
+      if (loadingIndicator) loadingIndicator.remove();
+    };
+
     if (session.chatIsReconnect) {
       ChatMode.log(`Skipping history render on reconnect for ${session.id?.substring(0, 8)}`);
-      session.chatIsLoadingHistory = false;
+      cleanupLoading();
       session.chatPendingHistoryMessages = [];
       session.chatIsReconnect = false;
       return;
     }
 
     const pendingMsgs = session.chatPendingHistoryMessages || [];
+    ChatMode.log(`[DEBUG] _handleHistoryEnd: pendingMsgs.length=${pendingMsgs.length}, isReconnect=${session.chatIsReconnect}`);
     if (pendingMsgs.length > 0) {
       if (emptyEl) emptyEl.style.display = 'none';
       for (const msg of pendingMsgs) {
+        ChatMode.log(`[DEBUG] _handleHistoryEnd rendering: type=${msg.type}, hasToolCalls=${!!msg.extra?.tool_calls}, toolCallsCount=${msg.extra?.tool_calls?.length || 0}`);
         if (msg.extra?.tool_calls) {
           for (const tc of msg.extra.tool_calls) {
+            ChatMode.log(`[DEBUG] _handleHistoryEnd rendering tool: name=${tc.name}`);
             const toolEl = ChatMode.createToolMessageElement(tc.name, tc.input, msg.extra.timestamp);
             messagesEl.appendChild(toolEl);
           }
@@ -303,16 +318,25 @@ const ChatMessageHandler = {
       }
       session.chatPendingHistoryMessages = [];
     }
-    session.chatIsLoadingHistory = false;
+    cleanupLoading();
     session.chatIsReconnect = false;
     this._scrollToBottom(ctx);
   },
 
   _handleHistoryPageEnd(ctx, _data) {
-    const { session } = ctx;
+    const { session, messagesEl } = ctx;
     session.chatHistoryOldestIndex = _data.oldest_index;
     session.chatHasMoreHistory = _data.has_more;
     session.chatIsLoadingHistory = false;
+
+    // Remove loading indicator
+    const loadingIndicator = messagesEl.querySelector('#historyLoadingIndicator');
+    if (loadingIndicator) {
+      loadingIndicator.remove();
+    }
+
+    // Also reset global state
+    ChatMode.isLoadingHistory = false;
   },
 
   // === Helpers ===
