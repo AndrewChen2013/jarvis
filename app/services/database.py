@@ -26,7 +26,7 @@ import json
 import sqlite3
 from datetime import datetime
 from typing import Optional, Dict, List, Any
-from threading import Lock
+from threading import RLock
 from contextlib import contextmanager
 
 from app.core.logging import logger
@@ -37,7 +37,7 @@ class Database:
 
     def __init__(self, db_path: str = None):
         self.db_path = db_path or os.path.expanduser("~/.jarvis/jarvis.db")
-        self._lock = Lock()
+        self._lock = RLock()  # Use RLock to allow reentrant locking
         self._ensure_dir()
         self._init_db()
         self._migrate_from_json()

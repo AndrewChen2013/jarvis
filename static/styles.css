@@ -3943,6 +3943,95 @@ html, body {
   50% { opacity: 0.5; }
 }
 
+/* ========== 浮动文件预览标签容器 ========== */
+.floating-file-tags {
+  position: fixed;
+  right: 15px;
+  top: 80px; /* Start from top */
+  bottom: 180px; /* End above floating button */
+  display: flex;
+  flex-direction: column; /* Stack top to bottom */
+  gap: 8px;
+  z-index: 8999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.floating-file-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-primary);
+  border-radius: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  max-width: 160px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(100%);
+  animation: slideInTag 0.3s ease forwards;
+}
+
+@keyframes slideInTag {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.floating-file-tag.removing {
+  animation: slideOutTag 0.3s ease forwards;
+}
+
+@keyframes slideOutTag {
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.floating-file-tag:active {
+  background: var(--bg-tertiary);
+}
+
+.floating-file-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.floating-file-name {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+
+.floating-file-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.floating-file-close:hover,
+.floating-file-close:active {
+  color: var(--text-primary);
+}
+
 /* ========== 收起按钮 ========== */
 .btn-minimize {
   width: 36px;
@@ -4834,6 +4923,20 @@ html, body {
   border-radius: 2px 2px 0 0;
 }
 
+/* Parent directory folder icon - lighter shade of primary */
+.folder-icon.parent {
+  background: var(--color-primary);
+  opacity: 0.5;
+}
+
+.folder-icon.parent::before {
+  background: var(--color-primary);
+}
+
+.files-item.parent-dir .files-item-name {
+  color: var(--text-secondary);
+}
+
 .files-item-name {
   flex: 1;
   font-size: var(--font-lg);
@@ -4999,7 +5102,7 @@ html, body {
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.95);
-  z-index: 2000;
+  z-index: 2600; /* Higher than chat window (2500) */
   flex-direction: column;
 }
 

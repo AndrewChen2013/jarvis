@@ -115,6 +115,8 @@ const AppFiles = {
     if (this._sortMode === undefined) this._sortMode = 0; // 0=A↓, 1=A↑, 2=T↓, 3=T↑
     if (this._previewFontSize === undefined) this._previewFontSize = 14; // default font size for preview
     if (this._fileFavorites === undefined) this._fileFavorites = [];
+    if (this._minimizedFiles === undefined) this._minimizedFiles = []; // minimized file previews
+    if (this._currentPreviewName === undefined) this._currentPreviewName = null;
 
     // Load favorites from backend (async)
     this.loadFileFavorites().then(favorites => {
@@ -336,7 +338,8 @@ const AppFiles = {
   renderFilesList(items, parentPath) {
     const container = document.getElementById('files-list');
 
-    if (!items || items.length === 0) {
+    // If folder is empty but has parent, still show parent link
+    if ((!items || items.length === 0) && !parentPath) {
       container.innerHTML = `
         <div class="empty">
           <div class="empty-icon">[ ]</div>
@@ -347,9 +350,24 @@ const AppFiles = {
     }
 
     // Apply sorting
-    const sortedItems = this.sortFileItems(items);
+    const sortedItems = items ? this.sortFileItems(items) : [];
 
     let html = '';
+
+    // Add parent directory entry if not at root
+    if (parentPath) {
+      html += `
+        <div class="files-item dir parent-dir"
+             data-path="${this.escapeHtml(parentPath)}"
+             data-is-dir="true"
+             data-name=".."
+             data-readable="true">
+          <span class="files-item-icon"><span class="folder-icon parent"></span></span>
+          <span class="files-item-name">..</span>
+          <span class="files-item-arrow">›</span>
+        </div>
+      `;
+    }
     for (const item of sortedItems) {
       // Use file type icons
       const icon = this.getFileIcon(item.name, item.is_dir);
@@ -1127,8 +1145,17 @@ const AppFiles = {
     const loadingEl = document.getElementById('preview-loading');
     const errorEl = document.getElementById('preview-error');
 
+    // If there's already a file open and it's different, minimize it first
+    if (this._currentPreviewPath && this._currentPreviewPath !== path && this._currentPreviewName) {
+      // Add current file to minimized list (if not already there)
+      if (!this._minimizedFiles.some(f => f.path === this._currentPreviewPath)) {
+        this.addMinimizedFile(this._currentPreviewPath, this._currentPreviewName);
+      }
+    }
+
     // Reset state
     this._currentPreviewPath = path;
+    this._currentPreviewName = name;
     nameEl.textContent = name;
 
     // Clear previous content (keep loading and error elements)
@@ -1643,12 +1670,125 @@ const AppFiles = {
   },
 
   /**
-   * Close file preview
+   * Close file preview (removes from minimized list too)
    */
   closeFilePreview() {
     const modal = document.getElementById('file-preview-modal');
     modal.classList.remove('active');
+    // Remove from minimized files if exists
+    if (this._currentPreviewPath) {
+      this.removeMinimizedFile(this._currentPreviewPath);
+    }
     this._currentPreviewPath = null;
+    this._currentPreviewName = null;
+  },
+
+  /**
+   * Minimize file preview to floating tag
+   */
+  minimizeFilePreview() {
+    if (!this._currentPreviewPath || !this._currentPreviewName) return;
+
+    const modal = document.getElementById('file-preview-modal');
+    modal.classList.remove('active');
+
+    // Add to minimized files list
+    this.addMinimizedFile(this._currentPreviewPath, this._currentPreviewName);
+  },
+
+  /**
+   * Max minimized files
+   */
+  MAX_MINIMIZED_FILES: 5,
+
+  /**
+   * Add file to minimized list (max 5)
+   */
+  addMinimizedFile(path, name) {
+    // Don't add duplicates
+    if (this._minimizedFiles.some(f => f.path === path)) return;
+
+    // Remove oldest if at max
+    if (this._minimizedFiles.length >= this.MAX_MINIMIZED_FILES) {
+      const oldest = this._minimizedFiles.shift();
+      this.removeFloatingTag(oldest.path);
+    }
+
+    this._minimizedFiles.push({ path, name });
+    this.createFloatingTag(path, name);
+  },
+
+  /**
+   * Remove file from minimized list
+   */
+  removeMinimizedFile(path) {
+    const index = this._minimizedFiles.findIndex(f => f.path === path);
+    if (index !== -1) {
+      this._minimizedFiles.splice(index, 1);
+      this.removeFloatingTag(path);
+    }
+  },
+
+  /**
+   * Create a floating tag element
+   */
+  createFloatingTag(path, name) {
+    const container = document.getElementById('floating-file-tags');
+    if (!container) return;
+
+    const tag = document.createElement('div');
+    tag.className = 'floating-file-tag';
+    tag.dataset.path = path;
+    tag.innerHTML = `
+      <span class="floating-file-icon">📄</span>
+      <span class="floating-file-name">${this.escapeHtml(name)}</span>
+      <button class="floating-file-close">×</button>
+    `;
+
+    // Click tag to restore
+    tag.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('floating-file-close')) {
+        this.restoreFilePreview(path, name);
+      }
+    });
+
+    // Click close to remove
+    tag.querySelector('.floating-file-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.removeMinimizedFile(path);
+    });
+
+    container.appendChild(tag);
+  },
+
+  /**
+   * Remove a floating tag element with animation
+   */
+  removeFloatingTag(path) {
+    const container = document.getElementById('floating-file-tags');
+    if (!container) return;
+
+    const tag = container.querySelector(`[data-path="${CSS.escape(path)}"]`);
+    if (tag) {
+      tag.classList.add('removing');
+      setTimeout(() => tag.remove(), 300);
+    }
+  },
+
+  /**
+   * Restore file preview from minimized state (keeps tag, doesn't remove it)
+   */
+  restoreFilePreview(path, name) {
+    // Minimize chat window if open
+    if (typeof ChatMode !== 'undefined' && ChatMode.minimize) {
+      ChatMode.minimize();
+    }
+
+    // Don't remove from minimized list - keep the tag
+    // User must explicitly click close to remove
+
+    // Open the file preview
+    this.openFilePreview(path, name);
   },
 
   /**
@@ -1657,6 +1797,7 @@ const AppFiles = {
   bindFilePreviewEvents() {
     const modal = document.getElementById('file-preview-modal');
     const closeBtn = document.getElementById('preview-close-btn');
+    const minimizeBtn = document.getElementById('preview-minimize-btn');
     const downloadBtn = document.getElementById('preview-download-btn');
     const refreshBtn = document.getElementById('preview-refresh-btn');
     const fontIncreaseBtn = document.getElementById('preview-font-increase');
@@ -1665,6 +1806,13 @@ const AppFiles = {
     if (closeBtn) {
       closeBtn.addEventListener('click', () => this.closeFilePreview());
     }
+
+    // Minimize button
+    if (minimizeBtn) {
+      minimizeBtn.addEventListener('click', () => this.minimizeFilePreview());
+    }
+
+    // Note: Floating tag events are bound dynamically in createFloatingTag()
 
     if (downloadBtn) {
       downloadBtn.addEventListener('click', () => {

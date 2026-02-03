@@ -27,8 +27,8 @@
   <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="stylesheet" href="/static/styles.css?v=124">
-  <link rel="stylesheet" href="/static/chat.css?v=17">
+  <link rel="stylesheet" href="/static/styles.css?v=127">
+  <link rel="stylesheet" href="/static/chat.css?v=19">
 </head>
 <body>
   <!-- 登录视图 (不设置 active，由 JS 控制显示) -->
@@ -327,6 +327,11 @@
           <button id="preview-font-increase" class="btn-preview-action btn-font-ctrl" title="Increase font size">A+</button>
           <button id="preview-refresh-btn" class="btn-preview-action" title="Refresh">↻</button>
           <button id="preview-download-btn" class="btn-preview-action" title="Download">↓</button>
+          <button id="preview-minimize-btn" class="btn-preview-action" title="Minimize">
+            <svg width="12" height="2" viewBox="0 0 12 2" fill="none">
+              <rect x="0" y="0" width="12" height="2" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
           <button id="preview-close-btn" class="btn-preview-action" title="Close">✕</button>
         </div>
       </div>
@@ -339,6 +344,9 @@
       </div>
     </div>
   </div>
+
+  <!-- 浮动文件预览标签容器 -->
+  <div id="floating-file-tags" class="floating-file-tags"></div>
 
   <!-- 创建会话模态框 -->
   <div id="create-modal" class="modal">
@@ -565,10 +573,10 @@
   <script defer src="/static/chat-session.js?v=1"></script>
   <!-- chat-core.js must be loaded first, creates ChatMode object -->
   <script defer src="/static/chat/chat-core.js?v=3"></script>
-  <script defer src="/static/chat/chat-message-handler.js?v=2"></script>
+  <script defer src="/static/chat/chat-message-handler.js?v=4"></script>
   <!-- Other modules add methods to ChatMode, order doesn't matter -->
   <script defer src="/static/chat/chat-formatter.js?v=5"></script>
-  <script defer src="/static/chat/chat-ui.js?v=9"></script>
+  <script defer src="/static/chat/chat-ui.js?v=10"></script>
   <script defer src="/static/chat/chat-messages.js?v=7"></script>
   <script defer src="/static/chat/chat-tools.js?v=5"></script>
   <script defer src="/static/chat/chat-streaming.js?v=2"></script>
@@ -582,13 +590,13 @@
   <script defer src="/static/dialogs.js?v=24"></script>
   <script defer src="/static/settings.js?v=17"></script>
   <script defer src="/static/swipe.js?v=51"></script>
-  <script defer src="/static/files.js?v=23"></script>
-  <script defer src="/static/projects.js?v=28"></script>
-  <script defer src="/static/websocket.js?v=76"></script>
+  <script defer src="/static/files.js?v=29"></script>
+  <script defer src="/static/projects.js?v=29"></script>
+  <script defer src="/static/websocket.js?v=77"></script>
   <script defer src="/static/upload.js?v=5"></script>
   <script defer src="/static/download.js?v=3"></script>
   <script defer src="/static/monitor.js?v=6"></script>
   <script defer src="/static/scheduled-tasks.js?v=9"></script>
-  <script defer src="/static/app.js?v=52"></script>
+  <script defer src="/static/app.js?v=53"></script>
 </body>
 </html>

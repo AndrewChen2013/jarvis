@@ -39,6 +39,11 @@ const AppWebSocket = {
     console.time('[PERF] connectSession TOTAL');
     this.closeCreateModal();
 
+    // Auto-minimize file preview if open (instead of closing)
+    if (this._currentPreviewPath && this._currentPreviewName) {
+      this.minimizeFilePreview();
+    }
+
     const prevSession = this.currentSession;
     const isNewSession = !sessionId;
     this.debugLog(`=== connectSession START at ${perfStart.toFixed(2)}ms ===`);
