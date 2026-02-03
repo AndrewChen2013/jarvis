@@ -94,16 +94,43 @@
   font-size: var(--font-md);
   font-weight: 500;
   color: var(--text-primary);
-  max-width: 280px;
+  max-width: calc(100vw - 200px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .chat-header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+.chat-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.15s ease;
+  font-size: 16px;
+}
+
+.chat-header-btn:hover {
+  background: rgba(120, 120, 128, 0.24);
+  color: var(--text-primary);
+}
+
+.chat-header-btn:active {
+  background: rgba(120, 120, 128, 0.32);
 }
 
 /* Terminal mode button - removed */

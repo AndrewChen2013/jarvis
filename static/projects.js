@@ -256,6 +256,10 @@ const AppProjects = {
 
       const projects = await projectsResponse.json();
       this.debugLog('[loadSessions] success, projects=' + projects.length);
+      // Debug: log first project's session_count
+      if (projects.length > 0) {
+        this.debugLog('[loadSessions] first project session_count=' + projects[0].session_count);
+      }
       this.renderProjects(projects, activeSessions);
     } catch (error) {
       this.debugLog('[loadSessions] error: ' + error.name + ' ' + error.message);
@@ -372,6 +376,7 @@ const AppProjects = {
       if (!sessionsResponse.ok) throw new Error('Failed to load sessions');
 
       const sessions = await sessionsResponse.json();
+      this.debugLog(`[showProjectSessions] sessions=${sessions.length}, first=${sessions[0]?.session_id?.substring(0,8)}, custom_name=${sessions[0]?.custom_name}`);
 
       // 显示会话选择弹窗
       this.showSessionsModal(workDir, sessions, activeSessions);

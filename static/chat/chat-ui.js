@@ -55,6 +55,8 @@ Object.assign(ChatMode, {
             <span class="chat-title" id="chatTitle" style="cursor: pointer;" title="${t('debug.title', 'Debug Log')}">${t('chat.title', 'Chat')}</span>
           </div>
           <div class="chat-header-right">
+            <button class="chat-header-btn" id="chatRenameBtn" title="${t('common.rename', 'Rename')}">✎</button>
+            <button class="chat-header-btn" id="chatPinBtn" title="${t('sessions.pin', 'Pin to home')}">⤴</button>
           </div>
         </div>
 
@@ -131,6 +133,22 @@ Object.assign(ChatMode, {
     }
 
     // Terminal mode button - removed
+
+    // Rename button
+    const renameBtn = this.container.querySelector('#chatRenameBtn');
+    if (renameBtn) {
+      renameBtn.addEventListener('click', () => {
+        this.showRenameDialog();
+      });
+    }
+
+    // Pin button
+    const pinBtn = this.container.querySelector('#chatPinBtn');
+    if (pinBtn) {
+      pinBtn.addEventListener('click', () => {
+        this.pinCurrentSession();
+      });
+    }
 
     // Chat title - click to open debug panel
     const chatTitle = this.container.querySelector('#chatTitle');
@@ -355,5 +373,179 @@ Object.assign(ChatMode, {
     }
     this.isConnected = false;
     this.isStreaming = false;
+  },
+
+  /**
+   * Show rename dialog for current session
+   */
+  showRenameDialog() {
+    const session = window.app?.sessionManager?.getActive();
+    if (!session) {
+      this.log('showRenameDialog: no active session');
+      return;
+    }
+
+    const sessionId = session.claudeSessionId || session.id;
+    const currentName = session.name || '';
+    const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal rename-modal active';
+    dialog.innerHTML = `
+      <div class="modal-content modal-small">
+        <div class="modal-header">
+          <h3>${t('common.rename', 'Rename')}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="text" class="form-input rename-input" value="${this.escapeHtml(currentName)}" placeholder="${t('sessions.namePlaceholder', 'Enter session name')}">
+          <div class="rename-actions">
+            <button class="btn btn-secondary btn-cancel">${t('common.cancel', 'Cancel')}</button>
+            <button class="btn btn-primary btn-save">${t('common.save', 'Save')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const input = dialog.querySelector('.rename-input');
+    const saveBtn = dialog.querySelector('.btn-save');
+    const cancelBtn = dialog.querySelector('.btn-cancel');
+    const closeBtn = dialog.querySelector('.modal-close');
+
+    const closeDialog = () => {
+      document.body.removeChild(dialog);
+    };
+
+    const saveRename = async () => {
+      const newName = input.value.trim();
+      if (!newName) {
+        input.focus();
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = t('common.saving', 'Saving...');
+
+      try {
+        const token = window.app?.token || localStorage.getItem('token');
+        const response = await fetch(`/api/projects/session/${sessionId}/name`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ name: newName })
+        });
+
+        if (response.ok) {
+          closeDialog();
+          // Update session name
+          session.name = newName;
+          // Update header title
+          const titleEl = this.container?.querySelector('#chatTitle');
+          if (titleEl) {
+            titleEl.textContent = newName;
+          }
+          this.showToast(t('sessions.renamed', 'Session renamed'));
+        } else {
+          const data = await response.json();
+          this.showToast(data.detail || t('error.renameFailed', 'Rename failed'));
+          saveBtn.disabled = false;
+          saveBtn.textContent = t('common.save', 'Save');
+        }
+      } catch (error) {
+        console.error('Rename error:', error);
+        this.showToast(t('error.network', 'Network error'));
+        saveBtn.disabled = false;
+        saveBtn.textContent = t('common.save', 'Save');
+      }
+    };
+
+    closeBtn.addEventListener('click', closeDialog);
+    cancelBtn.addEventListener('click', closeDialog);
+    saveBtn.addEventListener('click', saveRename);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') saveRename();
+      if (e.key === 'Escape') closeDialog();
+    });
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) closeDialog();
+    });
+
+    document.body.appendChild(dialog);
+    input.focus();
+    input.select();
+  },
+
+  /**
+   * Pin current session to home
+   */
+  async pinCurrentSession() {
+    const session = window.app?.sessionManager?.getActive();
+    if (!session) {
+      this.log('pinCurrentSession: no active session');
+      return;
+    }
+
+    const sessionId = session.claudeSessionId || session.id;
+    const workingDir = session.workDir;
+    const displayName = session.name || sessionId.substring(0, 8);
+    const t = (key, fallback) => window.i18n ? window.i18n.t(key, fallback) : fallback;
+
+    try {
+      const token = window.app?.token || localStorage.getItem('token');
+      const response = await fetch('/api/pinned-sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          working_dir: workingDir,
+          display_name: displayName
+        })
+      });
+
+      if (response.status === 409) {
+        this.showToast(t('sessions.alreadyPinned', 'Already pinned'));
+        return;
+      }
+
+      if (!response.ok) throw new Error('Failed to pin session');
+
+      this.showToast(t('sessions.pinned', 'Session pinned'));
+
+      // Refresh swipe sessions if available
+      if (window.swipeNav) {
+        window.swipeNav._sessionsLoaded = false;
+      }
+    } catch (error) {
+      console.error('Pin session error:', error);
+      this.showToast(t('error.pinFailed', 'Pin failed'));
+    }
+  },
+
+  /**
+   * Escape HTML special characters
+   */
+  escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  },
+
+  /**
+   * Show toast message
+   */
+  showToast(message) {
+    if (window.app && window.app.showToast) {
+      window.app.showToast(message);
+    } else {
+      console.log('[ChatMode] Toast:', message);
+    }
   }
 });

@@ -63,11 +63,13 @@ class ClaudeProject:
 class ClaudeProjectsScanner:
     """Claude 项目扫描器"""
 
-    def __init__(self, claude_dir: str = None):
+    def __init__(self, claude_dir: Optional[str] = None):
         self.claude_dir = claude_dir or os.path.expanduser("~/.claude")
         self.projects_dir = os.path.join(self.claude_dir, "projects")
         # 缓存 path_hash -> working_dir 映射，避免重复的递归路径查找
         self._path_cache: Dict[str, str] = {}
+        # 缓存 session 的 has_messages 结果: {filepath: (mtime, has_messages)}
+        self._metadata_cache: Dict[str, tuple] = {}
 
     def _path_to_hash(self, working_dir: str) -> str:
         """将工作目录转换为 Claude 的路径 hash
@@ -178,56 +180,83 @@ class ClaudeProjectsScanner:
             return []
 
         projects = []
+        seen_real_paths = set()  # 用于去重软链接
         for name in os.listdir(self.projects_dir):
             project_path = os.path.join(self.projects_dir, name)
             if not os.path.isdir(project_path) or name.startswith("."):
                 continue
 
+            # 跳过已处理过的目录（处理软链接重复）
+            real_path = os.path.realpath(project_path)
+            if real_path in seen_real_paths:
+                continue
+            seen_real_paths.add(real_path)
+
             working_dir = self._hash_to_path(name)
 
-            # 统计会话数量和最近更新时间（只统计有实际对话的 session）
-            session_count = 0
+            # 统计会话数量和最近更新时间
+            # 只统计: 1) UUID 格式的文件夹  2) 非 agent 的 .jsonl 文件
+            session_ids = set()
             last_updated = None
 
             for filename in os.listdir(project_path):
-                if not filename.endswith(".jsonl") or filename.startswith("agent-"):
-                    continue
                 filepath = os.path.join(project_path, filename)
-                session_id = filename.replace(".jsonl", "")
 
-                # 检查是否有实际对话（与 list_sessions 使用相同逻辑）
-                metadata = self._parse_session_metadata(filepath)
-                if not metadata["has_messages"]:
-                    # 检查文件创建时间，5 分钟内的新 session 不删除
+                # 方式1: UUID 格式的文件夹（新版 Claude Code）
+                if os.path.isdir(filepath) and self._is_uuid(filename):
+                    session_ids.add(filename)
                     try:
-                        file_age = time.time() - os.path.getctime(filepath)
-                        if file_age < 300:  # 5 分钟 = 300 秒
-                            # 新创建的 session，跳过但不计入 session_count
-                            continue
+                        mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                        if last_updated is None or mtime > last_updated:
+                            last_updated = mtime
                     except OSError:
                         pass
-                    # 自动清理空 session
-                    self._cleanup_empty_session(project_path, session_id)
                     continue
 
-                session_count += 1
-                try:
-                    mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-                    if last_updated is None or mtime > last_updated:
-                        last_updated = mtime
-                except OSError:
-                    continue
+                # 方式2: 非 agent 的 .jsonl 文件
+                if filename.endswith(".jsonl") and not filename.startswith("agent-"):
+                    session_id = filename.replace(".jsonl", "")
+                    if self._is_uuid(session_id):
+                        # 检查是否有实际对话
+                        has_messages = self._has_messages_cached(filepath)
+                        if has_messages:
+                            session_ids.add(session_id)
+                            try:
+                                mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                                if last_updated is None or mtime > last_updated:
+                                    last_updated = mtime
+                            except OSError:
+                                pass
 
             projects.append(ClaudeProject(
                 working_dir=working_dir,
                 path_hash=name,
-                session_count=session_count,
+                session_count=len(session_ids),
                 last_updated=last_updated
             ))
 
         # 按最近更新时间排序
         projects.sort(key=lambda p: p.last_updated or datetime.min, reverse=True)
         return projects
+
+    def _is_uuid(self, s: str) -> bool:
+        """检查字符串是否是 UUID 格式"""
+        import re
+        return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', s))
+
+    def _get_session_id_from_file(self, filepath: str) -> Optional[str]:
+        """从 jsonl 文件的第一行提取 sessionId"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        data = json.loads(line)
+                        return data.get("sessionId")
+                    except:
+                        continue
+        except:
+            pass
+        return None
 
     def list_sessions(self, working_dir: str) -> List[ClaudeSession]:
         """列出某个工作目录下的所有 Claude 会话"""
@@ -238,50 +267,95 @@ class ClaudeProjectsScanner:
             return []
 
         sessions = []
+        processed_ids = set()  # 避免重复（文件夹和文件可能对应同一个 session）
+
         for filename in os.listdir(project_path):
-            if not filename.endswith(".jsonl") or filename.startswith("agent-"):
-                continue
-
             filepath = os.path.join(project_path, filename)
-            if os.path.isdir(filepath):
+
+            # 方式1: UUID 格式的文件夹（新版 Claude Code）
+            if os.path.isdir(filepath) and self._is_uuid(filename):
+                session_id = filename
+                if session_id in processed_ids:
+                    continue
+                processed_ids.add(session_id)
+
+                # 尝试找对应的 .jsonl 文件获取 metadata
+                jsonl_file = os.path.join(project_path, f"{session_id}.jsonl")
+                if os.path.exists(jsonl_file):
+                    try:
+                        mtime = datetime.fromtimestamp(os.path.getmtime(jsonl_file))
+                        file_size = os.path.getsize(jsonl_file)
+                        metadata = self._parse_session_metadata(jsonl_file)
+                    except OSError:
+                        continue
+                else:
+                    # 没有 jsonl 文件，使用文件夹的时间
+                    try:
+                        mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                        file_size = 0
+                        metadata = {"summary": None, "cwd": None, "has_messages": True, "total_tokens": 0, "context": None}
+                    except OSError:
+                        continue
+
+                real_cwd = metadata.get("cwd") or working_dir
+                ctx = metadata.get("context") or {}
+                sessions.append(ClaudeSession(
+                    session_id=session_id,
+                    working_dir=real_cwd,
+                    project_dir=working_dir,
+                    summary=metadata.get("summary"),
+                    updated_at=mtime,
+                    file_size=file_size,
+                    total_tokens=metadata.get("total_tokens", 0),
+                    context_used=ctx.get("tokens_used", 0),
+                    context_max=ctx.get("tokens_max", 200000),
+                    context_percentage=ctx.get("percentage", 0),
+                    context_free=ctx.get("free", 0),
+                    context_until_compact=ctx.get("until_compact", 0),
+                    context_model=ctx.get("model", ""),
+                    context_categories=ctx.get("categories"),
+                    context_skills=ctx.get("skills")
+                ))
                 continue
 
-            session_id = filename.replace(".jsonl", "")
+            # 方式2: 非 agent 的 .jsonl 文件
+            if filename.endswith(".jsonl") and not filename.startswith("agent-"):
+                session_id = filename.replace(".jsonl", "")
+                if not self._is_uuid(session_id):
+                    continue
+                if session_id in processed_ids:
+                    continue
+                processed_ids.add(session_id)
 
-            try:
-                mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-                file_size = os.path.getsize(filepath)
-            except OSError:
-                continue
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                    file_size = os.path.getsize(filepath)
+                except OSError:
+                    continue
 
-            # 从 JSONL 提取 metadata（包括真实 cwd）
-            metadata = self._parse_session_metadata(filepath)
+                metadata = self._parse_session_metadata(filepath)
+                if not metadata["has_messages"]:
+                    continue
 
-            # 跳过没有实际对话的 session（无法 resume）
-            if not metadata["has_messages"]:
-                continue
-
-            # 使用 JSONL 中的真实 cwd，如果没有则回退到传入的 working_dir
-            real_cwd = metadata["cwd"] or working_dir
-
-            ctx = metadata.get("context") or {}
-            sessions.append(ClaudeSession(
-                session_id=session_id,
-                working_dir=real_cwd,
-                project_dir=working_dir,  # 项目目录（从 hash 推断）
-                summary=metadata["summary"],
-                updated_at=mtime,
-                file_size=file_size,
-                total_tokens=metadata["total_tokens"],
-                context_used=ctx.get("tokens_used", 0),
-                context_max=ctx.get("tokens_max", 200000),
-                context_percentage=ctx.get("percentage", 0),
-                context_free=ctx.get("free", 0),
-                context_until_compact=ctx.get("until_compact", 0),
-                context_model=ctx.get("model", ""),
-                context_categories=ctx.get("categories"),
-                context_skills=ctx.get("skills")
-            ))
+                real_cwd = metadata["cwd"] or working_dir
+                ctx = metadata.get("context") or {}
+                sessions.append(ClaudeSession(
+                    session_id=session_id,
+                    working_dir=real_cwd,
+                    project_dir=working_dir,
+                    summary=metadata["summary"],
+                    updated_at=mtime,
+                    file_size=file_size,
+                    total_tokens=metadata["total_tokens"],
+                    context_used=ctx.get("tokens_used", 0),
+                    context_max=ctx.get("tokens_max", 200000),
+                    context_percentage=ctx.get("percentage", 0),
+                    context_free=ctx.get("free", 0),
+                    context_until_compact=ctx.get("until_compact", 0),
+                    context_model=ctx.get("model", ""),
+                    context_categories=ctx.get("categories"),
+                    context_skills=ctx.get("skills")
+                ))
 
         # 按更新时间降序排序
         sessions.sort(key=lambda s: s.updated_at, reverse=True)
@@ -355,6 +429,57 @@ class ClaudeProjectsScanner:
         except OSError as e:
             logger.error(f"Error reading session {session_id}: {e}")
             return None
+
+    def _has_messages_fast(self, jsonl_file: str) -> bool:
+        """快速检查文件是否有实际对话（找到第一条 user/assistant 消息就返回）
+
+        比 _parse_session_metadata 快得多，因为不需要读完整个文件。
+        """
+        try:
+            with open(jsonl_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    # 快速字符串匹配，避免 JSON 解析开销
+                    # 支持有空格和无空格两种格式
+                    if '"type":"user"' in line or '"type": "user"' in line:
+                        return True
+                    if '"type":"assistant"' in line or '"type": "assistant"' in line:
+                        return True
+            return False
+        except Exception:
+            return False
+
+    def _has_messages_cached(self, filepath: str) -> bool:
+        """带缓存的 has_messages 检查
+
+        使用 mtime 作为缓存失效依据：
+        - 文件未修改：直接返回缓存结果
+        - 文件已修改或无缓存：快速检查并更新缓存
+        """
+        try:
+            mtime = os.path.getmtime(filepath)
+            cached = self._metadata_cache.get(filepath)
+
+            if cached and cached[0] == mtime:
+                # 缓存命中
+                return cached[1]
+
+            # 缓存未命中，使用文件大小启发式 + 快速检查
+            size = os.path.getsize(filepath)
+            if size < 200:
+                # 极小文件（< 200 字节），几乎肯定是空 session
+                has_msg = False
+            elif size > 2000:
+                # 较大文件（> 2KB），大概率有内容，但仍需确认
+                has_msg = self._has_messages_fast(filepath)
+            else:
+                # 中等大小，需要实际检查
+                has_msg = self._has_messages_fast(filepath)
+
+            # 更新缓存
+            self._metadata_cache[filepath] = (mtime, has_msg)
+            return has_msg
+        except OSError:
+            return False
 
     def _parse_session_metadata(self, jsonl_file: str) -> Dict:
         """从会话文件中提取 metadata（summary、真实 cwd、是否有对话、token 使用量、context 信息）

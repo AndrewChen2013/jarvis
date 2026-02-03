@@ -75,6 +75,9 @@ async def list_projects(_: str = Depends(verify_token)):
     """列出所有 Claude 项目（工作目录）"""
     try:
         projects = claude_projects.list_projects()
+        # DEBUG: log session counts
+        for p in projects[:3]:
+            logger.info(f"[Projects API] {p.working_dir}: session_count={p.session_count}")
         return [
             ProjectResponse(
                 working_dir=p.working_dir,
