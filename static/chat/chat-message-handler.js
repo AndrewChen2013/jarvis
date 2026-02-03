@@ -153,7 +153,11 @@ const ChatMessageHandler = {
 
   _handleToolResult(ctx, data) {
     const { messagesEl } = ctx;
-    ChatMode.updateToolResult.call({ messagesEl }, data.tool_id, data);
+    // 需要传完整的 ChatMode 上下文，因为 updateToolResult 内部会调用 this.updateBashResult 等方法
+    const savedMessagesEl = ChatMode.messagesEl;
+    ChatMode.messagesEl = messagesEl;
+    ChatMode.updateToolResult(data.tool_id, data);
+    ChatMode.messagesEl = savedMessagesEl;
     this._showTypingIndicator(messagesEl);
   },
 
