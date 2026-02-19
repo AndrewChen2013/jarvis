@@ -267,6 +267,8 @@ class ChatSession:
                     # Store in history (skip stream_event for cleaner history)
                     if data.get("type") != "stream_event":
                         self._message_history.append(msg)
+                        if len(self._message_history) > 2000:
+                            self._message_history = self._message_history[-1500:]
 
                     # Save to database for persistent history (in thread pool to avoid blocking event loop)
                     loop = asyncio.get_event_loop()
@@ -432,6 +434,13 @@ class ChatSession:
             self._reader_task.cancel()
             try:
                 await self._reader_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
             except asyncio.CancelledError:
                 pass
 
@@ -835,6 +844,7 @@ class ChatSessionManager:
         import uuid
         session_id = session_id or str(uuid.uuid4())
 
+        # Phase 1: 在锁内检查重复并占位
         async with self._lock:
             if session_id in self._sessions:
                 raise ValueError(f"Session {session_id} already exists")
@@ -851,19 +861,32 @@ class ChatSessionManager:
                 else:
                     raise FileNotFoundError(f"Working directory does not exist: {working_dir}")
 
-            session = ChatSession(
-                session_id=session_id,
-                working_dir=working_dir,
-                on_message=on_message,
-                resume_session_id=resume_session_id
-            )
+            # 占位，防止并发创建同一 session
+            self._sessions[session_id] = None  # type: ignore[assignment]
 
+        # Phase 2: 释放锁后执行耗时的 start()
+        session = ChatSession(
+            session_id=session_id,
+            working_dir=working_dir,
+            on_message=on_message,
+            resume_session_id=resume_session_id
+        )
+
+        try:
             if not await session.start():
                 raise RuntimeError("Failed to start session")
+        except Exception:
+            # 启动失败，清理占位符
+            async with self._lock:
+                self._sessions.pop(session_id, None)
+            raise
 
+        # Phase 3: 在锁内替换占位符为真实 session
+        async with self._lock:
             self._sessions[session_id] = session
-            logger.info(f"Created chat session {session_id}" + (f" (resuming {resume_session_id[:8]})" if resume_session_id else ""))
-            return session_id
+
+        logger.info(f"Created chat session {session_id}" + (f" (resuming {resume_session_id[:8]})" if resume_session_id else ""))
+        return session_id
 
     async def send_message(
         self,

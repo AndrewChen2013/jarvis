@@ -413,9 +413,10 @@ Object.assign(ChatMode, {
   /**
    * Update tool result
    */
-  updateToolResult(toolId, data) {
+  updateToolResult(toolId, data, messagesEl) {
     // Find the tool message and update it
-    const toolMsgs = this.messagesEl.querySelectorAll('.chat-message.tool');
+    const container = messagesEl || this.messagesEl;
+    const toolMsgs = container.querySelectorAll('.chat-message.tool');
     if (toolMsgs.length === 0) return;
 
     const lastTool = toolMsgs[toolMsgs.length - 1];

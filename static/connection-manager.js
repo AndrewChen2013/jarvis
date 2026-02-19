@@ -66,7 +66,9 @@ class ConnectionManager {
     },
     'suspended': {
       'resume': 'reconnecting',
-      'disconnect': 'idle'
+      'disconnect': 'idle',
+      'error': 'suspended',        // OS 断连在 suspended 状态下维持不变
+      'disconnected': 'suspended'  // OS 断连在 suspended 状态下维持不变
     },
     'failed': {
       'retry': 'connecting',
@@ -237,11 +239,15 @@ class ConnectionManager {
         break;
 
       case ConnectionManager.States.RECONNECTING:
-        // 如果 SocketIO 已经连接，直接转为 connected
-        if (this.socketIO?.state === 'connected') {
-          this._log('SocketIO already connected, transitioning to connected');
-          this._transition('connected');
-          return;
+        // 强制断开旧连接再重连，不信任 SocketIO 报告的状态
+        // 从 SUSPENDED 恢复时 SocketIO 可能显示 connected 但实际已僵死
+        if (this.socketIO?.socket) {
+          this._log('Force disconnecting stale socket before reconnect');
+          this.socketIO.socket.removeAllListeners();
+          this.socketIO.socket.disconnect();
+          this.socketIO.socket = null;
+          this.socketIO.authenticated = false;
+          this.socketIO._setState('disconnected');
         }
         this._scheduleReconnect();
         this._emit('reconnecting', { attempt: this.reconnectAttempts + 1 });
@@ -317,9 +323,12 @@ class ConnectionManager {
    */
   _onNetworkOnline() {
     this._log('Network online');
-    if (this.state === ConnectionManager.States.RECONNECTING ||
-        this.state === ConnectionManager.States.SUSPENDED) {
-      // 网络恢复，立即重连，重置计数
+    if (this.state === ConnectionManager.States.SUSPENDED) {
+      // SUSPENDED 状态下网络恢复，先经过状态机转到 RECONNECTING
+      this.reconnectAttempts = 0;
+      this._transition('resume');
+    } else if (this.state === ConnectionManager.States.RECONNECTING) {
+      // 已在 RECONNECTING，重置计数立即重连
       this.reconnectAttempts = 0;
       this._clearReconnectTimer();
       this._doReconnect();

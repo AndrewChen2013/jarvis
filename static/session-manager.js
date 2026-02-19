@@ -289,6 +289,11 @@ class SessionManager {
     // 更新 session 实例的 id
     session.id = newId;
 
+    // 更新 chatConnectionId（重连时使用）
+    if (session.chatConnectionId === oldId) {
+      session.chatConnectionId = newId;
+    }
+
     // 更新容器 ID
     if (session.container) {
       session.container.id = `terminal-container-${newId}`;
@@ -350,6 +355,12 @@ class SessionManager {
     if (!session) {
       this.log(`switchTo: session not found!`);
       return;
+    }
+
+    // 同步当前 session 的运行时状态到 SessionInstance
+    if (this.activeId && this.activeId !== sessionId && window.ChatMode && ChatMode.syncToSession) {
+      ChatMode.syncToSession();
+      this.log(`switchTo: synced ChatMode state to session ${this.activeId.substring(0, 8)}`);
     }
 
     // 保存当前 session 的输入框内容
@@ -485,6 +496,13 @@ class SessionManager {
       return;
     }
 
+    // 清除重连定时器
+    if (session.reconnectTimeout) {
+      clearTimeout(session.reconnectTimeout);
+      session.reconnectTimeout = null;
+    }
+    session.shouldReconnect = false;
+
     // 通过 MuxWebSocket 关闭连接
     if (window.muxWs) {
       this.log('closeSession: close via MuxWebSocket');
@@ -513,6 +531,13 @@ class SessionManager {
 
     // 如果关闭的是当前活跃的
     if (this.activeId === sessionId) {
+      // 重置 ChatMode 全局状态，避免指向已删除的 session
+      if (window.ChatMode) {
+        ChatMode.sessionId = null;
+        ChatMode.isConnected = false;
+        ChatMode.messagesEl = null;
+        ChatMode.container = null;
+      }
       this.activeId = null;
       this.log('closeSession: clear activeId');
     }
@@ -533,8 +558,9 @@ class SessionManager {
    * 关闭所有 session
    */
   closeAll() {
-    for (const sessionId of this.sessions.keys()) {
-      this.closeSession(sessionId);
+    const ids = Array.from(this.sessions.keys());
+    for (const id of ids) {
+      this.closeSession(id);
     }
   }
 

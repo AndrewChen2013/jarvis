@@ -173,11 +173,7 @@ const ChatMessageHandler = {
     }
 
     // Real-time tool result handling
-    // 需要传完整的 ChatMode 上下文，因为 updateToolResult 内部会调用 this.updateBashResult 等方法
-    const savedMessagesEl = ChatMode.messagesEl;
-    ChatMode.messagesEl = messagesEl;
-    ChatMode.updateToolResult(data.tool_id, data);
-    ChatMode.messagesEl = savedMessagesEl;
+    ChatMode.updateToolResult(data.tool_id, data, messagesEl);
     this._showTypingIndicator(messagesEl);
   },
 
@@ -186,7 +182,7 @@ const ChatMessageHandler = {
     this._hideTypingIndicator(messagesEl);
     if (emptyEl) emptyEl.style.display = 'none';
 
-    const thinkingId = 'thinking-' + Date.now();
+    const thinkingId = 'thinking-' + ChatMode._generateMessageId();
     session.chatIsThinking = true;
     session.chatThinkingMessageId = thinkingId;
 
@@ -240,7 +236,7 @@ const ChatMessageHandler = {
     this._hideTypingIndicator(messagesEl);
     if (emptyEl) emptyEl.style.display = 'none';
 
-    const msgId = 'thinking-' + Date.now();
+    const msgId = 'thinking-' + ChatMode._generateMessageId();
     const t = (key, fb) => window.i18n?.t(key, fb) || fb;
     const msgEl = document.createElement('div');
     msgEl.className = 'chat-message thinking';
@@ -295,8 +291,6 @@ const ChatMessageHandler = {
 
   _handleHistoryEnd(ctx, data) {
     const { session, messagesEl, emptyEl } = ctx;
-    session.chatHistoryOldestIndex = data.total - data.count;
-    session.chatHasMoreHistory = session.chatHistoryOldestIndex > 0;
 
     // Helper to cleanup loading state
     const cleanupLoading = () => {
@@ -412,6 +406,10 @@ const ChatMessageHandler = {
           if (timestamp && msg.extra?.timestamp) {
             const diff = Math.abs(new Date(timestamp) - new Date(msg.extra.timestamp));
             if (diff < 60000) return true;
+          } else if (type === 'user') {
+            // User messages without timestamp should NOT be deduped
+            // Users can legitimately send the same message repeatedly ("yes", "ok")
+            continue;
           } else {
             return true;
           }

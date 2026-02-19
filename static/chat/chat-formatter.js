@@ -36,10 +36,11 @@ Object.assign(ChatMode, {
     });
 
     // Inline code (`) - check for file paths inside
+    // Note: code is already HTML-escaped from the top-level escapeHtml call
     html = html.replace(/`([^`]+)`/g, (match, code) => {
       // Check if the code looks like a file path
       if (this.looksLikeFilePath(code)) {
-        return `<code class="file-link" data-path="${this.escapeHtml(code)}" onclick="ChatMode.openFilePath('${this.escapeHtml(code)}')">${this.escapeHtml(code)}</code>`;
+        return `<code class="file-link" data-path="${code}" onclick="ChatMode.openFilePath('${code}')">${code}</code>`;
       }
       return `<code>${code}</code>`;
     });

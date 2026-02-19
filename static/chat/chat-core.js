@@ -176,14 +176,7 @@ const ChatMode = {
     }
   },
 
-  /**
-   * Escape HTML
-   */
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
+  // escapeHtml is defined in chat-ui.js with null protection
 };
 
 // Export

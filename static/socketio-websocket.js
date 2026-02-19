@@ -51,6 +51,12 @@ class SocketIOManager {
       return;
     }
 
+    // 防止在 connecting/authenticating 状态下重复创建连接
+    if (this.state === 'connecting' || this.state === 'authenticating') {
+      this.log(`Already in ${this.state} state, skip duplicate connect`);
+      return;
+    }
+
     // Clean up existing socket before creating new one to prevent duplicate event listeners
     if (this.socket) {
       this.log('Cleaning up existing socket before reconnect');
@@ -165,12 +171,19 @@ class SocketIOManager {
   }
 
   _onDisconnect(reason) {
+    // 防止重入：_onAuthFailed 已经设置 disconnected 后 socket.disconnect() 会再次触发
+    if (this.state === 'disconnected') return;
+
     this.log(`Disconnected: ${reason}`);
     this._setState('disconnected');
 
     for (const handler of this.handlers.values()) {
-      if (handler.onDisconnect) {
-        handler.onDisconnect();
+      try {
+        if (handler.onDisconnect) {
+          handler.onDisconnect();
+        }
+      } catch (e) {
+        this.log(`Handler onDisconnect error: ${e.message}`);
       }
     }
   }
@@ -376,7 +389,7 @@ class SocketIOManager {
 
       // Trigger onConnect immediately for UI responsiveness
       // Backend will also send chat:ready, but we use already_connected flag to skip duplicate
-      if (this.state === 'connected' || this.state === 'authenticating') {
+      if (this.state === 'connected') {
         this.log(`[TIMING] connectChat: triggering immediate onConnect (state=${this.state}) at +${(performance.now() - startTime).toFixed(1)}ms`);
         setTimeout(() => {
           if (options.onConnect) options.onConnect({ working_dir: workingDir, already_connected: true });

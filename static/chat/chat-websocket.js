@@ -352,8 +352,8 @@ Object.assign(ChatMode, {
   _syncDomWithMessages() {
     if (!this.messagesEl || !this.messages) return;
 
-    // Count non-UI DOM children (skip loading indicators, history markers, etc.)
-    const domMessages = this.messagesEl.querySelectorAll('.chat-message');
+    // Count only user/assistant DOM messages (skip tool, thinking, progress, etc.)
+    const domMessages = this.messagesEl.querySelectorAll('.chat-message.user, .chat-message.assistant');
     const domCount = domMessages.length;
     const arrayCount = this.messages.length;
 

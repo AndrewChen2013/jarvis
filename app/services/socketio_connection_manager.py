@@ -74,6 +74,7 @@ class SocketIOConnectionManager:
         # BUG FIX: Use (sid, channel, session_id) as key to avoid conflicts
         # between Terminal and Chat mappings for the same session
         self._session_id_mapping: Dict[tuple, str] = {}
+        self._background_tasks: set = set()
         self._setup_handlers()
 
     def _setup_handlers(self):
@@ -156,6 +157,14 @@ class SocketIOConnectionManager:
             for key in keys_to_remove:
                 del self._session_id_mapping[key]
 
+            # 清理流式传输状态
+            block_keys = [k for k in self._current_block_type if k[0] == sid]
+            for key in block_keys:
+                del self._current_block_type[key]
+            tool_keys = [k for k in self._pending_tool_use if k[0] == sid]
+            for key in tool_keys:
+                del self._pending_tool_use[key]
+
             logger.info(f"[SocketIO] Client {sid[:8]} disconnected, cleaned up {len(client.subscriptions)} subscriptions")
 
     async def _handle_auth(self, sid: str, data: dict):
@@ -196,8 +205,9 @@ class SocketIOConnectionManager:
             if _elapsed > 50 or _debug_tag:  # Log slow emits or tagged ones
                 logger.info(f"[SocketIO] emit took {_elapsed:.0f}ms: {event_name} tag={_debug_tag}")
         except Exception as e:
-            client.is_closed = True
             logger.warning(f"[SocketIO] Client {sid[:8]} send error: {e}")
+            client.is_closed = True
+            asyncio.create_task(self._disconnect(sid))
 
     async def broadcast_to_session(self, session_id: str, channel: str, msg_type: str, data: dict):
         """广播消息到会话的所有订阅者。"""
@@ -313,11 +323,18 @@ class SocketIOConnectionManager:
 
                 logger.info(f"[SocketIO] Creating new chat session: {session_id[:8]}, T1.1: {(_time.time()-_t0)*1000:.0f}ms")
                 # create_session returns session_id, need to get the session object
-                created_session_id = await chat_manager.create_session(
-                    session_id=session_id,
-                    working_dir=working_dir,
-                    resume_session_id=resume
-                )
+                try:
+                    created_session_id = await chat_manager.create_session(
+                        session_id=session_id,
+                        working_dir=working_dir,
+                        resume_session_id=resume
+                    )
+                except Exception as e:
+                    logger.error(f"[SocketIO] Failed to create session: {e}")
+                    await self.send_to_client(sid, "chat", "error", {
+                        "message": str(e)
+                    }, session_id)
+                    return
                 logger.info(f"[SocketIO] Session created: {created_session_id[:8] if created_session_id else 'None'}, T1.2: {(_time.time()-_t0)*1000:.0f}ms")
                 session = chat_manager.get_session(created_session_id)
                 logger.info(f"[SocketIO] Got session object: {session is not None}, T1.3: {(_time.time()-_t0)*1000:.0f}ms")
@@ -371,16 +388,19 @@ class SocketIOConnectionManager:
                 try:
                     while True:
                         msg = await message_queue.get()
-                        c = self.clients.get(sid)
-                        if not c or c.is_closed:
-                            logger.warning(f"[SocketIO] Consumer stopping: client gone")
+                        try:
+                            c = self.clients.get(sid)
+                            if not c or c.is_closed:
+                                logger.warning(f"[SocketIO] Consumer stopping: client gone")
+                                break
+                            await self._send_chat_message(sid, session_id, msg)
+                        except Exception as e:
+                            logger.error(f"[SocketIO] Consumer error: sid={sid[:8]}, session={session_id[:8]}, error={e}")
                             break
-                        await self._send_chat_message(sid, session_id, msg)
-                        message_queue.task_done()
+                        finally:
+                            message_queue.task_done()
                 except asyncio.CancelledError:
                     logger.info(f"[SocketIO] Consumer cancelled: sid={sid[:8]}, session={session_id[:8]}")
-                except Exception as e:
-                    logger.error(f"[SocketIO] Consumer error: sid={sid[:8]}, session={session_id[:8]}, error={e}")
 
             consumer_task = asyncio.create_task(chat_message_consumer())
             client.chat_consumer_tasks[session_id] = consumer_task
@@ -468,7 +488,8 @@ class SocketIOConnectionManager:
             logger.info(f"[SocketIO] Chat connect DONE: {(_time.time()-_t0)*1000:.0f}ms total")
 
         elif msg_type == "disconnect":
-            await self.unsubscribe(sid, session_id)
+            real_session_id = self._session_id_mapping.get((sid, 'chat', session_id), session_id)
+            await self.unsubscribe(sid, real_session_id)
 
         elif msg_type == "message":
             content = data.get("content", "")
@@ -501,6 +522,10 @@ class SocketIOConnectionManager:
                             'session_id': session_id,
                             'working_dir': getattr(session, 'working_dir', '/'),
                         })
+                        # 检查 auto-connect 是否成功
+                        if real_session_id not in client.chat_callbacks:
+                            logger.error(f"[SocketIO] Auto-connect failed for session {real_session_id[:8]}")
+                            return
 
                     # 发送用户确认
                     await self.send_to_client(sid, "chat", "user_ack", {
@@ -508,7 +533,9 @@ class SocketIOConnectionManager:
                     }, session_id)
 
                     # 异步处理消息（使用 real_session_id）
-                    asyncio.create_task(self._process_chat_message(sid, real_session_id, content))
+                    task = asyncio.create_task(self._process_chat_message(sid, real_session_id, content))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                 else:
                     # BUG FIX: 如果 session 不存在，发送错误消息
                     logger.warning(f"[SocketIO] Session not found for message: {session_id[:8]}")

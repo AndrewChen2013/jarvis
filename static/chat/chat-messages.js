@@ -197,6 +197,10 @@ Object.assign(ChatMode, {
             if (Math.abs(newTime - msgTime) < 60000) {
               return true;
             }
+          } else if (type === 'user') {
+            // User messages without timestamp should NOT be deduped
+            // Users can legitimately send the same message repeatedly ("yes", "ok")
+            continue;
           } else {
             // If no timestamp to compare, assume duplicate if it's the very last message of this type
             // to be safe against echoes
@@ -240,7 +244,9 @@ Object.assign(ChatMode, {
 
     // Ensure messagesEl points to correct container
     // Fix: Re-fetch current session's container before sending to avoid reference mismatch
-    const session = window.app?.sessionManager?.getActive();
+    // Use getSession() (based on this.sessionId) instead of getActive() to avoid
+    // pointing to the wrong session during fast session switching
+    const session = this.getSession();
     if (session?.chatContainer) {
       const correctMessagesEl = session.chatContainer.querySelector('#chatMessages') ||
                                 session.chatContainer.querySelector('.chat-messages');

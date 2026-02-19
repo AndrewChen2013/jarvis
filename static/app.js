@@ -113,6 +113,37 @@ class App {
       console.log('pagehide event, persisted:', e.persisted);
     });
 
+    // bfcache 恢复：移动端通过 bfcache 恢复页面时 visibilitychange 可能不触发
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) {
+        this.debugLog('[pageshow] Restored from bfcache, forcing reconnect');
+        const socketIO = window.muxWs;
+        if (socketIO) {
+          // 强制断连再重连，清理僵死的 WebSocket
+          if (socketIO.socket) {
+            socketIO.socket.removeAllListeners();
+            socketIO.socket.disconnect();
+            socketIO.socket = null;
+          }
+          socketIO.authenticated = false;
+          socketIO._setState('disconnected');
+        }
+        // 通过 ConnectionManager 重连
+        if (this.connectionManager) {
+          const state = this.connectionManager.getState();
+          if (state === 'suspended') {
+            this.connectionManager._transition('resume');
+          } else if (state === 'connected' || state === 'reconnecting') {
+            // 即使显示 connected，bfcache 恢复后连接可能已僵死
+            this.connectionManager.reconnectAttempts = 0;
+            this.connectionManager._clearReconnectTimer();
+            this.connectionManager.state = 'reconnecting';
+            this.connectionManager._onStateChange(state, 'reconnecting', 'bfcache_restore');
+          }
+        }
+      }
+    });
+
     // 初始化下拉刷新
     this.initPullRefresh();
 

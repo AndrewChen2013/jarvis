@@ -281,8 +281,10 @@ Object.assign(ChatMode, {
    * Toggle thinking content visibility
    */
   toggleThinking(msgId) {
-    const content = this.messagesEl?.querySelector(`#${msgId}-content`);
-    const toggle = this.messagesEl?.querySelector(`#${msgId} .thinking-toggle`);
+    const msgEl = document.getElementById(msgId);
+    if (!msgEl) return;
+    const content = document.getElementById(`${msgId}-content`);
+    const toggle = msgEl.querySelector('.thinking-toggle');
     if (content) {
       content.classList.toggle('show');
       toggle?.classList.toggle('expanded');

@@ -39,10 +39,9 @@ async def get_system_info(_: str = Depends(verify_token)):
         hostname = socket.gethostname()
 
         # 获取本机 IP
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
 
         home_dir = str(Path.home())
         username = getpass.getuser()
