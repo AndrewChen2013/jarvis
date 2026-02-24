@@ -412,7 +412,7 @@ class SocketIOConnectionManager:
                 # 使用 run_in_executor 避免数据库 threading.Lock 阻塞事件循环
                 loop = asyncio.get_event_loop()
                 _t_db1 = _time.time()
-                history_desc = await loop.run_in_executor(None, lambda: db.get_chat_messages_desc(claude_sid, limit=15))
+                history_desc = await loop.run_in_executor(None, lambda: db.get_chat_messages_desc(claude_sid, limit=30))
                 logger.info(f"[SocketIO] DB get_chat_messages_desc: {(_time.time()-_t_db1)*1000:.0f}ms, rows={len(history_desc)}")
                 history = list(reversed(history_desc))  # 反转为时间升序
                 _t_db2 = _time.time()
@@ -434,17 +434,29 @@ class SocketIOConnectionManager:
 
             # 发送历史消息（逐条发送，前端已有处理逻辑）
             for msg in history:
-                # 数据库字段: role, content; 前端期望: type, content
-                msg_type = msg.get("role", "assistant")
-                msg_data = {
-                    "type": msg_type,
-                    "content": msg.get("content", ""),
-                    "timestamp": msg.get("timestamp"),
-                }
-                # Include extra field if present (contains tool_calls)
-                if msg.get("extra"):
-                    msg_data["extra"] = msg.get("extra")
-                await self.send_to_client(sid, "chat", msg_type, msg_data, session_id)
+                msg_role = msg.get("role", "assistant")
+
+                if msg_role == "tool_result":
+                    # Send tool_result in the format frontend expects
+                    extra = msg.get("extra", {}) or {}
+                    msg_data = {
+                        "tool_id": extra.get("tool_use_id", ""),
+                        "content": msg.get("content", ""),
+                        "stdout": msg.get("content", ""),
+                        "stderr": extra.get("stderr", ""),
+                        "is_error": extra.get("is_error", False),
+                        "timestamp": msg.get("timestamp"),
+                    }
+                    await self.send_to_client(sid, "chat", "tool_result", msg_data, session_id)
+                else:
+                    msg_data = {
+                        "type": msg_role,
+                        "content": msg.get("content", ""),
+                        "timestamp": msg.get("timestamp"),
+                    }
+                    if msg.get("extra"):
+                        msg_data["extra"] = msg.get("extra")
+                    await self.send_to_client(sid, "chat", msg_role, msg_data, session_id)
 
             logger.info(f"[SocketIO] Chat connect T6 history_sent: {(_time.time()-_t0)*1000:.0f}ms")
             _t_emit3 = _time.time()
@@ -529,15 +541,27 @@ class SocketIOConnectionManager:
                         history = list(reversed(history_desc))  # 反转为时间升序
                         for msg in history:
                             msg_role = msg.get("role", "assistant")
-                            msg_data = {
-                                "type": msg_role,
-                                "content": msg.get("content", ""),
-                                "timestamp": msg.get("timestamp"),
-                            }
-                            # Include extra field if present (contains tool_calls)
-                            if msg.get("extra"):
-                                msg_data["extra"] = msg.get("extra")
-                            await self.send_to_client(sid, "chat", msg_role, msg_data, real_session_id)
+
+                            if msg_role == "tool_result":
+                                extra = msg.get("extra", {}) or {}
+                                msg_data = {
+                                    "tool_id": extra.get("tool_use_id", ""),
+                                    "content": msg.get("content", ""),
+                                    "stdout": msg.get("content", ""),
+                                    "stderr": extra.get("stderr", ""),
+                                    "is_error": extra.get("is_error", False),
+                                    "timestamp": msg.get("timestamp"),
+                                }
+                                await self.send_to_client(sid, "chat", "tool_result", msg_data, real_session_id)
+                            else:
+                                msg_data = {
+                                    "type": msg_role,
+                                    "content": msg.get("content", ""),
+                                    "timestamp": msg.get("timestamp"),
+                                }
+                                if msg.get("extra"):
+                                    msg_data["extra"] = msg.get("extra")
+                                await self.send_to_client(sid, "chat", msg_role, msg_data, real_session_id)
 
                         # Calculate new oldest_index and has_more
                         new_oldest_index = max(0, before_index - len(history))

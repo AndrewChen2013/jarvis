@@ -156,7 +156,23 @@ const ChatMessageHandler = {
   },
 
   _handleToolResult(ctx, data) {
-    const { messagesEl } = ctx;
+    const { session, messagesEl } = ctx;
+
+    // Queue tool_result during history loading (for reconnect rendering)
+    if (session.chatIsLoadingHistory) {
+      session.chatPendingHistoryMessages.push({
+        type: 'tool_result',
+        tool_id: data.tool_id,
+        content: data.content,
+        stdout: data.stdout,
+        stderr: data.stderr,
+        is_error: data.is_error,
+        extra: { timestamp: data.timestamp }
+      });
+      return;
+    }
+
+    // Real-time tool result handling
     // 需要传完整的 ChatMode 上下文，因为 updateToolResult 内部会调用 this.updateBashResult 等方法
     const savedMessagesEl = ChatMode.messagesEl;
     ChatMode.messagesEl = messagesEl;
@@ -290,32 +306,46 @@ const ChatMessageHandler = {
       if (loadingIndicator) loadingIndicator.remove();
     };
 
+    const pendingMsgs = session.chatPendingHistoryMessages || [];
+
     if (session.chatIsReconnect) {
-      ChatMode.log(`Skipping history render on reconnect for ${session.id?.substring(0, 8)}`);
-      cleanupLoading();
+      // Reconnect: find the last message timestamp in DOM, only render newer messages
+      const existingMessages = session.chatMessages || [];
+      let lastExistingTimestamp = null;
+      for (let i = existingMessages.length - 1; i >= 0; i--) {
+        const ts = existingMessages[i].extra?.timestamp || existingMessages[i].timestamp;
+        if (ts) {
+          lastExistingTimestamp = new Date(ts);
+          break;
+        }
+      }
+
+      const newMsgs = lastExistingTimestamp
+        ? pendingMsgs.filter(msg => {
+            const msgTs = msg.extra?.timestamp;
+            if (!msgTs) return true;
+            return new Date(msgTs) > lastExistingTimestamp;
+          })
+        : [];
+
+      ChatMode.log(`Reconnect history: ${newMsgs.length} new of ${pendingMsgs.length} total (lastTs=${lastExistingTimestamp?.toISOString() || 'none'})`);
+
+      if (newMsgs.length > 0) {
+        if (emptyEl) emptyEl.style.display = 'none';
+        this._renderHistoryMessages(ctx, newMsgs);
+      }
+
       session.chatPendingHistoryMessages = [];
+      cleanupLoading();
       session.chatIsReconnect = false;
+      this._scrollToBottom(ctx);
       return;
     }
 
-    const pendingMsgs = session.chatPendingHistoryMessages || [];
-    ChatMode.log(`[DEBUG] _handleHistoryEnd: pendingMsgs.length=${pendingMsgs.length}, isReconnect=${session.chatIsReconnect}`);
+    ChatMode.log(`[DEBUG] _handleHistoryEnd: pendingMsgs.length=${pendingMsgs.length}`);
     if (pendingMsgs.length > 0) {
       if (emptyEl) emptyEl.style.display = 'none';
-      for (const msg of pendingMsgs) {
-        ChatMode.log(`[DEBUG] _handleHistoryEnd rendering: type=${msg.type}, hasToolCalls=${!!msg.extra?.tool_calls}, toolCallsCount=${msg.extra?.tool_calls?.length || 0}`);
-        if (msg.extra?.tool_calls) {
-          for (const tc of msg.extra.tool_calls) {
-            ChatMode.log(`[DEBUG] _handleHistoryEnd rendering tool: name=${tc.name}`);
-            const toolEl = ChatMode.createToolMessageElement(tc.name, tc.input, msg.extra.timestamp);
-            messagesEl.appendChild(toolEl);
-          }
-        }
-        if (msg.content?.trim()) {
-          const msgEl = ChatMode.createMessageElement(msg.type, msg.content, msg.extra);
-          messagesEl.appendChild(msgEl);
-        }
-      }
+      this._renderHistoryMessages(ctx, pendingMsgs);
       session.chatPendingHistoryMessages = [];
     }
     cleanupLoading();
@@ -340,6 +370,33 @@ const ChatMessageHandler = {
   },
 
   // === Helpers ===
+  _renderHistoryMessages(ctx, msgs) {
+    const { session, messagesEl } = ctx;
+    for (const msg of msgs) {
+      if (msg.type === 'tool_result') {
+        // Render tool_result from history
+        const savedMessagesEl = ChatMode.messagesEl;
+        ChatMode.messagesEl = messagesEl;
+        ChatMode.updateToolResult(msg.tool_id, msg);
+        ChatMode.messagesEl = savedMessagesEl;
+      } else {
+        if (msg.extra?.tool_calls) {
+          for (const tc of msg.extra.tool_calls) {
+            const toolEl = ChatMode.createToolMessageElement(tc.name, tc.input, msg.extra.timestamp);
+            messagesEl.appendChild(toolEl);
+          }
+        }
+        if (msg.content?.trim()) {
+          const msgEl = ChatMode.createMessageElement(msg.type, msg.content, msg.extra);
+          messagesEl.appendChild(msgEl);
+          if (session.chatMessages) {
+            session.chatMessages.push({ id: msgEl.id, type: msg.type, content: msg.content, ...msg.extra });
+          }
+        }
+      }
+    }
+  },
+
   _isDuplicate(session, type, content, timestamp) {
     if (session.chatIsLoadingHistory) return false;
     const messages = session.chatMessages || [];

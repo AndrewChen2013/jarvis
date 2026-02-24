@@ -528,6 +528,45 @@ class ChatSession:
                         source="realtime"
                     )
 
+            elif msg_type == "user":
+                # Save tool_result from user messages (stdout/stderr of tool executions)
+                # Normal user text messages are saved separately in send_message()
+                message_data = content_data.get("message", {})
+                content_blocks = message_data.get("content", [])
+                if isinstance(content_blocks, list):
+                    for block in content_blocks:
+                        if isinstance(block, dict) and block.get("type") == "tool_result":
+                            tool_use_id = block.get("tool_use_id", "")
+                            tool_content = block.get("content", "")
+                            is_error = block.get("is_error", False)
+
+                            tool_use_result = content_data.get("tool_use_result", {})
+                            stdout = tool_use_result.get("stdout", "") if isinstance(tool_use_result, dict) else ""
+                            stderr = tool_use_result.get("stderr", "") if isinstance(tool_use_result, dict) else ""
+
+                            save_content = stdout or tool_content or ""
+                            if isinstance(save_content, list):
+                                save_content = "".join(
+                                    b.get("text", "") if isinstance(b, dict) else str(b) for b in save_content
+                                )
+                            if not isinstance(save_content, str):
+                                save_content = str(save_content)
+
+                            if save_content.strip() or stderr.strip():
+                                session_id = self._claude_session_id or self.resume_session_id or self.session_id
+                                db.save_chat_message(
+                                    session_id=session_id,
+                                    role="tool_result",
+                                    content=save_content,
+                                    timestamp=msg.timestamp,
+                                    extra={
+                                        "tool_use_id": tool_use_id,
+                                        "is_error": is_error,
+                                        "stderr": stderr,
+                                    },
+                                    source="realtime"
+                                )
+
             elif msg_type == "result":
                 # Result message often contains the final assistant response
                 # It's already captured by the assistant message above
@@ -652,8 +691,37 @@ class ChatSession:
                                 for block in content_blocks:
                                     if isinstance(block, str):
                                         content += block
-                                    elif isinstance(block, dict) and block.get("type") == "text":
-                                        content += block.get("text", "")
+                                    elif isinstance(block, dict):
+                                        if block.get("type") == "text":
+                                            content += block.get("text", "")
+                                        elif block.get("type") == "tool_result":
+                                            # Save tool_result as separate message
+                                            tr_id = block.get("tool_use_id", "")
+                                            tr_content = block.get("content", "")
+                                            tr_error = block.get("is_error", False)
+                                            tr_result = data.get("tool_use_result", {})
+                                            tr_stdout = tr_result.get("stdout", "") if isinstance(tr_result, dict) else ""
+                                            tr_stderr = tr_result.get("stderr", "") if isinstance(tr_result, dict) else ""
+                                            tr_save = tr_stdout or tr_content or ""
+                                            if isinstance(tr_save, list):
+                                                tr_save = "".join(
+                                                    b.get("text", "") if isinstance(b, dict) else str(b) for b in tr_save
+                                                )
+                                            if not isinstance(tr_save, str):
+                                                tr_save = str(tr_save)
+                                            if tr_save.strip() or tr_stderr.strip():
+                                                messages_to_sync.append({
+                                                    "session_id": self.resume_session_id,
+                                                    "role": "tool_result",
+                                                    "content": tr_save,
+                                                    "timestamp": msg_timestamp,
+                                                    "source": "sync",
+                                                    "extra": {
+                                                        "tool_use_id": tr_id,
+                                                        "is_error": tr_error,
+                                                        "stderr": tr_stderr,
+                                                    }
+                                                })
 
                         elif msg_type == "assistant":
                             message_data = data.get("message", {})
