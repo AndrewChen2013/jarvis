@@ -421,8 +421,16 @@ Object.assign(ChatMode, {
     const lastTool = toolMsgs[toolMsgs.length - 1];
     const toolName = lastTool.querySelector('.tool-name')?.textContent || '';
     const isError = data.is_error || false;
-    const stdout = data.stdout || data.content || '';
-    const stderr = data.stderr || '';
+    // Ensure stdout/stderr are strings (content can be array from Claude API)
+    let rawContent = data.stdout || data.content || '';
+    if (typeof rawContent !== 'string') {
+      rawContent = Array.isArray(rawContent)
+        ? rawContent.map(b => (typeof b === 'string' ? b : b?.text || '')).join('')
+        : String(rawContent);
+    }
+    const stdout = rawContent;
+    let stderr = data.stderr || '';
+    if (typeof stderr !== 'string') stderr = String(stderr);
 
     // Handle different tool types
     switch (toolName) {
