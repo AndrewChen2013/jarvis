@@ -187,6 +187,11 @@ class ChatSession:
                     logger.warning(f"Session file not found for {self.resume_session_id[:8]}, creating new session")
                     self.resume_session_id = None  # Clear so we don't try to load history from non-existent file
 
+            # Clean environment: remove CLAUDECODE vars to avoid
+            # "cannot be launched inside another Claude Code session" error
+            clean_env = {k: v for k, v in os.environ.items()
+                         if k not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")}
+
             logger.info(f"[ChatSession:{self.session_id[:8]}] start() S1 before subprocess: {(_time.time()-_t0)*1000:.0f}ms")
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -194,6 +199,7 @@ class ChatSession:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self.working_dir,
+                env=clean_env,
                 limit=10 * 1024 * 1024,  # 10MB，支持大图片和长输出
             )
             logger.info(f"[ChatSession:{self.session_id[:8]}] start() S2 subprocess created: {(_time.time()-_t0)*1000:.0f}ms")
